@@ -1,0 +1,18 @@
+# Gradle / Kotlin
+backend/.gradle/
+backend/build/
+backend/.kotlin/
+*.class
+# IDE
+.idea/
+*.iml
+.vscode/
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/build/
+# Node
+backoffice/node_modules/
+backoffice/dist/
+# Secrets
+.env
+*.env

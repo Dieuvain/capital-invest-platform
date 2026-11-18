@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: capital-invest-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/capital_invest}
+    username: ${DB_USER:capital}
+    password: ${DB_PASSWORD:capital}
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+capital-invest:
+  # Les simulateurs remplacent les partenaires (mobile money, processeur) tant
+  # que les contrats ne sont pas signés. A désactiver en production.
+  simulators-enabled: ${SIMULATORS_ENABLED:true}
