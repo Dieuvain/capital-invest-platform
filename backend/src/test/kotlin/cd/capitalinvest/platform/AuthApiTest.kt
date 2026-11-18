@@ -96,21 +96,21 @@ class AuthApiTest : ApiTest() {
     }
 
     @Test
-    fun `5 PIN faux bloquent le compte 30 minutes, meme avec le bon PIN`() {
+    fun `5 PIN faux bloquent le compte 15 minutes, meme avec le bon PIN`() {
         val s = register("+243970000206")
         repeat(4) { login(s.phone, "9999").andExpect { status { isUnauthorized() } } }
         login(s.phone, "9999").andExpect { status { isLocked() } }
         login(s.phone, "2580").andExpect { status { isLocked() } }
-        testClock.advance(Duration.ofMinutes(31))
+        testClock.advance(Duration.ofMinutes(16))
         login(s.phone, "2580").andExpect { status { isOk() } }
     }
 
     @Test
-    fun `la session expire apres 30 minutes d'inactivite`() {
+    fun `la session expire apres 15 minutes d'inactivite`() {
         val s = register("+243970000207")
-        testClock.advance(Duration.ofMinutes(29))
+        testClock.advance(Duration.ofMinutes(14))
         mvc.get("/v1/me") { header("Authorization", "Bearer ${s.token}") }.andExpect { status { isOk() } }
-        testClock.advance(Duration.ofMinutes(31))
+        testClock.advance(Duration.ofMinutes(16))
         mvc.get("/v1/me") { header("Authorization", "Bearer ${s.token}") }.andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("SESSION_EXPIRED") }

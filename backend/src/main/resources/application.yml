@@ -33,6 +33,6 @@ capital-invest:
     otp-max-attempts: 5
     otp-max-per-10-minutes: 3
     pin-max-attempts: 5
-    pin-lock-minutes: 30
-    session-idle-minutes: 30
+    pin-lock-minutes: 15
+    session-idle-minutes: 15
     session-max-hours: 12

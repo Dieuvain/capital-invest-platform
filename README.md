@@ -57,8 +57,8 @@ curl -s localhost:8080/v1/me/balance -H "Authorization: Bearer $TOKEN"
 ## Sécurité de la connexion
 
 - Code SMS à 6 chiffres, valable 5 minutes, 5 essais au plus, 3 demandes au plus par 10 minutes ; stocké haché (HMAC).
-- PIN haché en BCrypt ; 5 erreurs bloquent le compte 30 minutes ; le PIN est redemandé pour chaque envoi.
-- Jetons de session aléatoires, stockés hachés, révocables ; expiration après 30 minutes d'inactivité et 12 heures au plus.
+- PIN haché en BCrypt ; 5 erreurs bloquent le compte 15 minutes ; le PIN est redemandé pour chaque envoi.
+- Jetons de session aléatoires, stockés hachés, révocables ; expiration après 15 minutes d'inactivité et 12 heures au plus.
 - En production : `OTP_SECRET` obligatoire et `SIMULATORS_ENABLED=false`.
 
 ## Règles du grand livre

@@ -9,7 +9,7 @@ data class SecurityProperties(
     val otpMaxAttempts: Int = 5,
     val otpMaxPer10Minutes: Int = 3,
     val pinMaxAttempts: Int = 5,
-    val pinLockMinutes: Long = 30,
-    val sessionIdleMinutes: Long = 30,
+    val pinLockMinutes: Long = 15,
+    val sessionIdleMinutes: Long = 15,
     val sessionMaxHours: Long = 12,
 )

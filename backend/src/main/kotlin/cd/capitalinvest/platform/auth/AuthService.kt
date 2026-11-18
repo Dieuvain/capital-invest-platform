@@ -59,7 +59,7 @@ class AuthService(
     @Transactional(noRollbackFor = [BusinessException::class])
     fun confirmWithPin(customerId: UUID, pin: String) = checkPin(customerId, pin)
 
-    /** Renvoie le client d'un jeton valide et prolonge la session (expiration après 30 min d'inactivité). */
+    /** Renvoie le client d'un jeton valide et prolonge la session (expiration après 15 min d'inactivité). */
     @Transactional
     fun authenticate(token: String): UUID {
         val hash = sha256(token)
