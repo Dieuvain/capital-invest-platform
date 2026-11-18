@@ -71,7 +71,7 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - PIN haché en BCrypt ; 5 erreurs bloquent le compte 15 minutes ; le PIN est redemandé pour chaque envoi.
 - Jetons de session aléatoires, stockés hachés, révocables ; expiration après 15 minutes d'inactivité et 12 heures au plus.
 - PIN oublié : code SMS, nouveau PIN, toutes les anciennes sessions fermées. Les envois sont ensuite suspendus 24 heures, contre le vol de carte SIM. La demande de code répond de la même façon que le numéro ait un compte ou non.
-- En production : `OTP_SECRET` obligatoire et `SIMULATORS_ENABLED=false`.
+- En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
 ## Plafonds KYC
 
@@ -93,6 +93,28 @@ Valeurs **provisoires**, à fixer par la direction générale (`capital-invest.f
 - L'expéditeur paie le montant plus les frais ; le destinataire reçoit le montant entier.
 - Les frais sont crédités au compte `FEES_REVENUE_USD` dans la même transaction du grand livre.
 - Les frais ne comptent pas dans le plafond journalier d'envoi.
+
+## Passage au KYC 2
+
+Côté client (jeton client) :
+
+1. `POST /v1/me/kyc/documents/{ID_FRONT|ID_BACK|SELFIE}` : photo JPEG ou PNG, champ multipart `file`, 5 Mo au plus. Le type est vérifié sur le contenu du fichier.
+2. `POST /v1/me/kyc/submission` : `{"idType":"VOTER_CARD|PASSPORT","idNumber":"…","birthDate":"1990-05-12"}`. Le verso est obligatoire pour la carte d'électeur. Il faut avoir 18 ans.
+3. `GET /v1/me/kyc` : niveau actuel et état de la dernière demande, avec le motif en cas de refus.
+
+Côté back-office (jeton agent, distinct des jetons clients) :
+
+- `POST /v1/backoffice/auth/login` : e-mail et mot de passe (12 caractères au moins). 5 erreurs bloquent le compte 15 minutes ; session de 15 minutes d'inactivité, 8 heures au plus.
+- `GET /v1/backoffice/kyc?status=PENDING`, `GET /v1/backoffice/kyc/{id}`, `GET /v1/backoffice/kyc/{id}/documents/{docId}`.
+- `POST /v1/backoffice/kyc/{id}/approve` ou `/reject` avec `{"reason":"…"}`. Le client reçoit un SMS.
+- `POST /v1/backoffice/agents` : création d'un agent (`KYC_AGENT`, `COMPLIANCE`, `ADMIN`), réservée aux administrateurs. Le premier administrateur est créé au démarrage à partir de `BACKOFFICE_ADMIN_EMAIL` et `BACKOFFICE_ADMIN_PASSWORD`.
+
+Règles :
+
+- Les photos sont chiffrées en AES-256-GCM dans la base. En production, `KYC_ENCRYPTION_KEY` est obligatoire.
+- Le contrôle sanctions et PEP est fait à l'envoi de la demande. Une correspondance ne peut être validée que par un agent `COMPLIANCE`. Le contrôle est **simulé** en attendant le choix du fournisseur.
+- Un agent n'ouvre que les pièces de la demande qu'il examine. Chaque consultation, validation et refus est inscrit dans `audit_log`, en ajout seul.
+- Le contrôle de vivacité du selfie viendra avec le fournisseur d'identité.
 
 ## Règles du grand livre
 

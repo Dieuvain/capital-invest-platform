@@ -34,6 +34,9 @@ class ErrorHandler {
     fun missingHeader(e: MissingRequestHeaderException): ProblemDetail =
         problem(HttpStatus.BAD_REQUEST, "MISSING_HEADER", "En-tête obligatoire absent : ${e.headerName}")
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException::class)
+    fun tooLarge(): ProblemDetail = problem(HttpStatus.PAYLOAD_TOO_LARGE, "DOCUMENT_TOO_LARGE", "Fichier trop volumineux")
+
     private fun problem(status: HttpStatus, code: String, detail: String): ProblemDetail =
         ProblemDetail.forStatusAndDetail(status, detail).apply {
             type = URI.create("https://api.capitalinvest.cd/erreurs/${code.lowercase()}")
