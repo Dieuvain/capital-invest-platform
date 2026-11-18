@@ -15,16 +15,23 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
+data class TransferOutcome(val posting: PostingResult, val amountMinor: Long, val feeMinor: Long)
+
 @Service
 class TransferService(
     private val customers: CustomerRepository,
     private val ledgerRepository: LedgerRepository,
     private val ledger: LedgerService,
     private val limits: LimitsService,
+    private val fees: FeeService,
 ) {
+    private val feesAccountId by lazy {
+        ledgerRepository.findAccountByCode("FEES_REVENUE_USD")?.id ?: error("Compte FEES_REVENUE_USD absent")
+    }
+
     /** Envoi d'argent entre deux clients Capital Invest, identifiés par le numéro du destinataire. */
     @Transactional
-    fun transfer(idempotencyKey: String, fromCustomerId: UUID, toPhone: String, amountMinor: Long, note: String?): PostingResult {
+    fun transfer(idempotencyKey: String, fromCustomerId: UUID, toPhone: String, amountMinor: Long, note: String?): TransferOutcome {
         if (amountMinor <= 0) throw BusinessException("INVALID_AMOUNT", "Le montant doit être positif")
         val sender = customers.findById(fromCustomerId) ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Client introuvable")
         val recipient = customers.findByPhone(toPhone)
@@ -43,16 +50,23 @@ class TransferService(
             limits.checkOutgoing(sender, from.id, amountMinor)
             limits.checkIncoming(recipient, to.id, amountMinor)
         }
-        return ledger.post(
+        val fee = fees.transferFee(amountMinor)
+        val result = ledger.post(
             PostingRequest(
                 idempotencyKey = ledgerKey,
                 type = "TRANSFER",
                 description = note?.take(140),
+                // Le client paie le montant plus les frais ; le destinataire reçoit le montant entier.
                 lines = listOf(
                     PostingLine(from.id, Direction.DEBIT, amountMinor),
                     PostingLine(to.id, Direction.CREDIT, amountMinor),
+                    PostingLine(from.id, Direction.DEBIT, fee),
+                    PostingLine(feesAccountId, Direction.CREDIT, fee),
                 ),
             ),
         )
+        // En cas de rejeu, les frais sont ceux réellement prélevés à l'origine.
+        val chargedFee = result.transaction.entries.filter { it.accountId == feesAccountId }.sumOf { it.amountMinor }
+        return TransferOutcome(result, amountMinor, chargedFee)
     }
 }

@@ -46,7 +46,7 @@ class LimitsApiTest : ApiTest() {
         val alice = register("+243970000403")
         val bob = register("+243970000404")
         setKycLevel(bob, 2)
-        repeat(4) { topupConfirmed(alice, 20_000, "t-$it") }
+        repeat(5) { topupConfirmed(alice, 20_000, "t-$it") }
 
         repeat(3) { transfer(alice, bob.phone, 20_000, "e-$it").andExpect { status { isCreated() } } }
         transfer(alice, bob.phone, 1, "e-trop").andExpect {
@@ -55,7 +55,7 @@ class LimitsApiTest : ApiTest() {
         }
         // Un rejeu de la même clé n'est pas compté une deuxième fois.
         transfer(alice, bob.phone, 20_000, "e-2").andExpect { status { is2xxSuccessful() } }
-        assertEquals(20_000, balance(alice))
+        assertEquals(100_000 - 3 * 20_200, balance(alice)) // les frais ne comptent pas dans le plafond
 
         mvc.get("/v1/me/limits") { header("Authorization", "Bearer ${alice.token}") }.andExpect {
             status { isOk() }

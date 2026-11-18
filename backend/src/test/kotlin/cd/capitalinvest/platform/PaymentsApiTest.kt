@@ -39,8 +39,13 @@ class PaymentsApiTest : ApiTest() {
         }
         assertEquals(5000, balance(alice))
 
-        send(alice, bob.phone, 1250, "app-transfer-1").andExpect { status { isCreated() } }
-        assertEquals(3750, balance(alice))
+        // Frais de 1 % : 12,50 $ envoyés coûtent 0,13 $ de plus ; Bob reçoit le montant entier.
+        send(alice, bob.phone, 1250, "app-transfer-1").andExpect {
+            status { isCreated() }
+            jsonPath("$.feeMinor") { value(13) }
+            jsonPath("$.totalDebitedMinor") { value(1263) }
+        }
+        assertEquals(3737, balance(alice))
         assertEquals(1250, balance(bob))
     }
 

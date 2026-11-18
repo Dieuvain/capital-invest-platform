@@ -53,6 +53,9 @@ curl -s -X POST localhost:8080/v1/transfers -H "Authorization: Bearer $TOKEN" -H
   -H 'Content-Type: application/json' -d '{"toPhone":"+243970000002","amountMinor":1250,"pin":"2580"}'
 curl -s localhost:8080/v1/me/balance -H "Authorization: Bearer $TOKEN"
 
+# 4 bis. Connaître les frais avant de confirmer
+curl -s 'localhost:8080/v1/transfers/fee?amountMinor=1250' -H "Authorization: Bearer $TOKEN"
+
 # 5. Voir ses plafonds et ce qui reste à envoyer aujourd'hui
 curl -s localhost:8080/v1/me/limits -H "Authorization: Bearer $TOKEN"
 
@@ -82,6 +85,14 @@ Valeurs **provisoires**, à valider par la conformité (fichier `application.yml
 - La journée se compte à l'heure de Lubumbashi.
 - Le solde maximal compte aussi les recharges en attente, et s'applique au destinataire d'un envoi sans révéler son solde.
 - Les contrôles se font sous verrou du portefeuille : deux opérations simultanées ne peuvent pas dépasser un plafond ensemble.
+
+## Frais d'envoi
+
+Valeurs **provisoires**, à fixer par la direction générale (`capital-invest.fees` dans `application.yml`) : 1 % du montant, au moins 0,10 $, au plus 5 $.
+
+- L'expéditeur paie le montant plus les frais ; le destinataire reçoit le montant entier.
+- Les frais sont crédités au compte `FEES_REVENUE_USD` dans la même transaction du grand livre.
+- Les frais ne comptent pas dans le plafond journalier d'envoi.
 
 ## Règles du grand livre
 

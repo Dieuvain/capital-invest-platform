@@ -118,9 +118,14 @@ class LimitsService(
     fun dailyOutUsed(walletId: UUID): Long {
         val dayStart = clock.instant().atZone(zone).toLocalDate().atStartOfDay(zone).toOffsetDateTime()
         return jdbc.sql(
-            """SELECT COALESCE(SUM(e.amount_minor), 0)
-               FROM ledger_entry e JOIN ledger_transaction t ON t.id = e.transaction_id
-               WHERE e.account_id = :w AND e.direction = 'DEBIT' AND t.type = 'TRANSFER' AND e.created_at >= :since""",
+            // Montants reçus par d'autres clients dans les envois de ce portefeuille : les frais ne comptent pas.
+            """SELECT COALESCE(SUM(c.amount_minor), 0)
+               FROM ledger_transaction t
+               JOIN ledger_entry c ON c.transaction_id = t.id AND c.direction = 'CREDIT'
+               JOIN ledger_account a ON a.id = c.account_id AND a.type = 'CUSTOMER_WALLET'
+               WHERE t.type = 'TRANSFER'
+                 AND t.id IN (SELECT d.transaction_id FROM ledger_entry d
+                              WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
         ).param("w", walletId).param("since", dayStart).query(Long::class.java).single()
     }
 
