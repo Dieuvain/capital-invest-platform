@@ -8,22 +8,10 @@ import cd.capitalinvest.platform.ledger.AccountType
 import cd.capitalinvest.platform.ledger.Direction
 import cd.capitalinvest.platform.ledger.LedgerAccount
 import cd.capitalinvest.platform.ledger.LedgerRepository
-import jakarta.validation.Valid
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Size
-import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
 import java.sql.ResultSet
 import java.util.UUID
 
@@ -56,6 +44,29 @@ class CustomerRepository(private val jdbc: JdbcClient) {
     fun findByPhone(phone: String): Customer? =
         jdbc.sql("SELECT * FROM customer WHERE phone = :p").param("p", phone).query(::map).optional().orElse(null)
 
+    fun setPinHash(id: UUID, hash: String) {
+        jdbc.sql("UPDATE customer SET pin_hash = :h, pin_failed_attempts = 0, pin_locked_until = NULL WHERE id = :id")
+            .param("h", hash).param("id", id).update()
+    }
+
+    /** Lit l'état du PIN en verrouillant la ligne, pour compter les échecs sans course. */
+    fun lockPinState(id: UUID): PinState? =
+        jdbc.sql("SELECT pin_hash, pin_failed_attempts, pin_locked_until FROM customer WHERE id = :id FOR UPDATE")
+            .param("id", id)
+            .query { rs, _ ->
+                PinState(
+                    rs.getString("pin_hash"),
+                    rs.getInt("pin_failed_attempts"),
+                    rs.getObject("pin_locked_until", java.time.OffsetDateTime::class.java),
+                )
+            }
+            .optional().orElse(null)
+
+    fun updatePinFailures(id: UUID, attempts: Int, lockedUntil: java.time.OffsetDateTime?) {
+        jdbc.sql("UPDATE customer SET pin_failed_attempts = :a, pin_locked_until = :l WHERE id = :id")
+            .param("a", attempts).param("l", lockedUntil).param("id", id).update()
+    }
+
     private fun map(rs: ResultSet, @Suppress("UNUSED_PARAMETER") row: Int) = Customer(
         id = rs.getObject("id", UUID::class.java),
         phone = rs.getString("phone"),
@@ -65,6 +76,8 @@ class CustomerRepository(private val jdbc: JdbcClient) {
         status = rs.getString("status"),
     )
 }
+
+data class PinState(val hash: String?, val failedAttempts: Int, val lockedUntil: java.time.OffsetDateTime?)
 
 data class CustomerView(val customer: Customer, val walletAccountId: UUID)
 
@@ -99,25 +112,4 @@ class CustomerService(private val customers: CustomerRepository, private val led
         val wallet = ledger.findCustomerWallet(id, Currency.USD) ?: error("Client sans portefeuille : $id")
         return CustomerView(customer, wallet.id)
     }
-}
-
-data class OpenCustomerRequest(
-    @field:Pattern(regexp = "^\\+243[0-9]{9}$", message = "numéro congolais attendu, format +243XXXXXXXXX")
-    val phone: String,
-    @field:NotBlank @field:Size(max = 120)
-    val fullName: String,
-    val language: Language = Language.fr,
-)
-
-@RestController
-@RequestMapping("/v1/customers")
-class CustomerController(private val service: CustomerService) {
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    fun open(@Valid @RequestBody body: OpenCustomerRequest): CustomerView =
-        service.open(body.phone, body.fullName, body.language)
-
-    @GetMapping("/{id}")
-    fun get(@PathVariable id: UUID): CustomerView = service.get(id)
 }
