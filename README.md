@@ -52,6 +52,14 @@ curl -s -X POST localhost:8080/v1/simulators/mobile-money/callbacks -H 'Content-
 curl -s -X POST localhost:8080/v1/transfers -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: 9a2b' \
   -H 'Content-Type: application/json' -d '{"toPhone":"+243970000002","amountMinor":1250,"pin":"2580"}'
 curl -s localhost:8080/v1/me/balance -H "Authorization: Bearer $TOKEN"
+
+# 5. Voir ses plafonds et ce qui reste à envoyer aujourd'hui
+curl -s localhost:8080/v1/me/limits -H "Authorization: Bearer $TOKEN"
+
+# 6. PIN oublié : code SMS, puis nouveau PIN
+curl -s -X POST localhost:8080/v1/auth/pin-reset/otp -H 'Content-Type: application/json' -d '{"phone":"+243970000001"}'
+curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/json' \
+  -d '{"phone":"+243970000001","code":"123456","newPin":"7391","deviceId":"tel-neuf"}'
 ```
 
 ## Sécurité de la connexion
@@ -59,7 +67,21 @@ curl -s localhost:8080/v1/me/balance -H "Authorization: Bearer $TOKEN"
 - Code SMS à 6 chiffres, valable 5 minutes, 5 essais au plus, 3 demandes au plus par 10 minutes ; stocké haché (HMAC).
 - PIN haché en BCrypt ; 5 erreurs bloquent le compte 15 minutes ; le PIN est redemandé pour chaque envoi.
 - Jetons de session aléatoires, stockés hachés, révocables ; expiration après 15 minutes d'inactivité et 12 heures au plus.
+- PIN oublié : code SMS, nouveau PIN, toutes les anciennes sessions fermées. Les envois sont ensuite suspendus 24 heures, contre le vol de carte SIM. La demande de code répond de la même façon que le numéro ait un compte ou non.
 - En production : `OTP_SECRET` obligatoire et `SIMULATORS_ENABLED=false`.
+
+## Plafonds KYC
+
+Valeurs **provisoires**, à valider par la conformité (fichier `application.yml`, section `capital-invest.limits`).
+
+| Niveau | Par opération | Envoyé par jour | Solde maximal |
+|---|---|---|---|
+| KYC 1 | 100 $ | 300 $ | 500 $ |
+| KYC 2 | 2 000 $ | 5 000 $ | 10 000 $ |
+
+- La journée se compte à l'heure de Lubumbashi.
+- Le solde maximal compte aussi les recharges en attente, et s'applique au destinataire d'un envoi sans révéler son solde.
+- Les contrôles se font sous verrou du portefeuille : deux opérations simultanées ne peuvent pas dépasser un plafond ensemble.
 
 ## Règles du grand livre
 

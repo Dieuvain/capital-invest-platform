@@ -36,3 +36,11 @@ capital-invest:
     pin-lock-minutes: 15
     session-idle-minutes: 15
     session-max-hours: 12
+  # Plafonds par niveau KYC, en centimes de dollar. Valeurs PROVISOIRES,
+  # à valider par la conformité avant la mise en production.
+  limits:
+    timezone: Africa/Lubumbashi
+    pin-reset-cooldown-hours: 24
+    tiers:
+      1: { per-transaction-minor: 10000,  daily-out-minor: 30000,  max-balance-minor: 50000 }    # 100 $, 300 $/jour, 500 $
+      2: { per-transaction-minor: 200000, daily-out-minor: 500000, max-balance-minor: 1000000 }  # 2 000 $, 5 000 $/jour, 10 000 $

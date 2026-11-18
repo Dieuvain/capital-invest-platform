@@ -8,11 +8,6 @@ import java.time.Duration
 
 class AuthApiTest : ApiTest() {
 
-    private fun login(phone: String, pin: String) = mvc.post("/v1/auth/login") {
-        contentType = MediaType.APPLICATION_JSON
-        content = """{"phone":"$phone","pin":"$pin","deviceId":"tel-1"}"""
-    }
-
     @Test
     fun `sans jeton l'API refuse l'acces`() {
         mvc.get("/v1/me/balance").andExpect {
@@ -33,7 +28,7 @@ class AuthApiTest : ApiTest() {
             jsonPath("$.customer.phone") { value("+243970000201") }
             jsonPath("$.customer.kycLevel") { value(1) }
         }
-        login(s.phone, "2580").andExpect {
+        loginRequest(s.phone, "2580").andExpect {
             status { isOk() }
             jsonPath("$.accessToken") { exists() }
         }
@@ -98,11 +93,11 @@ class AuthApiTest : ApiTest() {
     @Test
     fun `5 PIN faux bloquent le compte 15 minutes, meme avec le bon PIN`() {
         val s = register("+243970000206")
-        repeat(4) { login(s.phone, "9999").andExpect { status { isUnauthorized() } } }
-        login(s.phone, "9999").andExpect { status { isLocked() } }
-        login(s.phone, "2580").andExpect { status { isLocked() } }
+        repeat(4) { loginRequest(s.phone, "9999").andExpect { status { isUnauthorized() } } }
+        loginRequest(s.phone, "9999").andExpect { status { isLocked() } }
+        loginRequest(s.phone, "2580").andExpect { status { isLocked() } }
         testClock.advance(Duration.ofMinutes(16))
-        login(s.phone, "2580").andExpect { status { isOk() } }
+        loginRequest(s.phone, "2580").andExpect { status { isOk() } }
     }
 
     @Test

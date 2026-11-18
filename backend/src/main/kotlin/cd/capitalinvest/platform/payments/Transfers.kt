@@ -10,6 +10,7 @@ import cd.capitalinvest.platform.ledger.LedgerService
 import cd.capitalinvest.platform.ledger.PostingLine
 import cd.capitalinvest.platform.ledger.PostingRequest
 import cd.capitalinvest.platform.ledger.PostingResult
+import cd.capitalinvest.platform.limits.LimitsService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -19,6 +20,7 @@ class TransferService(
     private val customers: CustomerRepository,
     private val ledgerRepository: LedgerRepository,
     private val ledger: LedgerService,
+    private val limits: LimitsService,
 ) {
     /** Envoi d'argent entre deux clients Capital Invest, identifiés par le numéro du destinataire. */
     @Transactional
@@ -33,9 +35,17 @@ class TransferService(
         }
         val from = ledgerRepository.findCustomerWallet(sender.id, Currency.USD)!!
         val to = ledgerRepository.findCustomerWallet(recipient.id, Currency.USD)!!
+        val ledgerKey = "transfer:${sender.id}:$idempotencyKey"
+        // Un rejeu de la même clé renvoie la transaction d'origine sans recompter les plafonds.
+        if (ledgerRepository.findTransactionHeaderByKey(ledgerKey) == null) {
+            // Verrou des deux portefeuilles avant les contrôles : les plafonds tiennent même en concurrence.
+            ledgerRepository.lockAccounts(listOf(from.id, to.id))
+            limits.checkOutgoing(sender, from.id, amountMinor)
+            limits.checkIncoming(recipient, to.id, amountMinor)
+        }
         return ledger.post(
             PostingRequest(
-                idempotencyKey = "transfer:${sender.id}:$idempotencyKey",
+                idempotencyKey = ledgerKey,
                 type = "TRANSFER",
                 description = note?.take(140),
                 lines = listOf(

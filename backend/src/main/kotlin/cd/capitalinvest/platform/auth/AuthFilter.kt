@@ -12,13 +12,13 @@ import org.springframework.web.filter.OncePerRequestFilter
 const val CUSTOMER_ID_ATTRIBUTE = "authenticatedCustomerId"
 
 /**
- * Toute route /v1 exige un jeton « Authorization: Bearer … », sauf l'inscription, la connexion
- * et les simulateurs de développement.
+ * Toute route /v1 exige un jeton « Authorization: Bearer … », sauf l'inscription, la connexion,
+ * le PIN oublié et les simulateurs de développement.
  */
 @Component
 class AuthFilter(private val auth: AuthService, private val json: ObjectMapper) : OncePerRequestFilter() {
 
-    private val publicPrefixes = listOf("/v1/auth/otp", "/v1/auth/register", "/v1/auth/login", "/v1/simulators/")
+    private val publicPrefixes = listOf("/v1/auth/otp", "/v1/auth/register", "/v1/auth/login", "/v1/auth/pin-reset", "/v1/simulators/")
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI
