@@ -10,6 +10,7 @@ import cd.capitalinvest.platform.ledger.LedgerRepository
 import cd.capitalinvest.platform.ledger.LedgerService
 import cd.capitalinvest.platform.ledger.PostingLine
 import cd.capitalinvest.platform.ledger.PostingRequest
+import cd.capitalinvest.platform.limits.LimitsService
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
@@ -98,6 +99,7 @@ class TopupService(
     private val ledgerRepository: LedgerRepository,
     private val ledger: LedgerService,
     private val gateway: MobileMoneyGateway,
+    private val limits: LimitsService,
 ) {
 
     /** Crée la recharge à l'état PENDING. Rejouer la même clé renvoie la même recharge. */
@@ -107,19 +109,27 @@ class TopupService(
         val customer = customers.findById(customerId) ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Client introuvable")
         if (customer.status != "ACTIVE") throw BusinessException("CUSTOMER_NOT_ACTIVE", "Client suspendu ou fermé")
 
+        topups.findByKey(idempotencyKey)?.let { return replay(it, customerId, operator, amountMinor) }
+
+        // Verrou du portefeuille : deux recharges simultanées ne peuvent pas dépasser le solde maximal ensemble.
+        val wallet = ledgerRepository.findCustomerWallet(customerId, Currency.USD)!!
+        ledgerRepository.lockAccounts(listOf(wallet.id))
+        limits.checkTopup(customer, wallet.id, amountMinor)
+
         val candidate = Topup(
             UUID.randomUUID(), idempotencyKey, customerId, operator, amountMinor, Currency.USD,
             TopupStatus.PENDING, null, null,
         )
-        if (!topups.insertIfAbsent(candidate)) {
-            val existing = topups.findByKey(idempotencyKey)!!
-            if (existing.customerId != customerId || existing.operator != operator || existing.amountMinor != amountMinor) {
-                throw ConflictException("IDEMPOTENCY_KEY_REUSED", "Cette clé d'idempotence a déjà servi pour une autre recharge")
-            }
-            return existing
-        }
+        if (!topups.insertIfAbsent(candidate)) return replay(topups.findByKey(idempotencyKey)!!, customerId, operator, amountMinor)
         gateway.requestPayment(candidate, customer.phone)
         return candidate
+    }
+
+    private fun replay(existing: Topup, customerId: UUID, operator: Operator, amountMinor: Long): Topup {
+        if (existing.customerId != customerId || existing.operator != operator || existing.amountMinor != amountMinor) {
+            throw ConflictException("IDEMPOTENCY_KEY_REUSED", "Cette clé d'idempotence a déjà servi pour une autre recharge")
+        }
+        return existing
     }
 
     /**

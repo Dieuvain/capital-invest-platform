@@ -55,6 +55,30 @@ class AuthService(
         return openSession(customerService.get(customer.id), deviceId)
     }
 
+    /** Demande de code SMS pour un PIN oublié. Ne révèle jamais si le numéro a un compte. */
+    @Transactional
+    fun requestPinReset(phone: String) {
+        if (customers.findByPhone(phone) != null) otp.request(phone, OtpPurpose.RESET_PIN)
+    }
+
+    /**
+     * PIN oublié : code SMS valide, nouveau PIN, toutes les anciennes sessions fermées.
+     * Les envois d'argent restent ensuite suspendus pendant le délai de sécurité (vol de SIM).
+     */
+    @Transactional(noRollbackFor = [BusinessException::class])
+    fun resetPin(phone: String, code: String, newPin: String, deviceId: String): SessionTokens {
+        PinPolicy.validate(newPin)
+        val customer = customers.findByPhone(phone) ?: throw BusinessException("OTP_INVALID", "Code invalide ou expiré")
+        otp.verify(phone, OtpPurpose.RESET_PIN, code)
+        if (customer.status != "ACTIVE") throw BusinessException("CUSTOMER_NOT_ACTIVE", "Compte suspendu ou fermé", HttpStatus.FORBIDDEN)
+        val now = now()
+        customers.setPinHash(customer.id, encoder.encode(newPin))
+        jdbc.sql("UPDATE customer SET pin_reset_at = :now WHERE id = :id").param("now", now).param("id", customer.id).update()
+        jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
+            .param("now", now).param("id", customer.id).update()
+        return openSession(customerService.get(customer.id), deviceId)
+    }
+
     /** Confirmation d'une opération sensible (envoi, retrait, blocage de carte). */
     @Transactional(noRollbackFor = [BusinessException::class])
     fun confirmWithPin(customerId: UUID, pin: String) = checkPin(customerId, pin)

@@ -4,6 +4,8 @@ import cd.capitalinvest.platform.auth.CUSTOMER_ID_ATTRIBUTE
 import cd.capitalinvest.platform.common.Currency
 import cd.capitalinvest.platform.customers.CustomerService
 import cd.capitalinvest.platform.customers.CustomerView
+import cd.capitalinvest.platform.limits.LimitsService
+import cd.capitalinvest.platform.limits.LimitsView
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestAttribute
 import org.springframework.web.bind.annotation.RequestMapping
@@ -20,6 +22,7 @@ class MeController(
     private val customers: CustomerService,
     private val ledger: LedgerService,
     private val repository: LedgerRepository,
+    private val limits: LimitsService,
 ) {
     @GetMapping
     fun me(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID): CustomerView = customers.get(customerId)
@@ -35,4 +38,11 @@ class MeController(
         @RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID,
         @RequestParam(defaultValue = "50") limit: Int,
     ): List<LedgerEntry> = repository.entriesForAccount(customers.get(customerId).walletAccountId, limit.coerceIn(1, 200))
+
+    /** Plafonds du niveau KYC et reste disponible aujourd'hui, pour l'écran « Mes plafonds ». */
+    @GetMapping("/limits")
+    fun limits(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID): LimitsView {
+        val view = customers.get(customerId)
+        return limits.view(view.customer, view.walletAccountId)
+    }
 }

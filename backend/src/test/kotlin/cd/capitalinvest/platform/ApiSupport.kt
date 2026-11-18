@@ -58,4 +58,26 @@ abstract class ApiTest : DatabaseTest() {
             content = """{"topupId":"${topup["id"].asText()}","success":true}"""
         }.andExpect { status { isOk() } }
     }
+
+    fun transfer(from: Session, toPhone: String, amountMinor: Long, key: String, pin: String = "2580") =
+        mvc.post("/v1/transfers") {
+            header("Authorization", "Bearer ${from.token}")
+            header("Idempotency-Key", key)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"toPhone":"$toPhone","amountMinor":$amountMinor,"pin":"$pin"}"""
+        }
+
+    fun setKycLevel(s: Session, level: Int) {
+        jdbc.sql("UPDATE customer SET kyc_level = :l WHERE id = :id::uuid").param("l", level).param("id", s.customerId).update()
+    }
+
+    fun loginRequest(phone: String, pin: String) = mvc.post("/v1/auth/login") {
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"phone":"$phone","pin":"$pin","deviceId":"tel-1"}"""
+    }
+
+    fun login(phone: String, pin: String = "2580"): Session {
+        val body = loginRequest(phone, pin).andExpect { status { isOk() } }.body()
+        return Session(body["accessToken"].asText(), body["customer"]["customer"]["id"].asText(), body["customer"]["walletAccountId"].asText(), phone)
+    }
 }

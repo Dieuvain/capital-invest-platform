@@ -36,6 +36,13 @@ data class LoginRequest(
     @field:NotBlank @field:Size(max = 100) val deviceId: String,
 )
 
+data class PinResetRequest(
+    @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
+    @field:Pattern(regexp = "^[0-9]{6}$", message = "code à 6 chiffres") val code: String,
+    val newPin: String,
+    @field:NotBlank @field:Size(max = 100) val deviceId: String,
+)
+
 @RestController
 @RequestMapping("/v1/auth")
 class AuthController(private val otp: OtpService, private val auth: AuthService) {
@@ -51,6 +58,13 @@ class AuthController(private val otp: OtpService, private val auth: AuthService)
 
     @PostMapping("/login")
     fun login(@Valid @RequestBody b: LoginRequest): SessionTokens = auth.login(b.phone, b.pin, b.deviceId)
+
+    @PostMapping("/pin-reset/otp")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun requestPinReset(@Valid @RequestBody body: OtpRequest) = auth.requestPinReset(body.phone)
+
+    @PostMapping("/pin-reset")
+    fun resetPin(@Valid @RequestBody b: PinResetRequest): SessionTokens = auth.resetPin(b.phone, b.code, b.newPin, b.deviceId)
 
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
