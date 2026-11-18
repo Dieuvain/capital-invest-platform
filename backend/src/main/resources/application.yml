@@ -26,3 +26,13 @@ capital-invest:
   # Les simulateurs remplacent les partenaires (mobile money, processeur) tant
   # que les contrats ne sont pas signés. A désactiver en production.
   simulators-enabled: ${SIMULATORS_ENABLED:true}
+  security:
+    # Secret de hachage des codes SMS. A fournir par variable d'environnement en production.
+    otp-secret: ${OTP_SECRET:dev-only-change-me}
+    otp-ttl-minutes: 5
+    otp-max-attempts: 5
+    otp-max-per-10-minutes: 3
+    pin-max-attempts: 5
+    pin-lock-minutes: 30
+    session-idle-minutes: 30
+    session-max-hours: 12

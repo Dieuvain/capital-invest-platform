@@ -5,3 +5,5 @@ spring:
     password: ${DB_PASSWORD:capital}
 capital-invest:
   simulators-enabled: true
+  security:
+    otp-secret: test-secret
