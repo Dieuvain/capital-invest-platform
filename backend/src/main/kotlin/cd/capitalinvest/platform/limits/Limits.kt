@@ -29,8 +29,8 @@ data class LimitsProperties(
     val timezone: String = "Africa/Lubumbashi",
     val pinResetCooldownHours: Long = 24,
     val tiers: Map<Int, KycTier> = mapOf(
-        1 to KycTier(perTransactionMinor = 10_000, dailyOutMinor = 30_000, maxBalanceMinor = 50_000),
-        2 to KycTier(perTransactionMinor = 200_000, dailyOutMinor = 500_000, maxBalanceMinor = 1_000_000),
+        1 to KycTier(perTransactionMinor = 20_000, dailyOutMinor = 60_000, maxBalanceMinor = 100_000),
+        2 to KycTier(perTransactionMinor = 400_000, dailyOutMinor = 1_000_000, maxBalanceMinor = 2_000_000),
     ),
 )
 

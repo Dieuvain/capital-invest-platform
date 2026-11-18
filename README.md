@@ -76,8 +76,8 @@ Valeurs **provisoires**, à valider par la conformité (fichier `application.yml
 
 | Niveau | Par opération | Envoyé par jour | Solde maximal |
 |---|---|---|---|
-| KYC 1 | 100 $ | 300 $ | 500 $ |
-| KYC 2 | 2 000 $ | 5 000 $ | 10 000 $ |
+| KYC 1 | 200 $ | 600 $ | 1 000 $ |
+| KYC 2 | 4 000 $ | 10 000 $ | 20 000 $ |
 
 - La journée se compte à l'heure de Lubumbashi.
 - Le solde maximal compte aussi les recharges en attente, et s'applique au destinataire d'un envoi sans révéler son solde.
