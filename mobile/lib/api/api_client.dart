@@ -178,6 +178,11 @@ class ApiClient {
   Future<List<DeviceSession>> deviceSessions() async =>
       (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();
 
+  /// Seuil d'alerte de solde bas ; null : pas d'alerte.
+  Future<int?> lowBalanceThreshold() async => (await _get('/v1/me/notifications/low-balance'))['thresholdMinor'] as int?;
+
+  Future<void> setLowBalanceThreshold(int? minor) => _put('/v1/me/notifications/low-balance', {'thresholdMinor': minor});
+
   Future<ClosureCheck> closureCheck() async => ClosureCheck.fromJson(await _get('/v1/me/closure'));
 
   /// Ferme le compte : toutes les sessions tombent, celle-ci comprise.

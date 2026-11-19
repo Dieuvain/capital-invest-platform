@@ -125,6 +125,12 @@ void main() {
       await tester.tap(find.byTooltip('Notifications, 1 non lues'));
       await tester.pumpAndSettle();
       await shot('2f-notifications$suffix');
+      server.lowBalance = 2000;
+      await tester.tap(find.byKey(const ValueKey('low-balance')));
+      await tester.pumpAndSettle();
+      await shot('19-alerte-solde-bas$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 

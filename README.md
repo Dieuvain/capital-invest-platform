@@ -338,6 +338,18 @@ Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçu
 - **App** : la cloche de l'accueil porte une pastille tant qu'il reste des notifications non lues. `GET /v1/me/notifications` (avec `unread`) et `POST /v1/me/notifications/read` (toutes, ou `{"ids": [...]}`). Une notification liée à une opération ouvre son reçu.
 - La passerelle SMS est encore le simulateur : il faudra brancher un fournisseur (agrégateur SMS ou opérateur) avant la mise en service. Les notifications push viendront plus tard.
 
+## Alerte de solde bas
+
+Dans l'app, sous Notifications, puis **Alerte de solde bas** : le client choisit un seuil (5, 10, 20 ou 50 $, ou un autre montant entre 1 $ et 1 000 $). Il reçoit un SMS et une notification quand son solde passe dessous, par exemple : « votre solde est de 19,20 $, sous votre seuil de 20,00 $ ».
+
+- Le client n'est prévenu **qu'une fois** par passage sous le seuil, pas à chaque achat. L'alerte se réarme quand le solde repasse au-dessus, après une recharge ou un envoi reçu.
+- Pas d'alerte au moment où le client choisit le seuil, même si son solde est déjà dessous : il le voit à l'écran.
+- Le contrôle se fait dans la même transaction que le mouvement d'argent, en une seule requête qui ne modifie la ligne du client que si l'état change.
+- Toucher la notification « Solde bas » ouvre ce réglage.
+- API : `GET` et `PUT /v1/me/notifications/low-balance` (`thresholdMinor`, ou `null` pour ne plus être prévenu).
+
+![Alerte de solde bas](docs/captures-app/19-alerte-solde-bas.png)
+
 ## Paiement chez un marchand (QR)
 
 Le client paie en caisse depuis son solde : il touche **Payer**, scanne le QR affiché par le commerce (ou tape le code de 6 caractères écrit dessous), vérifie le nom du commerce, tape le montant et confirme par son PIN. L'app affiche alors une preuve à montrer au caissier (montant, commerce, heure, numéro de reçu).

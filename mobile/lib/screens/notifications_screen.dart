@@ -7,6 +7,7 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
+import 'low_balance_screen.dart';
 import 'complaint_screens.dart';
 import 'request_screens.dart';
 import 'scheduled_screens.dart';
@@ -26,6 +27,7 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'NEW_DEVICE' => Icons.phonelink_lock_rounded,
   'MONEY_REQUEST' => Icons.call_made_rounded,
   'MONEY_REQUEST_DECLINED' => Icons.call_received_rounded,
+  'LOW_BALANCE' => Icons.trending_down_rounded,
   _ => Icons.notifications_none_rounded,
 };
 
@@ -70,6 +72,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
         ? SecurityScreen(app: widget.app)
         : _complaintKinds.contains(n.kind)
         ? ComplaintsScreen(app: widget.app)
+        : n.kind == 'LOW_BALANCE'
+        ? LowBalanceScreen(app: widget.app)
         : n.kind == 'SCHEDULED_TRANSFER_FAILED'
         ? ScheduledTransfersScreen(app: widget.app)
         : tx == null
@@ -87,6 +91,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
       subtitle: 'Vous les recevez aussi par SMS.',
       children: [
         ErrorBanner(error),
+        OutlinedButton.icon(
+          key: const ValueKey('low-balance'),
+          onPressed: () => _open(LowBalanceScreen(app: widget.app)),
+          icon: const Icon(Icons.trending_down_rounded),
+          label: const Text('Alerte de solde bas'),
+        ),
+        const SizedBox(height: 12),
         if (box == null && error == null) const Center(child: CircularProgressIndicator()),
         if (box != null && box.items.isEmpty)
           SoftCard(

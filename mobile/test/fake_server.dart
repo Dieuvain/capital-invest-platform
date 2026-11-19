@@ -107,6 +107,9 @@ class FakeServer {
   };
   bool closed = false;
 
+  /// Seuil d'alerte de solde bas (/v1/me/notifications/low-balance).
+  int? lowBalance;
+
   /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
   bool blocked = false;
 
@@ -473,6 +476,14 @@ class FakeServer {
       return http.Response('', 204);
     }
     if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
+    if (path == '/v1/me/notifications/low-balance') {
+      if (req.method == 'PUT') {
+        final int? t = body()['thresholdMinor'];
+        if (t != null && (t < 100 || t > 100000)) return _error(422, 'INVALID_THRESHOLD', 'Seuil invalide');
+        lowBalance = t;
+      }
+      return _json({'thresholdMinor': lowBalance});
+    }
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
     }
