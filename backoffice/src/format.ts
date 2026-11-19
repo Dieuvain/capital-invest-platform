@@ -53,6 +53,8 @@ const auditLabels: Record<string, string> = {
   MERCHANT_CREATED: 'Marchand créé',
   MERCHANT_SUSPENDED: 'Marchand suspendu',
   MERCHANT_REACTIVATED: 'Marchand réactivé',
+  MERCHANT_PAYOUT_ACCOUNT_CHANGED: 'Compte de reversement changé',
+  MERCHANT_PAYOUT_REQUESTED: 'Reversement au marchand demandé',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 

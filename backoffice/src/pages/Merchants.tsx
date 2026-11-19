@@ -1,8 +1,36 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import QRCode from 'qrcode'
-import type { Agent, Api, Merchant } from '../api'
-import { formatDateTime, formatUsd } from '../format'
+import type { Agent, Api, Merchant, MerchantPayout, Operator } from '../api'
+import { formatDateTime, formatUsd, operatorLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
+
+const operators: Operator[] = ['MPESA', 'AIRTEL', 'ORANGE']
+
+/** Opérateur probable d'après le préfixe du numéro (+243 81… M-Pesa, 97… Airtel, 84… Orange). */
+export function operatorForPhone(phone: string): Operator | null {
+  const digits = phone.replace(/\D/g, '')
+  const local = digits.startsWith('243') ? digits.slice(3) : digits.replace(/^0/, '')
+  const p = local.slice(0, 2)
+  if (['81', '82', '83'].includes(p)) return 'MPESA'
+  if (['97', '98', '99'].includes(p)) return 'AIRTEL'
+  if (['80', '84', '85', '89'].includes(p)) return 'ORANGE'
+  return null
+}
+
+/** Montant tapé (« 49,50 ») en centimes, ou null. */
+function parseUsd(text: string): number | null {
+  const t = text.trim().replace(/\s/g, '').replace(',', '.')
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null
+  const minor = Math.round(Number(t) * 100)
+  return minor > 0 ? minor : null
+}
+
+const payoutStatus: Record<MerchantPayout['status'], { label: string; cls: string }> = {
+  PENDING: { label: 'En cours', cls: 'wait' },
+  CONFIRMED: { label: 'Versé', cls: 'ok' },
+  FAILED: { label: 'Refusé, revenu sur le compte', cls: 'off' },
+  REVIEW: { label: 'À vérifier', cls: 'wait' },
+}
 
 const percent = (bps: number) => `${(bps / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`
 
@@ -80,6 +108,8 @@ function MerchantForm({ api, cancel, created }: { api: Api; cancel: () => void; 
   const [city, setCity] = useState('')
   const [phone, setPhone] = useState('')
   const [commission, setCommission] = useState('1')
+  const [payoutOperator, setPayoutOperator] = useState<Operator | ''>('')
+  const [payoutPhone, setPayoutPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -96,6 +126,8 @@ function MerchantForm({ api, cancel, created }: { api: Api; cancel: () => void; 
       created(await api.createMerchant({
         name: name.trim(), category: category.trim() || null, city: city.trim() || null, phone: phone.trim(),
         commissionBps: Math.round(pct * 100),
+        payoutOperator: payoutOperator || null,
+        payoutPhone: payoutOperator ? (payoutPhone.trim() || phone.trim()) : null,
       }))
     } catch (err) {
       setError((err as Error).message)
@@ -129,6 +161,22 @@ function MerchantForm({ api, cancel, created }: { api: Api; cancel: () => void; 
           Commission (%) <span className="hint">Retenue sur chaque paiement, de 0 à 10 %</span>
           <input type="text" inputMode="decimal" required value={commission} onChange={(e) => setCommission(e.target.value)} />
         </label>
+        <label className="field">
+          Reversements vers <span className="hint">Compte mobile money qui reçoit l'argent du marchand</span>
+          <select value={payoutOperator} onChange={(e) => {
+            setPayoutOperator(e.target.value as Operator | '')
+            if (e.target.value && !payoutPhone) setPayoutPhone(phone)
+          }}>
+            <option value="">Plus tard</option>
+            {operators.map((o) => <option key={o} value={o}>{operatorLabel[o]}</option>)}
+          </select>
+        </label>
+        {payoutOperator && (
+          <label className="field">
+            Numéro {operatorLabel[payoutOperator]} des reversements
+            <input type="tel" required value={payoutPhone} onChange={(e) => setPayoutPhone(e.target.value)} />
+          </label>
+        )}
       </div>
       <div className="row">
         <span className="spacer" />
@@ -220,6 +268,8 @@ function MerchantPanel({ api, id, admin, close, changed }: {
             {m.city && <div><dt>Ville</dt><dd>{m.city}</dd></div>}
             <div><dt>Créé le</dt><dd>{formatDateTime(m.createdAt)}</dd></div>
           </dl>
+          <Payouts api={api} merchant={m} payouts={data.payouts} admin={admin}
+            done={(message) => { reload(); changed(message) }} />
           <h4 style={{ margin: '10px 0 0' }}>Derniers paiements</h4>
           {data.payments.length === 0 ? (
             <div className="muted small">Aucun paiement reçu pour l'instant.</div>
@@ -261,5 +311,158 @@ function MerchantPanel({ api, id, admin, close, changed }: {
         </>
       )}
     </aside>
+  )
+}
+
+/** Reversements : compte qui les reçoit, bouton pour reverser ce qui est dû, et suivi chez l'opérateur. */
+function Payouts({ api, merchant: m, payouts, admin, done }: {
+  api: Api
+  merchant: Merchant
+  payouts: MerchantPayout[]
+  admin: boolean
+  done: (message: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [operator, setOperator] = useState<Operator>(m.payoutOperator ?? operatorForPhone(m.phone) ?? 'MPESA')
+  const [phone, setPhone] = useState(m.payoutPhone ?? m.phone)
+  const [paying, setPaying] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [requestId, setRequestId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEditing(false)
+    setPaying(false)
+    setError(null)
+  }, [m.id])
+
+  async function saveAccount(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.setPayoutAccount(m.id, operator, phone.trim())
+      setEditing(false)
+      done(updated.payoutBlockedUntil
+        ? 'Compte de reversement changé. Le marchand est prévenu par SMS ; reversements possibles dans 24 h.'
+        : 'Compte de reversement enregistré')
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startPayout() {
+    setAmount((m.balanceMinor / 100).toFixed(2).replace('.', ','))
+    setRequestId(crypto.randomUUID())
+    setError(null)
+    setPaying(true)
+  }
+
+  async function pay(e: FormEvent) {
+    e.preventDefault()
+    const minor = parseUsd(amount)
+    if (minor === null) return setError('Montant invalide, par exemple 49,50')
+    if (minor > m.balanceMinor) return setError(`Le marchand n'a que ${formatUsd(m.balanceMinor)} à reverser`)
+    setBusy(true)
+    setError(null)
+    try {
+      const p = await api.payoutMerchant(m.id, minor, requestId)
+      setPaying(false)
+      done(p.status === 'FAILED'
+        ? `${operatorLabel[p.operator]} a refusé le versement : l'argent reste sur le compte du marchand`
+        : `Reversement de ${formatUsd(p.amountMinor)} envoyé vers ${operatorLabel[p.operator]} ${p.phone}`)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const blocked = m.payoutBlockedUntil
+  return (
+    <section className="stack" aria-label="Reversements" style={{ gap: 8, marginTop: 10 }}>
+      <h4 style={{ margin: 0 }}>Reversements</h4>
+      <ErrorBanner error={error} />
+      {editing ? (
+        <form className="stack" onSubmit={saveAccount} style={{ gap: 8 }}>
+          <label className="field">
+            Opérateur
+            <select value={operator} onChange={(e) => setOperator(e.target.value as Operator)}>
+              {operators.map((o) => <option key={o} value={o}>{operatorLabel[o]}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            Numéro qui reçoit les reversements
+            <input type="tel" required value={phone} onChange={(e) => {
+              setPhone(e.target.value)
+              const guess = operatorForPhone(e.target.value)
+              if (guess) setOperator(guess)
+            }} />
+          </label>
+          {m.payoutPhone && <div className="muted small">Le marchand sera prévenu par SMS, et aucun reversement ne partira pendant 24 h.</div>}
+          <div className="row">
+            <span className="spacer" />
+            <button type="button" className="btn ghost small" onClick={() => setEditing(false)} disabled={busy}>Annuler</button>
+            <button className="btn small" disabled={busy}>Enregistrer</button>
+          </div>
+        </form>
+      ) : (
+        <div className="row" style={{ fontSize: 13 }}>
+          <span className="muted">Vers</span>
+          <b>{m.payoutOperator ? `${operatorLabel[m.payoutOperator]} ${m.payoutPhone}` : 'aucun compte renseigné'}</b>
+          <span className="spacer" />
+          {admin && (
+            <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>
+              {m.payoutOperator ? 'Modifier' : 'Renseigner'}
+            </button>
+          )}
+        </div>
+      )}
+      {blocked && (
+        <div className="banner info" role="note">
+          <Icon name="clock" />
+          <span>Compte changé récemment : reversements possibles à partir du {formatDateTime(blocked)}.</span>
+        </div>
+      )}
+      {admin && !editing && (paying ? (
+        <form className="stack" onSubmit={pay} style={{ gap: 8 }}>
+          <label className="field">
+            Montant à reverser ($)
+            <input type="text" inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </label>
+          <div className="muted small">
+            Vers {m.payoutOperator && operatorLabel[m.payoutOperator]} {m.payoutPhone}. L'argent est bloqué dès maintenant ; s'il n'est pas versé, il revient sur le compte du marchand.
+          </div>
+          <div className="row">
+            <span className="spacer" />
+            <button type="button" className="btn ghost small" onClick={() => setPaying(false)} disabled={busy}>Annuler</button>
+            <button className="btn small" disabled={busy}>{busy ? 'Envoi…' : 'Confirmer le reversement'}</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className="btn small" style={{ alignSelf: 'flex-start' }}
+          disabled={!m.payoutOperator || !!blocked || m.balanceMinor < 100} onClick={startPayout}>
+          Reverser {formatUsd(m.balanceMinor)}
+        </button>
+      ))}
+      {payouts.length > 0 && (
+        <ul className="pay-list" aria-label="Reversements au marchand">
+          {payouts.map((p) => (
+            <li key={p.id}>
+              <div>
+                <div className="mono" style={{ fontWeight: 600 }}>{formatUsd(p.amountMinor)}</div>
+                <div className="muted">{operatorLabel[p.operator]} {p.phone}</div>
+                <div className="muted">{formatDateTime(p.createdAt)}</div>
+                {(p.failureMessage || p.reviewReason) && <div className="muted">{p.failureMessage ?? p.reviewReason}</div>}
+              </div>
+              <div><span className={`badge ${payoutStatus[p.status].cls}`}>{payoutStatus[p.status].label}</span></div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

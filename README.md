@@ -201,12 +201,23 @@ Le client paie en caisse depuis son solde : il touche **Payer**, scanne le QR af
 - **Pas de frais pour le client.** Le marchand reçoit le montant moins sa commission (1 % par défaut, `capital-invest.merchants.default-commission-bps`, **provisoire**, réglable par marchand de 0 à 10 %). La commission va au compte de revenus, comme les frais d'envoi.
 - **Le caissier reçoit un SMS** à chaque paiement, sur le numéro du marchand : montant, client (numéro masqué), net après commission, numéro de reçu.
 - Le paiement compte dans le plafond journalier de sortie du client, avec les envois et les retraits. Rejouer la demande (même `Idempotency-Key`) ne débite jamais deux fois.
-- L'argent reçu reste sur le compte du marchand chez Capital Invest (`MERCHANT_WALLET`, une dette envers lui). **Le reversement vers sa banque ou son mobile money n'est pas encore fait** : c'est la prochaine étape avant d'ouvrir à de vrais commerces.
+- L'argent reçu reste sur le compte du marchand chez Capital Invest (`MERCHANT_WALLET`, une dette envers lui) jusqu'au reversement, ci-dessous.
 - Le QR contient `capitalinvest://pay?m=CODE`. Le code n'a ni `0`/`O` ni `1`/`I`, pour être lu et tapé sans erreur.
 
 API client : `GET /v1/merchants/{code}` (le commerce avant de payer ; un marchand suspendu répond `MERCHANT_NOT_ACTIVE`) et `POST /v1/merchant-payments` (`merchantCode`, `amountMinor`, `pin`, `note` facultative, en-tête `Idempotency-Key`). Dans l'historique, le paiement apparaît en `MERCHANT_PAYMENT` (filtre `category=PAYMENT`).
 
 Back-office, écran « Marchands » : l'administrateur crée le marchand, imprime son affiche QR et peut le suspendre avec un motif (`POST /v1/backoffice/merchants`, `POST /v1/backoffice/merchants/{id}/status`) ; la conformité consulte la liste, le dû à chaque marchand et ses derniers paiements. Création et suspension sont inscrites au journal d'audit.
+
+### Reversement aux marchands
+
+Ce que Capital Invest doit au marchand part vers son **compte mobile money de reversement** (M-Pesa, Airtel Money ou Orange Money), sur demande d'un administrateur depuis l'écran « Marchands » (bouton « Reverser »). Pas de frais : la commission prélevée sur les paiements les couvre.
+
+- C'est un retrait comme celui d'un client, depuis le compte du marchand, avec les **mêmes garanties** : l'argent est bloqué avant l'appel à l'opérateur ; il ne revient au marchand que sur un échec certain ; un doute passe en vérification ; le rapprochement de nuit couvre aussi les reversements. Le même identifiant de demande rejoué ne reverse jamais deux fois.
+- Le marchand reçoit un SMS quand le reversement est versé, ou refusé (l'argent reste alors sur son compte).
+- **Compte de reversement protégé** : c'est ce qu'un fraudeur chercherait à changer. Le premier compte est utilisable tout de suite ; un changement prévient le marchand par SMS sur son numéro habituel et **bloque les reversements 24 h** (`capital-invest.merchants.payout-account-cooldown-hours`). Chaque changement et chaque reversement est au journal d'audit.
+- Reversement minimum : 1,00 $ (`min-payout-minor`).
+- API : `POST /v1/backoffice/merchants/{id}/payout-account` (`operator`, `phone`) et `POST /v1/backoffice/merchants/{id}/payouts` (`requestId`, `amountMinor` facultatif : tout ce qui est dû), réservés aux administrateurs. La fiche marchand liste les derniers reversements et leur état.
+- Pas encore fait : reversement automatique (chaque nuit, par exemple) et reversement vers un compte bancaire.
 
 ## Règles du grand livre
 

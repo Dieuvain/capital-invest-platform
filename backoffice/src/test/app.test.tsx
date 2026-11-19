@@ -298,6 +298,51 @@ describe('marchands', () => {
   })
 })
 
+describe('reversements aux marchands', () => {
+  it("l'administrateur reverse ce qui est dû vers le mobile money du marchand, une seule fois", async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Marchands')
+    await user.click(await screen.findByText('Alimentation Mama Nzuzi'))
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    const section = within(await within(panel).findByRole('region', { name: 'Reversements' }))
+    expect(section.getByText('Vers').closest('.row')).toHaveTextContent('Airtel Money +243990000101')
+    expect(section.getByText('Versé')).toBeInTheDocument()
+
+    await user.click(section.getByRole('button', { name: 'Reverser 12,37 $' }))
+    expect(section.getByLabelText('Montant à reverser ($)')).toHaveValue('12,37')
+    await user.clear(section.getByLabelText('Montant à reverser ($)'))
+    await user.type(section.getByLabelText('Montant à reverser ($)'), '20')
+    await user.click(section.getByRole('button', { name: 'Confirmer le reversement' }))
+    expect(await section.findByRole('alert')).toHaveTextContent("Le marchand n'a que 12,37 $ à reverser")
+
+    await user.clear(section.getByLabelText('Montant à reverser ($)'))
+    await user.type(section.getByLabelText('Montant à reverser ($)'), '10')
+    await user.click(section.getByRole('button', { name: 'Confirmer le reversement' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Reversement de 10,00 $ envoyé vers Airtel Money +243990000101')
+    const calls = server.requests.filter((r) => r.path === '/v1/backoffice/merchants/m-1/payouts')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].body).toMatchObject({ amountMinor: 1000 })
+    expect((calls[0].body as { requestId: string }).requestId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(await section.findByText('En cours')).toBeInTheDocument()
+  })
+
+  it('changer le compte de reversement prévient le marchand et bloque les reversements 24 h', async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Marchands')
+    await user.click(await screen.findByText('Alimentation Mama Nzuzi'))
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    const section = within(await within(panel).findByRole('region', { name: 'Reversements' }))
+    await user.click(section.getByRole('button', { name: 'Modifier' }))
+    expect(section.getByText(/prévenu par SMS/)).toBeInTheDocument()
+    await user.clear(section.getByLabelText('Numéro qui reçoit les reversements'))
+    await user.type(section.getByLabelText('Numéro qui reçoit les reversements'), '0820000666')
+    expect(section.getByLabelText('Opérateur')).toHaveValue('MPESA')
+    await user.click(section.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('reversements possibles dans 24 h')
+    expect(await section.findByText('M-Pesa +243820000666')).toBeInTheDocument()
+    expect(section.getByRole('note')).toHaveTextContent('reversements possibles à partir du')
+    expect(section.getByRole('button', { name: /^Reverser/ })).toBeDisabled()
+  })
+})
+
 describe('agents', () => {
   it("l'administrateur crée un agent puis le désactive", async () => {
     const user = await signIn('admin@capitalinvest.cd', 'Agents')
