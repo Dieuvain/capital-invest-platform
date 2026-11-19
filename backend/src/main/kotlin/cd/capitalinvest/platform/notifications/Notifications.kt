@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
 }
 
 data class NotificationView(
@@ -97,11 +97,30 @@ class NotificationService(
             """SELECT DISTINCT a.customer_id FROM ledger_entry e JOIN ledger_account a ON a.id = e.account_id
                WHERE e.transaction_id = :tx AND a.type = 'CUSTOMER_WALLET'""",
         ).param("tx", event.transactionId).query(UUID::class.java).list()
-        customerIds.forEach { customerId ->
+        val items = customerIds.associateWith { customerId ->
             val item = history.receipt(customerId, event.transactionId, maskPhones = true).item
-            val draft = draftFor(item, balance(customerId)) ?: return@forEach
-            queue(customerId, "tx:${event.transactionId}:$customerId", draft, event.transactionId)
+            draftFor(item, balance(customerId))?.let { queue(customerId, "tx:${event.transactionId}:$customerId", it, event.transactionId) }
+            item
         }
+        // Paiement marchand : le caissier attend ce SMS pour laisser partir le client avec ses achats.
+        val payment = items.values.firstOrNull { it.kind == HistoryKind.MERCHANT_PAYMENT } ?: return
+        val payer = customers.findById(items.entries.first { it.value === payment }.key)
+        jdbc.sql(
+            """SELECT m.id, e.amount_minor FROM ledger_entry e JOIN merchant m ON m.wallet_account_id = e.account_id
+               WHERE e.transaction_id = :tx AND e.direction = 'CREDIT'""",
+        ).param("tx", event.transactionId).query { rs, _ -> rs.getObject("id", UUID::class.java) to rs.getLong("amount_minor") }
+            .list().forEach { (merchantId, netMinor) ->
+                val who = listOfNotNull(payer?.fullName?.let { ascii(it).take(24) }, payer?.phone?.let { HistoryService.maskPhone(it) }).joinToString(" ")
+                queueForMerchant(
+                    merchantId, "tx:${event.transactionId}:merchant:$merchantId",
+                    Draft(
+                        NotificationKind.MERCHANT_PAYMENT_RECEIVED, "Paiement reçu",
+                        "${money(payment.amountMinor)} reçus de $who, ${money(netMinor)} après commission. Reçu ${payment.receiptNumber}.",
+                        "Capital Invest: paiement recu ${money(payment.amountMinor)} de $who. Net ${money(netMinor)}. Ref ${payment.receiptNumber}",
+                    ),
+                    event.transactionId,
+                )
+            }
     }
 
     /** Le versement d'un retrait ne touche plus le portefeuille (l'argent était déjà bloqué) : il est annoncé à part. */
@@ -176,6 +195,12 @@ class NotificationService(
                 "Votre retrait n'a pas été versé par l'opérateur. ${money(i.netMinor)} sont revenus sur votre compte, frais compris.",
                 "Capital Invest: retrait non verse. ${money(i.netMinor)} rendus, frais compris. $solde. $ref",
             )
+            HistoryKind.MERCHANT_PAYMENT -> Draft(
+                NotificationKind.MERCHANT_PAYMENT, "Paiement effectué",
+                "${money(i.amountMinor)} payés à ${i.counterpartyName ?: "un marchand"}. Nouveau solde : ${money(balance)}. " +
+                    "Si ce n'est pas vous, appelez le service client.",
+                "Capital Invest: paiement de ${money(i.amountMinor)} a ${short(i.counterpartyName)}. $solde. $ref. Pas vous? Appelez-nous.",
+            )
             HistoryKind.ADJUSTMENT -> Draft(
                 NotificationKind.ADJUSTMENT, "Solde corrigé",
                 "Votre solde a été corrigé de ${money(i.netMinor)}. Nouveau solde : ${money(balance)}.",
@@ -186,13 +211,20 @@ class NotificationService(
         }
     }
 
-    private fun queue(customerId: UUID, dedupeKey: String, d: Draft, transactionId: UUID?) {
+    private fun queue(customerId: UUID, dedupeKey: String, d: Draft, transactionId: UUID?) =
+        insert(customerId, null, dedupeKey, d, transactionId)
+
+    /** Le marchand n'a pas d'app : seul le SMS compte, la ligne sert de file d'envoi et de trace. */
+    private fun queueForMerchant(merchantId: UUID, dedupeKey: String, d: Draft, transactionId: UUID?) =
+        insert(null, merchantId, dedupeKey, d, transactionId)
+
+    private fun insert(customerId: UUID?, merchantId: UUID?, dedupeKey: String, d: Draft, transactionId: UUID?) {
         val sms = d.sms?.let { ascii(it).take(160) }
         val inserted = jdbc.sql(
-            """INSERT INTO notification (id, customer_id, dedupe_key, kind, title, body, transaction_id, sms_text, sms_status, next_attempt_at, created_at)
-               VALUES (:id, :customer, :key, :kind, :title, :body, :tx, :sms, :status, :next, :now)
+            """INSERT INTO notification (id, customer_id, merchant_id, dedupe_key, kind, title, body, transaction_id, sms_text, sms_status, next_attempt_at, created_at)
+               VALUES (:id, :customer, :merchant, :key, :kind, :title, :body, :tx, :sms, :status, :next, :now)
                ON CONFLICT (dedupe_key) DO NOTHING""",
-        ).param("id", UUID.randomUUID()).param("customer", customerId).param("key", dedupeKey).param("kind", d.kind.name)
+        ).param("id", UUID.randomUUID()).param("customer", customerId).param("merchant", merchantId).param("key", dedupeKey).param("kind", d.kind.name)
             .param("title", d.title).param("body", d.body).param("tx", transactionId).param("sms", sms)
             .param("status", if (sms == null) "NONE" else "PENDING").param("next", if (sms == null) null else now())
             .param("now", now()).update()
@@ -295,7 +327,8 @@ class NotificationDispatcher(
     private fun sendOne(): Boolean? {
         val now = now()
         val row = jdbc.sql(
-            """SELECT n.id, n.sms_text, n.sms_attempts, c.phone FROM notification n JOIN customer c ON c.id = n.customer_id
+            """SELECT n.id, n.sms_text, n.sms_attempts, COALESCE(c.phone, m.phone) AS phone FROM notification n
+               LEFT JOIN customer c ON c.id = n.customer_id LEFT JOIN merchant m ON m.id = n.merchant_id
                WHERE n.sms_status = 'PENDING' AND n.next_attempt_at <= :now
                ORDER BY n.next_attempt_at LIMIT 1 FOR UPDATE OF n SKIP LOCKED""",
         ).param("now", now).query { rs, _ ->
