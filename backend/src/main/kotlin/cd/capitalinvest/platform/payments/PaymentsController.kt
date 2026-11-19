@@ -3,8 +3,11 @@ package cd.capitalinvest.platform.payments
 import cd.capitalinvest.platform.auth.AuthService
 import cd.capitalinvest.platform.auth.CUSTOMER_ID_ATTRIBUTE
 import cd.capitalinvest.platform.common.BusinessException
+import cd.capitalinvest.platform.common.ConflictException
 import cd.capitalinvest.platform.common.NotFoundException
 import cd.capitalinvest.platform.ledger.LedgerTransaction
+import cd.capitalinvest.platform.payments.mobilemoney.CheckResult
+import cd.capitalinvest.platform.payments.mobilemoney.SimulatorConnector
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
@@ -91,15 +94,40 @@ class PaymentsController(
     }
 }
 
-data class SimulatedCallback(val topupId: UUID, val success: Boolean, val operatorReference: String? = null)
+data class SimulatedCallback(
+    val topupId: UUID,
+    val success: Boolean,
+    val operatorReference: String? = null,
+    /** Montant réellement encaissé par « l'opérateur », pour simuler un écart. Par défaut, celui demandé. */
+    val amountMinor: Long? = null,
+)
 
-/** Remplace le webhook de l'opérateur en développement. Désactivé en production. */
+/**
+ * Remplace l'opérateur en développement : fixe ce que « l'opérateur » répondra, puis déclenche la même
+ * relecture du statut qu'une vraie notification. Désactivé en production.
+ */
 @RestController
 @RequestMapping("/v1/simulators/mobile-money")
 @ConditionalOnProperty("capital-invest.simulators-enabled", havingValue = "true")
-class MobileMoneySimulatorController(private val topups: TopupService) {
+class MobileMoneySimulatorController(private val topups: TopupService, private val simulator: SimulatorConnector) {
 
     @PostMapping("/callbacks")
-    fun callback(@RequestBody body: SimulatedCallback): Topup =
-        topups.applyOperatorResult(body.topupId, body.success, body.operatorReference ?: "SIM-${UUID.randomUUID().toString().take(8)}")
+    fun callback(@RequestBody body: SimulatedCallback): Topup {
+        val topup = topups.get(body.topupId)
+        if (topup.provider != SimulatorConnector.NAME) {
+            throw ConflictException("NOT_SIMULATED", "Cette recharge passe par ${topup.provider}, pas par le simulateur")
+        }
+        simulator.setOutcome(
+            topup.id,
+            if (body.success) {
+                CheckResult.Completed(
+                    body.amountMinor ?: topup.amountMinor, topup.currency.name,
+                    body.operatorReference ?: "SIM-${UUID.randomUUID().toString().take(8)}",
+                )
+            } else {
+                CheckResult.Failed("SIMULATED_FAILURE", "Paiement refusé par l'opérateur (simulation)")
+            },
+        )
+        return topups.refresh(topup.id)
+    }
 }
