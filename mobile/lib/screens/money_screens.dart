@@ -1,0 +1,247 @@
+import 'dart:async';
+
+import 'package:material_ui/material_ui.dart';
+
+import '../api/api_client.dart';
+import '../api/models.dart';
+import '../app_state.dart';
+import '../ui/format.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
+
+/// Recharge par mobile money : le client valide ensuite sur son téléphone, l'app attend la confirmation.
+class TopupScreen extends StatefulWidget {
+  const TopupScreen({super.key, required this.app, this.pollInterval = const Duration(seconds: 3)});
+
+  final AppState app;
+  final Duration pollInterval;
+
+  @override
+  State<TopupScreen> createState() => _TopupScreenState();
+}
+
+class _TopupScreenState extends State<TopupScreen> with ApiAction {
+  final amount = TextEditingController();
+  Operator op = Operator.mpesa;
+  Topup? topup;
+  Timer? _timer;
+  int _polls = 0;
+
+  /// Gardée pour toute la saisie : un nouvel essai après une coupure ne crée pas une deuxième recharge.
+  String _key = newIdempotencyKey();
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    final minor = parseUsd(amount.text);
+    if (minor == null) return setState(() => error = 'Entrez un montant, par exemple 25 ou 12,50.');
+    final t = await run(widget.app, () => widget.app.api.startTopup(op, minor, _key));
+    if (t == null) return;
+    setState(() => topup = t);
+    _timer = Timer.periodic(widget.pollInterval, (_) => _poll());
+  }
+
+  Future<void> _poll() async {
+    final t = topup;
+    if (t == null || t.status != 'PENDING') return;
+    if (++_polls > 40) {
+      _timer?.cancel();
+      return setState(() => error = 'Toujours en attente. Le solde se mettra à jour dès la confirmation de l\'opérateur.');
+    }
+    try {
+      final next = await widget.app.api.topup(t.id);
+      if (!mounted) return;
+      setState(() => topup = next);
+      if (next.status != 'PENDING') _timer?.cancel();
+    } on ApiException {
+      // Réseau instable : on réessaie au prochain tour.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = topup;
+    if (t != null) return _status(t);
+    return FormPage(
+      title: 'Recharger',
+      subtitle: 'L\'argent vient de votre compte mobile money. Vous validerez sur votre téléphone.',
+      children: [
+        ErrorBanner(error),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final o in Operator.values)
+              ChoiceChip(
+                label: Text(o.label),
+                selected: op == o,
+                onSelected: (_) => setState(() {
+                  op = o;
+                  _key = newIdempotencyKey();
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: const ValueKey('amount'),
+          controller: amount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Montant', suffixText: '\$'),
+          onChanged: (_) => _key = newIdempotencyKey(),
+        ),
+        const SizedBox(height: 20),
+        BusyButton(label: 'Recharger', busy: busy, onPressed: _start),
+      ],
+    );
+  }
+
+  Widget _status(Topup t) {
+    final (icon, color, title, text) = switch (t.status) {
+      'CONFIRMED' => (Icons.check_circle, Brand.success, 'Recharge reçue', '${formatUsd(t.amountMinor)} ajoutés à votre solde.'),
+      'FAILED' => (Icons.cancel, Brand.danger, 'Recharge refusée', 'L\'opérateur a refusé le paiement. Rien n\'a été débité.'),
+      _ => (
+          Icons.hourglass_top,
+          Brand.ochre,
+          'Validez sur votre téléphone',
+          'Un message ${op.label} vous demande de confirmer ${formatUsd(t.amountMinor)} avec votre code secret.',
+        ),
+    };
+    return FormPage(title: 'Recharger', children: [
+      const SizedBox(height: 24),
+      Icon(icon, size: 72, color: color),
+      const SizedBox(height: 16),
+      Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Brand.muted, fontSize: 15)),
+      const SizedBox(height: 24),
+      ErrorBanner(error),
+      if (t.status == 'PENDING') const Center(child: CircularProgressIndicator()),
+      if (t.status != 'PENDING') FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
+    ]);
+  }
+}
+
+/// Envoi à un autre client : saisie, vérification avec les frais, puis confirmation par PIN.
+class TransferScreen extends StatefulWidget {
+  const TransferScreen({super.key, required this.app, this.limits});
+
+  final AppState app;
+  final Limits? limits;
+
+  @override
+  State<TransferScreen> createState() => _TransferScreenState();
+}
+
+class _TransferScreenState extends State<TransferScreen> with ApiAction {
+  final phone = TextEditingController();
+  final amount = TextEditingController();
+  final note = TextEditingController();
+  final pin = TextEditingController();
+  String? toPhone;
+  FeeQuote? quote;
+  TransferResult? done;
+  String _key = newIdempotencyKey();
+
+  Future<void> _review() async {
+    final p = normalizePhone(phone.text);
+    if (p == null) return setState(() => error = 'Numéro congolais attendu (9 chiffres après +243).');
+    final minor = parseUsd(amount.text);
+    if (minor == null) return setState(() => error = 'Entrez un montant, par exemple 25 ou 12,50.');
+    final l = widget.limits;
+    if (l != null && minor > l.perTransactionMinor) {
+      return setState(() => error = 'Votre plafond par opération est de ${formatUsd(l.perTransactionMinor)}.');
+    }
+    final q = await run(widget.app, () => widget.app.api.transferFee(minor));
+    if (q == null) return;
+    setState(() {
+      toPhone = p;
+      quote = q;
+      _key = newIdempotencyKey(); // une nouvelle vérification est un nouvel envoi
+    });
+  }
+
+  Future<void> _send() async {
+    if (pin.text.length != 4) return setState(() => error = 'Entrez vos 4 chiffres de PIN.');
+    final r = await run(
+      widget.app,
+      () => widget.app.api.transfer(
+          toPhone: toPhone!, amountMinor: quote!.amountMinor, pin: pin.text, idempotencyKey: _key, note: note.text.trim()),
+    );
+    pin.clear();
+    if (r != null) setState(() => done = r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (done != null) {
+      return FormPage(title: 'Envoyer', children: [
+        const SizedBox(height: 24),
+        const Icon(Icons.check_circle, size: 72, color: Brand.success),
+        const SizedBox(height: 16),
+        Text('${formatUsd(done!.amountMinor)} envoyés', textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text('au $toPhone. Frais : ${formatUsd(done!.feeMinor)}.', textAlign: TextAlign.center,
+            style: const TextStyle(color: Brand.muted)),
+        const SizedBox(height: 24),
+        FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
+      ]);
+    }
+    final q = quote;
+    if (q != null) {
+      return FormPage(title: 'Vérifier l\'envoi', children: [
+        ErrorBanner(error),
+        _Row('Destinataire', toPhone!),
+        _Row('Montant reçu', formatUsd(q.amountMinor)),
+        _Row('Frais', formatUsd(q.feeMinor)),
+        const Divider(height: 32),
+        _Row('Total débité', formatUsd(q.totalMinor), strong: true),
+        const SizedBox(height: 24),
+        PinField(controller: pin, label: 'PIN pour confirmer', autofocus: true, onSubmitted: (_) => _send()),
+        const SizedBox(height: 20),
+        BusyButton(label: 'Envoyer ${formatUsd(q.amountMinor)}', busy: busy, onPressed: _send),
+        TextButton(onPressed: () => setState(() => quote = null), child: const Text('Modifier')),
+      ]);
+    }
+    return FormPage(
+      title: 'Envoyer',
+      subtitle: 'À un autre client Capital Invest, avec son numéro de téléphone.',
+      children: [
+        ErrorBanner(error),
+        PhoneField(controller: phone, label: 'Numéro du destinataire'),
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey('amount'),
+          controller: amount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Montant', suffixText: '\$'),
+        ),
+        const SizedBox(height: 12),
+        TextField(controller: note, maxLength: 140, decoration: const InputDecoration(labelText: 'Motif (facultatif)')),
+        const SizedBox(height: 12),
+        BusyButton(label: 'Continuer', busy: busy, onPressed: _review),
+      ],
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  const _Row(this.label, this.value, {this.strong = false});
+
+  final String label;
+  final String value;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          Expanded(child: Text(label, style: TextStyle(color: strong ? Brand.ink : Brand.muted, fontSize: 16))),
+          Text(value, style: TextStyle(fontSize: strong ? 20 : 16, fontWeight: strong ? FontWeight.w800 : FontWeight.w600)),
+        ]),
+      );
+}

@@ -1,0 +1,46 @@
+/// Montant en centimes vers « 1 250,50 $ », à la française.
+String formatUsd(int minor) {
+  final negative = minor < 0;
+  final abs = minor.abs();
+  final units = (abs ~/ 100).toString();
+  final cents = (abs % 100).toString().padLeft(2, '0');
+  final grouped = StringBuffer();
+  for (var i = 0; i < units.length; i++) {
+    if (i > 0 && (units.length - i) % 3 == 0) grouped.write(' ');
+    grouped.write(units[i]);
+  }
+  return '${negative ? '-' : ''}$grouped,$cents \$';
+}
+
+/// Saisie « 12,5 » ou « 12.50 » vers centimes ; null si invalide.
+int? parseUsd(String input) {
+  final s = input.trim().replaceAll(' ', '').replaceAll(' ', '').replaceAll(',', '.');
+  final m = RegExp(r'^(\d{1,7})(?:\.(\d{1,2}))?$').firstMatch(s);
+  if (m == null) return null;
+  final cents = (m.group(2) ?? '').padRight(2, '0');
+  final value = int.parse(m.group(1)!) * 100 + int.parse(cents);
+  return value > 0 ? value : null;
+}
+
+/// « 0970000001 », « 970000001 » ou « +243 970 000 001 » vers +243970000001 ; null si invalide.
+String? normalizePhone(String input) {
+  var s = input.replaceAll(RegExp(r'[\s.-]'), '');
+  if (s.startsWith('+243')) {
+    s = s.substring(4);
+  } else if (s.startsWith('00243')) {
+    s = s.substring(5);
+  } else if (s.startsWith('0')) {
+    s = s.substring(1);
+  }
+  return RegExp(r'^[0-9]{9}$').hasMatch(s) ? '+243$s' : null;
+}
+
+/// Mêmes règles que le serveur : 4 chiffres, ni tous identiques, ni une suite.
+String? pinProblem(String pin) {
+  if (!RegExp(r'^[0-9]{4}$').hasMatch(pin)) return 'Le PIN fait 4 chiffres';
+  if (pin.split('').toSet().length == 1) return 'PIN trop simple (chiffres identiques)';
+  const asc = '0123456789';
+  const desc = '9876543210';
+  if (asc.contains(pin) || desc.contains(pin)) return 'PIN trop simple (suite de chiffres)';
+  return null;
+}

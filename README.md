@@ -8,7 +8,7 @@ Visa ou Mastercard (physique et virtuelle), menu USSD, back-office et paie B2B.
 | Dossier | Contenu | Technologie |
 | --- | --- | --- |
 | `backend/` | Serveur : grand livre, clients, paiements, cartes, crédit, USSD | Kotlin, Spring Boot 3.5, PostgreSQL 16 |
-| `mobile/` | Application Android et iOS | Flutter (à venir) |
+| `mobile/` | Application Android et iOS | Flutter 3.50 (Dart) |
 | `backoffice/` | Back-office et portail employeur | TypeScript, React (à venir) |
 | `docs/` | Documents d'analyse et décisions d'architecture | |
 
