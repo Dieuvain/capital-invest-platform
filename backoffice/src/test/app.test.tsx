@@ -285,6 +285,44 @@ describe('surveillance', () => {
     expect(await within(account).findByText(/CENAREF/)).toBeInTheDocument()
   })
 
+  it('la conformité rédige une déclaration de soupçon depuis une alerte, puis note sa transmission à la CENAREF', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Surveillance')
+    const open = await screen.findByRole('region', { name: 'Alertes à traiter' })
+    await user.click(await within(open).findByRole('button', { name: 'Déclarer' }))
+    expect(window.location.hash).toBe('#/surveillance/ds-1')
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/suspicion-reports')?.body).toEqual({ customerId: 'c-1', alertId: 'al-1' })
+
+    const subject = await screen.findByRole('region', { name: 'Personne déclarée' })
+    expect(within(subject).getByText('Amani Kabeya')).toBeInTheDocument()
+    const facts = screen.getByLabelText('Faits constatés')
+    expect(facts).toHaveValue('- Argent reçu de nombreux clients (19/11/2026) : 7 expéditeurs différents en 24 h, pour 640,00 $')
+    const ops = screen.getByRole('region', { name: 'Opérations de la période' })
+    expect(within(ops).getByText(/3 opérations/)).toBeInTheDocument()
+
+    const transmit = screen.getByRole('button', { name: 'Noter la transmission' })
+    await user.type(screen.getByLabelText('Référence CENAREF'), 'DS-2026-0142')
+    expect(transmit).toBeDisabled()
+    await user.type(screen.getByLabelText(/Analyse/), 'Revenus déclarés sans rapport avec la collecte')
+    expect(screen.getByRole('button', { name: 'Imprimer' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le brouillon' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Brouillon enregistré')
+    expect(screen.getByRole('button', { name: 'Imprimer' })).toBeEnabled()
+
+    await user.click(transmit)
+    expect(await screen.findByText('Transmise à la CENAREF')).toBeInTheDocument()
+    expect(screen.getByText('DS-2026-0142')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Analyse/)).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: 'Noter la transmission' })).not.toBeInTheDocument()
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/suspicion-reports/ds-1/submit')?.body)
+      .toMatchObject({ cenarefReference: 'DS-2026-0142' })
+
+    await user.click(screen.getByRole('button', { name: /Retour/ }))
+    await user.click(await screen.findByRole('button', { name: 'Déclarations' }))
+    const list = await screen.findByRole('region', { name: 'Déclarations de soupçon' })
+    expect(await within(list).findByText('Transmise')).toBeInTheDocument()
+    expect(within(list).getByText(/DS-2026-0142/)).toBeInTheDocument()
+  })
+
   it('la conformité réactive un compte suspendu depuis la fiche client', async () => {
     server.customer.status = 'SUSPENDED'
     const user = await signIn('conformite@capitalinvest.cd', 'Clients')

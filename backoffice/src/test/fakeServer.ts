@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
+import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -37,6 +37,7 @@ export class FakeServer {
       resolvedAt: '2026-11-17T16:00:00Z', resolutionNote: 'Commerçant connu, paie ses fournisseurs',
     },
   ]
+  reports: SuspicionReport[] = []
   customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
   history: HistoryItem[] = [
     item('w1', 'WITHDRAWAL', -1015, 15, { status: 'PENDING', operator: 'AIRTEL', msisdn: '+243970000001' }),
@@ -159,6 +160,40 @@ export class FakeServer {
         decidedAt: '2026-11-19T10:00:00Z',
       })
       return json(k)
+    }
+    if (path.startsWith('/v1/backoffice/suspicion-reports')) {
+      if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
+      const summary = (r: SuspicionReport) => ({
+        id: r.id, status: r.status, customerId: r.subject.customerId, customerName: r.subject.fullName,
+        customerPhone: r.subject.phone, periodFrom: r.periodFrom, periodTo: r.periodTo, createdByName: r.createdByName,
+        createdAt: r.createdAt, submittedOn: r.submittedOn ?? null, cenarefReference: r.cenarefReference ?? null,
+      })
+      if (path === '/v1/backoffice/suspicion-reports') {
+        if (method === 'GET') return json(this.reports.map(summary))
+        const alerts = this.alerts.filter((a) => a.customerId === body.customerId)
+        const c = this.customer
+        const r: SuspicionReport = {
+          id: `ds-${this.reports.length + 1}`, status: 'DRAFT',
+          subject: { customerId: c.id, fullName: c.fullName, phone: c.phone, kycLevel: c.kycLevel, status: c.status, openedAt: '2026-10-02T09:00:00Z', balanceMinor: c.balanceMinor },
+          periodFrom: '2026-10-20', periodTo: '2026-11-19',
+          facts: alerts.map((a) => `- ${a.ruleLabel} (19/11/2026) : ${a.detail}`).join('\n'), analysis: '',
+          alerts, operations: this.history, totals: { count: this.history.length, inMinor: 7785, outMinor: 3035, truncated: false },
+          createdByName: me.fullName, createdAt: '2026-11-19T10:20:00Z', updatedAt: '2026-11-19T10:20:00Z',
+        }
+        this.reports.unshift(r)
+        return json(r, 201)
+      }
+      const r = this.reports.find((x) => path.split('/')[4] === x.id)
+      if (!r) return problem(404, 'REPORT_NOT_FOUND', 'Déclaration introuvable')
+      if (method === 'GET') return json(r)
+      if (r.status !== 'DRAFT') return problem(409, 'REPORT_SUBMITTED', 'Déclaration déjà transmise : elle ne peut plus être modifiée')
+      if (method === 'PUT') {
+        Object.assign(r, { periodFrom: body.periodFrom, periodTo: body.periodTo, facts: body.facts.trim(), analysis: body.analysis.trim() })
+        return json(r)
+      }
+      if (!r.facts || !r.analysis) return problem(422, 'REPORT_INCOMPLETE', 'Rédigez les faits et l\'analyse avant de transmettre')
+      Object.assign(r, { status: 'SUBMITTED', submittedOn: body.submittedOn, cenarefReference: body.cenarefReference, submittedByName: me.fullName })
+      return json(r)
     }
     if (path.startsWith('/v1/backoffice/monitoring')) {
       if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')

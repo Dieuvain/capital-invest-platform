@@ -13,6 +13,7 @@ import { Customers } from './pages/Customers'
 import { Merchants } from './pages/Merchants'
 import { Reconciliation } from './pages/Reconciliation'
 import { Monitoring } from './pages/Monitoring'
+import { SuspicionReportPage } from './pages/SuspicionReport'
 import { Dashboard } from './pages/Dashboard'
 import { ago, buildNotices } from './notifications'
 import type { KycRequest, Promotion } from './api'
@@ -145,7 +146,11 @@ export function App({ api }: { api: Api }) {
       page = <Merchants api={api} me={agent} id={id ?? null} open={(mid) => go(mid ? `marchands/${mid}` : 'marchands')} notify={notify} />
       break
     case 'surveillance':
-      page = <Monitoring api={api} openCustomer={(cid) => go(`clients/${cid}`)} notify={notify} />
+      page = id ? (
+        <SuspicionReportPage api={api} id={id} back={() => go('surveillance')} notify={notify} />
+      ) : (
+        <Monitoring api={api} openCustomer={(cid) => go(`clients/${cid}`)} openReport={(rid) => go(`surveillance/${rid}`)} notify={notify} />
+      )
       break
     case 'rapprochement':
       page = <Reconciliation api={api} notify={notify} />
