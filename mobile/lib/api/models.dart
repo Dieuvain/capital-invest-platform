@@ -859,3 +859,74 @@ class Recipient {
 
   factory Recipient.fromJson(Map<String, dynamic> j) => Recipient(j['phone'], j['displayName']);
 }
+
+/// Une catégorie de « Mes dépenses ».
+class CategorySpending {
+  CategorySpending(this.category, this.amountMinor, this.previousMinor, this.count);
+
+  /// TRANSFERS, MERCHANTS, BILLS, AIRTIME, WITHDRAWALS ou FEES.
+  final String category;
+  final int amountMinor;
+
+  /// Même catégorie sur la période de comparaison ; null sans comparaison.
+  final int? previousMinor;
+  final int count;
+
+  factory CategorySpending.fromJson(Map<String, dynamic> j) =>
+      CategorySpending(j['category'], j['amountMinor'], j['previousMinor'], j['count'] ?? 0);
+}
+
+class TopRecipient {
+  TopRecipient(this.name, this.phone, this.amountMinor, this.count);
+
+  final String name;
+  final String? phone;
+  final int amountMinor;
+  final int count;
+
+  factory TopRecipient.fromJson(Map<String, dynamic> j) =>
+      TopRecipient(j['name'], j['phone'], j['amountMinor'], j['count'] ?? 0);
+}
+
+/// « Mes dépenses » d'un mois, comparées au mois d'avant (arrêté au même jour pour le mois en cours).
+class SpendingSummary {
+  SpendingSummary({
+    required this.month,
+    required this.partial,
+    required this.to,
+    required this.comparedFrom,
+    required this.comparedTo,
+    required this.spentMinor,
+    required this.previousSpentMinor,
+    required this.receivedMinor,
+    required this.savedMinor,
+    required this.categories,
+    required this.topRecipients,
+  });
+
+  final String month;
+  final bool partial;
+  final DateTime to;
+  final DateTime? comparedFrom;
+  final DateTime? comparedTo;
+  final int spentMinor;
+  final int? previousSpentMinor;
+  final int receivedMinor;
+  final int savedMinor;
+  final List<CategorySpending> categories;
+  final List<TopRecipient> topRecipients;
+
+  factory SpendingSummary.fromJson(Map<String, dynamic> j) => SpendingSummary(
+    month: j['month'],
+    partial: j['partial'] == true,
+    to: DateTime.parse(j['to']),
+    comparedFrom: j['comparedFrom'] == null ? null : DateTime.parse(j['comparedFrom']),
+    comparedTo: j['comparedTo'] == null ? null : DateTime.parse(j['comparedTo']),
+    spentMinor: j['spentMinor'],
+    previousSpentMinor: j['previousSpentMinor'],
+    receivedMinor: j['receivedMinor'],
+    savedMinor: j['savedMinor'],
+    categories: (j['categories'] as List).map((c) => CategorySpending.fromJson(c)).toList(),
+    topRecipients: (j['topRecipients'] as List).map((r) => TopRecipient.fromJson(r)).toList(),
+  );
+}

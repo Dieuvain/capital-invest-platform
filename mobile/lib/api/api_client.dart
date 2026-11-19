@@ -146,6 +146,10 @@ class ApiClient {
 
   // ---- Relevés de compte -------------------------------------------------------------------
 
+  /// « Mes dépenses » : [month] au format 2026-11, le mois en cours par défaut.
+  Future<SpendingSummary> spending([String? month]) async =>
+      SpendingSummary.fromJson(await _get(month == null ? '/v1/me/spending' : '/v1/me/spending?month=$month'));
+
   Future<List<StatementMonth>> statementMonths() async =>
       (await _get('/v1/me/statements') as List).map((j) => StatementMonth.fromJson(j)).toList();
 

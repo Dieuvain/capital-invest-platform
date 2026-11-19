@@ -47,6 +47,36 @@ class FakeServer {
   /// PIN du client, changé par /v1/me/security/pin.
   String pin = '2580';
 
+  /// « Mes dépenses » servies par /v1/me/spending, par mois (« current » sans paramètre).
+  Map<String, Map<String, dynamic>> spending = {
+    'current': {
+      'month': '2026-11', 'partial': true, 'from': '2026-11-01', 'to': '2026-11-19',
+      'comparedFrom': '2026-10-01', 'comparedTo': '2026-10-19',
+      'spentMinor': 38420, 'previousSpentMinor': 31200, 'receivedMinor': 104500, 'savedMinor': 3500,
+      'categories': [
+        {'category': 'TRANSFERS', 'amountMinor': 22000, 'previousMinor': 18000, 'count': 3},
+        {'category': 'WITHDRAWALS', 'amountMinor': 10000, 'previousMinor': 8000, 'count': 1},
+        {'category': 'BILLS', 'amountMinor': 4500, 'previousMinor': 4500, 'count': 2},
+        {'category': 'AIRTIME', 'amountMinor': 1000, 'previousMinor': 500, 'count': 2},
+        {'category': 'FEES', 'amountMinor': 920, 'previousMinor': 200, 'count': 0},
+      ],
+      'topRecipients': [
+        {'name': 'Grâce Mbuyi', 'phone': '+243 81• ••• 214', 'amountMinor': 20000, 'count': 2},
+        {'name': 'Josué Kalala', 'phone': '+243 97• ••• 002', 'amountMinor': 2000, 'count': 1},
+      ],
+    },
+    '2026-10': {
+      'month': '2026-10', 'partial': false, 'from': '2026-10-01', 'to': '2026-10-31',
+      'comparedFrom': null, 'comparedTo': null,
+      'spentMinor': 9120, 'previousSpentMinor': null, 'receivedMinor': 22000, 'savedMinor': 0,
+      'categories': [
+        {'category': 'TRANSFERS', 'amountMinor': 9000, 'previousMinor': null, 'count': 1},
+        {'category': 'FEES', 'amountMinor': 120, 'previousMinor': null, 'count': 0},
+      ],
+      'topRecipients': [],
+    },
+  };
+
   /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
   bool blocked = false;
 
@@ -393,6 +423,11 @@ class FakeServer {
       pin = b['newPin'];
       _signOutOthers();
       return http.Response('', 204);
+    }
+    if (path == '/v1/me/spending') {
+      final m = req.url.queryParameters['month'];
+      final found = m == null || m == '2026-11' ? spending['current'] : spending[m];
+      return found == null ? _error(422, 'STATEMENT_UNAVAILABLE', 'Pas de relevé') : _json(found);
     }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
     if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
