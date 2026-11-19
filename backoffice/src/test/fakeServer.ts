@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
+import type { Agent, HistoryItem, AuditEntry, Merchant, MerchantPayment, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -65,6 +65,19 @@ export class FakeServer {
       resolvedAt: null, resolvedByName: null, resolution: null,
     },
   ]
+  merchants: Merchant[] = [
+    {
+      id: 'm-1', code: 'K7P2QX', name: 'Alimentation Mama Nzuzi', category: 'Alimentation', city: 'Lubumbashi',
+      phone: '+243990000101', commissionBps: 100, status: 'ACTIVE', balanceMinor: 1237,
+      qrPayload: 'capitalinvest://pay?m=K7P2QX', createdAt: '2026-11-18T08:00:00Z',
+    },
+  ]
+  merchantPayments: Record<string, MerchantPayment[]> = {
+    'm-1': [{
+      transactionId: 'tx-m1', receiptNumber: 'CI-20261119-0000M1', customerName: 'Amani Kabeya', customerPhone: '+243970000001',
+      amountMinor: 1250, commissionMinor: 13, createdAt: '2026-11-19T09:00:00Z',
+    }],
+  }
   requests: { method: string; path: string; body: unknown }[] = []
   documentsViewed: string[] = []
 
@@ -140,13 +153,40 @@ export class FakeServer {
       }
       if (path.endsWith('/history')) {
         const cat = u.searchParams.get('category')
-        const kinds: Record<string, string[]> = { TOPUP: ['TOPUP'], TRANSFER: ['TRANSFER_SENT', 'TRANSFER_RECEIVED'], WITHDRAWAL: ['WITHDRAWAL', 'WITHDRAWAL_REFUND'] }
+        const kinds: Record<string, string[]> = { TOPUP: ['TOPUP'], TRANSFER: ['TRANSFER_SENT', 'TRANSFER_RECEIVED'], WITHDRAWAL: ['WITHDRAWAL', 'WITHDRAWAL_REFUND'], PAYMENT: ['MERCHANT_PAYMENT'] }
         const all = this.history.filter((h) => !cat || kinds[cat].includes(h.kind))
         // Deux opérations par page, pour exercer « Voir plus ».
         const start = Number(u.searchParams.get('cursor') ?? 0)
         return json({ items: all.slice(start, start + 2), nextCursor: start + 2 < all.length ? String(start + 2) : null })
       }
       return json(this.customer)
+    }
+    if (path.startsWith('/v1/backoffice/merchants')) {
+      if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
+      if (method === 'POST' && !role('ADMIN')) return problem(403, 'ADMIN_ONLY', 'Réservé aux administrateurs')
+      if (path === '/v1/backoffice/merchants' && method === 'GET') return json(this.merchants)
+      if (path === '/v1/backoffice/merchants') {
+        const digits = String(body.phone).replace(/\D/g, '')
+        if (digits.length < 9) return problem(422, 'INVALID_PHONE', 'Numéro du marchand invalide (+243…)')
+        const n = this.merchants.length + 1
+        const code = `NEW${n}AB`.slice(0, 6)
+        const created: Merchant = {
+          id: `m-${n}`, code, name: body.name, category: body.category, city: body.city, phone: `+243${digits.slice(-9)}`,
+          commissionBps: body.commissionBps, status: 'ACTIVE', balanceMinor: 0, qrPayload: `capitalinvest://pay?m=${code}`,
+          createdAt: '2026-11-19T10:00:00Z',
+        }
+        this.merchants.push(created)
+        return json(created, 201)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/status$/))) {
+        const found = this.merchants.find((x) => x.id === m![1])!
+        found.status = body.status
+        return json(found)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)$/))) {
+        const found = this.merchants.find((x) => x.id === m![1])
+        return found ? json({ merchant: found, payments: this.merchantPayments[found.id] ?? [] }) : problem(404, 'MERCHANT_NOT_FOUND', 'Marchand introuvable')
+      }
     }
     if (path.startsWith('/v1/backoffice/promotions')) {
       if (method !== 'GET' && !role('MARKETING', 'ADMIN')) return problem(403, 'MARKETING_ONLY', 'Réservé au marketing')

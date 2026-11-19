@@ -8,6 +8,7 @@ const filters: { value: HistoryCategory | null; label: string }[] = [
   { value: 'TOPUP', label: 'Recharges' },
   { value: 'TRANSFER', label: 'Envois' },
   { value: 'WITHDRAWAL', label: 'Retraits' },
+  { value: 'PAYMENT', label: 'Paiements' },
 ]
 
 /**
@@ -190,6 +191,7 @@ function ReceiptPanel({ api, customerId, id, close }: { api: Api; customerId: st
         ['Date', formatDateTime(i.createdAt)],
         ...(i.counterpartyName ? [[i.kind === 'TRANSFER_RECEIVED' ? 'Expéditeur' : 'Destinataire', i.counterpartyName] as [string, string]] : []),
         ...(i.counterpartyPhone ? [['Numéro', i.counterpartyPhone] as [string, string]] : []),
+        ...(i.merchantCode ? [['Code marchand', i.merchantCode] as [string, string]] : []),
         ...(i.operator ? [['Opérateur', operatorLabel[i.operator]] as [string, string]] : []),
         ...(i.msisdn && i.kind === 'WITHDRAWAL' ? [['Envoyé vers', i.msisdn] as [string, string]] : []),
         ['Montant', formatUsd(i.amountMinor)],

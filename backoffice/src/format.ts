@@ -50,6 +50,9 @@ const auditLabels: Record<string, string> = {
   WITHDRAWAL_REVIEW_PAID: 'Retrait vérifié : versé',
   WITHDRAWAL_REVIEW_REFUND: 'Retrait vérifié : remboursé',
   CUSTOMER_VIEWED: 'Fiche client consultée',
+  MERCHANT_CREATED: 'Marchand créé',
+  MERCHANT_SUSPENDED: 'Marchand suspendu',
+  MERCHANT_REACTIVATED: 'Marchand réactivé',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 
@@ -147,6 +150,7 @@ export function historyTitle(i: HistoryItem): string {
     case 'TRANSFER_RECEIVED': return `Reçu de ${i.counterpartyName ?? 'un client'}`
     case 'WITHDRAWAL': return `Retrait vers ${op ?? 'mobile money'}`
     case 'WITHDRAWAL_REFUND': return 'Retrait remboursé'
+    case 'MERCHANT_PAYMENT': return `Paiement à ${i.counterpartyName ?? 'un marchand'}`
     default: return 'Correction de solde'
   }
 }
