@@ -574,6 +574,33 @@ void main() {
     expect(find.text('Se connecter'), findsOneWidget);
   });
 
+  testWidgets('mes dépenses : catégories du mois, comparaison au même jour du mois d\'avant, puis octobre', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Historique'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('spending')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dépensé depuis le 1er'), findsOneWidget);
+    expect(find.text('384,20\u00A0\$'), findsOneWidget);
+    expect(find.text('72,20\u00A0\$ de plus que du 1er–19 oct. (312,00\u00A0\$)'), findsOneWidget);
+    expect(find.text('Envois'), findsOneWidget);
+    expect(find.text('3 opérations · avant : 180,00\u00A0\$'), findsOneWidget);
+    expect(find.text('Frais'), findsOneWidget);
+    final page = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).last;
+    await tester.scrollUntilVisible(find.text('Grâce Mbuyi'), 200, scrollable: page);
+    expect(find.text('2 envois · +243 81• ••• 214'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('month-2026-10')), -200, scrollable: page);
+    await tester.tap(find.byKey(const ValueKey('month-2026-10')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dépensé ce mois-là'), findsOneWidget);
+    expect(find.text('91,20\u00A0\$'), findsOneWidget);
+    expect(find.textContaining('de plus que'), findsNothing);
+    expect(find.text('Grâce Mbuyi'), findsNothing);
+    expect(server.requests.last.url.query, 'month=2026-10');
+  });
+
   testWidgets('relevé de compte : choisir le mois, lire le résumé, partager le PDF', (tester) async {
     final shared = <(int, String, String)>[];
     app.shareFile = (bytes, name, type) async => shared.add((bytes.length, name, type));

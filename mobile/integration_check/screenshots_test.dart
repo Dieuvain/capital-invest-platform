@@ -220,6 +220,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('spending')));
+      await tester.pumpAndSettle();
+      await shot('16-depenses$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Accueil'));
       await tester.pumpAndSettle();

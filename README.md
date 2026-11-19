@@ -213,6 +213,26 @@ Le client voit **une ligne par opération** (pas une ligne par écriture comptab
 
 Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
 
+## Mes dépenses
+
+Dans l'app, Historique, puis **Mes dépenses** : où part l'argent du mois, par catégorie, comparé au mois d'avant.
+
+- Catégories :
+  - envois ;
+  - paiements chez un marchand ;
+  - factures ;
+  - crédit téléphone ;
+  - retraits ;
+  - frais, à part pour qu'ils se voient.
+- Un remboursement (crédit refusé, facture ou retrait rendu) vient en déduction. Une opération échouée ne compte pas.
+- L'épargne n'est pas une dépense : « Mis de côté » est affiché à part, comme « Reçu » (recharges et envois reçus).
+- Le mois en cours se compare au mois d'avant **arrêté au même jour** : le 19 novembre se compare au 1er–19 octobre, pas à tout octobre.
+- « À qui vous envoyez le plus » : les 3 personnes qui ont reçu le plus, numéro masqué.
+- Le client choisit parmi les 6 derniers mois. Les montants viennent du même calcul que le relevé.
+- API : `GET /v1/me/spending?month=2026-11`, le mois en cours si `month` est absent.
+
+![Mes dépenses](docs/captures-app/16-depenses.png)
+
 ## Relevés de compte
 
 Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l'ouverture du compte (24 au plus), le mois en cours arrêté à aujourd'hui. Le relevé donne le solde au 1er du mois, les entrées, les sorties (dont les frais), le solde de fin et chaque opération avec son n° de reçu. Le client le télécharge en PDF A4 et le partage (WhatsApp, e-mail, Fichiers) : utile pour tenir ses comptes ou prouver ses revenus à un bailleur ou une banque.

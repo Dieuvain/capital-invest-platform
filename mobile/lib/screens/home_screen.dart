@@ -23,6 +23,7 @@ import 'request_screens.dart';
 import 'scheduled_screens.dart';
 import 'savings_screens.dart';
 import 'security_screen.dart';
+import 'spending_screen.dart';
 import 'statement_screens.dart';
 import 'money_screens.dart';
 
@@ -317,11 +318,26 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton.icon(
-              key: const ValueKey('statements'),
-              onPressed: () => _open(StatementsScreen(app: widget.app)),
-              icon: const Icon(Icons.receipt_long_rounded),
-              label: const Text('Relevés de compte'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('spending'),
+                    onPressed: () => _open(SpendingScreen(app: widget.app)),
+                    icon: const Icon(Icons.pie_chart_outline_rounded),
+                    label: const Text('Mes dépenses'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('statements'),
+                    onPressed: () => _open(StatementsScreen(app: widget.app)),
+                    icon: const Icon(Icons.receipt_long_rounded),
+                    label: const Text('Relevés'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             HistoryView(app: widget.app, onOpen: _receipt),
