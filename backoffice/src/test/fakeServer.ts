@@ -24,9 +24,14 @@ export class FakeServer {
   audit: AuditEntry[] = []
   review: ReviewTopup[] = [
     {
-      id: 't-review', operator: 'MPESA', provider: 'PAWAPAY', amountMinor: 5000, currency: 'USD',
+      id: 't-review', type: 'TOPUP', operator: 'MPESA', provider: 'PAWAPAY', amountMinor: 5000, currency: 'USD',
       reason: "Montant reçu chez l'opérateur : 40,00 $, attendu 50,00 $", customerName: 'Amani Kabeya',
       customerPhone: '+243970000001', checks: 3, createdAt: '2026-11-18T08:00:00Z',
+    },
+    {
+      id: 'w-review', type: 'WITHDRAWAL', operator: 'AIRTEL', provider: 'PAWAPAY', amountMinor: 3000, currency: 'USD',
+      reason: 'Aucune réponse définitive après 24 h (toujours en cours chez l\'opérateur)', customerName: 'Esther Mbuyi',
+      customerPhone: '+243970000005', checks: 12, createdAt: '2026-11-18T09:00:00Z',
     },
   ]
   runs: ReconciliationRun[] = [
@@ -34,15 +39,21 @@ export class FakeServer {
   ]
   items: ReconciliationItem[] = [
     {
-      id: 'i-1', businessDate: '2026-11-17', topupId: 't-9', kind: 'CONFIRMED_NOT_CREDITED', ourStatus: 'FAILED',
+      id: 'i-1', businessDate: '2026-11-17', type: 'TOPUP', targetId: 't-9', kind: 'CONFIRMED_NOT_CREDITED', ourStatus: 'FAILED',
       providerStatus: 'COMPLETED', ourAmountMinor: 2500, providerAmountMinor: 2500, operator: 'AIRTEL', provider: 'PAWAPAY',
       customerName: 'Béni Mukendi', customerPhone: '+243970000003', topupCreatedAt: '2026-11-17T15:00:00Z',
       resolvedAt: null, resolvedByName: null, resolution: null,
     },
     {
-      id: 'i-2', businessDate: '2026-11-17', topupId: 't-10', kind: 'STILL_PENDING', ourStatus: 'PENDING',
+      id: 'i-2', businessDate: '2026-11-17', type: 'TOPUP', targetId: 't-10', kind: 'STILL_PENDING', ourStatus: 'PENDING',
       providerStatus: 'PENDING', ourAmountMinor: 700, operator: 'ORANGE', provider: 'PAWAPAY',
       customerName: 'Josué Kalala', customerPhone: '+243970000004', topupCreatedAt: '2026-11-17T22:40:00Z',
+      resolvedAt: null, resolvedByName: null, resolution: null,
+    },
+    {
+      id: 'i-3', businessDate: '2026-11-17', type: 'WITHDRAWAL', targetId: 'w-5', kind: 'MARKED_PAID_NOT_PAID', ourStatus: 'CONFIRMED',
+      providerStatus: 'FAILED', ourAmountMinor: 2500, operator: 'MPESA', provider: 'PAWAPAY',
+      customerName: 'Grâce Ngalula', customerPhone: '+243810000006', topupCreatedAt: '2026-11-17T11:00:00Z',
       resolvedAt: null, resolvedByName: null, resolution: null,
     },
   ]
@@ -134,12 +145,19 @@ export class FakeServer {
       if (!a.active) for (const [t, id] of this.sessions) if (id === a.id) this.sessions.delete(t)
       return json(a)
     }
-    if (path.startsWith('/v1/backoffice/reconciliation') || path.startsWith('/v1/backoffice/topups')) {
+    if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals)/.test(path)) {
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
       if (path === '/v1/backoffice/topups/review') return json(this.review)
       if ((m = path.match(/^\/v1\/backoffice\/topups\/([^/]+)\/resolve$/))) {
         this.review = this.review.filter((t) => t.id !== m![1])
         return json({ id: m[1], status: body.action === 'CREDIT' ? 'CONFIRMED' : 'FAILED' })
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/withdrawals\/([^/]+)\/resolve$/))) {
+        if (body.action === 'REFUND') {
+          return problem(422, 'PROVIDER_NOT_FAILED', "L'opérateur ne confirme pas l'échec (PENDING) : rembourser risquerait de payer le client deux fois.")
+        }
+        this.review = this.review.filter((t) => t.id !== m![1])
+        return json({ id: m[1], status: 'CONFIRMED' })
       }
       if (path === '/v1/backoffice/reconciliation/runs' && method === 'GET') return json(this.runs)
       if (path === '/v1/backoffice/reconciliation/runs') {
@@ -150,9 +168,10 @@ export class FakeServer {
       if (path === '/v1/backoffice/reconciliation/items') return json(this.items.filter((i) => !i.resolvedAt))
       if ((m = path.match(/^\/v1\/backoffice\/reconciliation\/items\/([^/]+)\/resolve$/))) {
         const i = this.items.find((x) => x.id === m![1])!
-        if (body.action === 'CREDIT' && i.kind !== 'CONFIRMED_NOT_CREDITED') {
+        if (body.action === 'CREDIT' && i.kind !== 'CONFIRMED_NOT_CREDITED' && i.kind !== 'MARKED_PAID_NOT_PAID') {
           return problem(422, 'CREDIT_NOT_ALLOWED', 'Créditer n\'est possible que pour un paiement encaissé et non crédité')
         }
+        if (body.action === 'CREDIT' && i.kind === 'MARKED_PAID_NOT_PAID') i.ourStatus = 'FAILED'
         Object.assign(i, { resolvedAt: '2026-11-19T10:00:00Z', resolvedByName: me.fullName, resolution: body.note })
         return json(i)
       }

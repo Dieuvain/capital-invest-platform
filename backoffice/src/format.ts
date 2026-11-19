@@ -47,6 +47,8 @@ const auditLabels: Record<string, string> = {
   RECONCILIATION_RUN: 'Rapprochement lancé',
   RECONCILIATION_CREDIT: 'Écart corrigé : client crédité',
   RECONCILIATION_CLOSE: 'Écart clos',
+  WITHDRAWAL_REVIEW_PAID: 'Retrait vérifié : versé',
+  WITHDRAWAL_REVIEW_REFUND: 'Retrait vérifié : remboursé',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 
@@ -112,6 +114,16 @@ export const kindLabel: Record<DiscrepancyKind, { title: string; help: string; t
   AMOUNT_MISMATCH: {
     title: 'Montants différents',
     help: "Le montant crédité ne correspond pas à celui reçu par l'opérateur.",
+    tone: 'alert',
+  },
+  PAID_BUT_REFUNDED: {
+    title: 'Versé et remboursé',
+    help: "L'opérateur a versé le retrait alors que le client a été remboursé : il a reçu l'argent deux fois. À régler avec le client.",
+    tone: 'alert',
+  },
+  MARKED_PAID_NOT_PAID: {
+    title: 'Noté versé, non payé',
+    help: "Le retrait est noté versé mais l'opérateur n'a rien payé : remboursez le client.",
     tone: 'alert',
   },
   STILL_PENDING: {
