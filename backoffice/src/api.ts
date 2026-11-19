@@ -67,6 +67,53 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
+export type DiscrepancyKind = 'CONFIRMED_NOT_CREDITED' | 'CREDITED_NOT_CONFIRMED' | 'AMOUNT_MISMATCH' | 'STILL_PENDING'
+export type ResolveAction = 'CREDIT' | 'CLOSE'
+
+export interface ReconciliationRun {
+  id: string
+  businessDate: string
+  startedAt: string
+  finishedAt: string | null
+  checked: number
+  matched: number
+  discrepancies: number
+}
+
+export interface ReconciliationItem {
+  id: string
+  businessDate: string
+  topupId: string
+  kind: DiscrepancyKind
+  ourStatus: string
+  providerStatus: string
+  ourAmountMinor: number
+  /** Absent quand l'opérateur n'a pas donné de montant. */
+  providerAmountMinor?: number | null
+  operator: Operator
+  provider: string
+  customerName: string
+  customerPhone: string
+  topupCreatedAt: string
+  resolvedAt: string | null
+  resolvedByName: string | null
+  resolution: string | null
+}
+
+export interface ReviewTopup {
+  id: string
+  operator: Operator
+  provider: string
+  amountMinor: number
+  currency: string
+  reason: string | null
+  customerName: string
+  customerPhone: string
+  checks: number
+  createdAt: string
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -163,5 +210,17 @@ export class Api {
     this.json<Agent>('POST', '/v1/backoffice/agents', a)
   setAgentActive = (id: string, active: boolean) =>
     this.json<Agent>('POST', `/v1/backoffice/agents/${id}/${active ? 'enable' : 'disable'}`)
+  // ---- Recharges et rapprochement ----
+  reviewTopups = () => this.json<ReviewTopup[]>('GET', '/v1/backoffice/topups/review')
+  resolveTopup = (id: string, action: ResolveAction, note: string) =>
+    this.json<unknown>('POST', `/v1/backoffice/topups/${id}/resolve`, { action, note })
+  reconciliationRuns = (limit = 14) => this.json<ReconciliationRun[]>('GET', `/v1/backoffice/reconciliation/runs?limit=${limit}`)
+  runReconciliation = (businessDate?: string) =>
+    this.json<ReconciliationRun>('POST', '/v1/backoffice/reconciliation/runs', businessDate ? { businessDate } : {})
+  reconciliationItems = (open = true) =>
+    this.json<ReconciliationItem[]>('GET', `/v1/backoffice/reconciliation/items?open=${open}`)
+  resolveItem = (id: string, action: ResolveAction, note: string) =>
+    this.json<ReconciliationItem>('POST', `/v1/backoffice/reconciliation/items/${id}/resolve`, { action, note })
+
   audit = (limit = 200) => this.json<AuditEntry[]>('GET', `/v1/backoffice/audit?limit=${limit}`)
 }

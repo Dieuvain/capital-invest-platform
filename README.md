@@ -25,7 +25,7 @@ cd backend
 ./gradlew bootRun                # API sur http://localhost:8080
 ```
 
-Variables utiles : `DB_URL`, `DB_USER`, `DB_PASSWORD`, `PORT`, `SIMULATORS_ENABLED` (à `false` en production).
+Variables utiles : `DB_URL`, `DB_USER`, `DB_PASSWORD`, `PORT`, `SIMULATORS_ENABLED` (à `false` en production). Pour les opérateurs mobile money, voir plus bas.
 
 ## Essayer l'API
 
@@ -127,6 +127,29 @@ Le bandeau défilant de l'app affiche les promotions en cours.
 - Une promotion n'est montrée que si elle est active, dans sa période (`startsAt`, `endsAt`) et destinée au niveau du client (`ALL`, `KYC1` ou `KYC2`). Ainsi « Passez au niveau 2 » disparaît une fois le client vérifié.
 - Back-office, rôles `MARKETING` ou `ADMIN` : `GET /v1/backoffice/promotions`, `POST /v1/backoffice/promotions`, `PUT /v1/backoffice/promotions/{id}`. On retire une promotion avec `"active": false` : rien n'est effacé, et chaque changement est inscrit dans `audit_log`.
 - Trois promotions de départ sont créées par la migration V7 : passage au niveau 2, recharge mobile money, envoi aux proches.
+
+## Recharges mobile money (M-Pesa, Airtel Money, Orange Money)
+
+Chaque opérateur passe par un prestataire, choisi opérateur par opérateur : `PAWAPAY` (agrégateur, un seul contrat pour les trois), `SIMULATOR` en développement, ou plus tard un contrat direct. Passer un opérateur en direct ne demandera qu'un nouveau connecteur (interface `MobileMoneyConnector`) et le changement de sa route.
+
+- **Jamais de crédit sur la foi d'une notification.** Le webhook `POST /v1/webhooks/mobile-money/{prestataire}` ne fait que déclencher la relecture du statut chez le prestataire, par son API authentifiée. Les notifications pawaPay doivent en plus être signées (RFC 9421, clés publiées par pawaPay) : sinon, réponse 401. Tout ce qui arrive est gardé dans `mobile_money_event`.
+- **Relances automatiques** : une recharge en attente est relue après 10 s, puis toutes les 20 s, 40 s… jusqu'à 5 minutes. Inconnue du prestataire après 30 minutes : échec (`NOT_RECEIVED`), rien n'a été débité.
+- **Recharges à vérifier** (statut `REVIEW`) : montant reçu différent de celui demandé, ou aucune réponse sûre après 24 h. Le client voit « en vérification ». Un agent `COMPLIANCE` ou `ADMIN` crédite (après une nouvelle relecture : on crédite le montant réellement encaissé) ou clôt avec un motif.
+- **Rapprochement** chaque nuit à 2 h (heure de Lubumbashi) : chaque recharge de la veille est comparée à son statut chez le prestataire. Les écarts (`CONFIRMED_NOT_CREDITED`, `CREDITED_NOT_CONFIRMED`, `AMOUNT_MISMATCH`, `STILL_PENDING`) sont à traiter dans l'écran « Rapprochement » du back-office. Toute décision est inscrite dans `audit_log`.
+- L'argent pawaPay arrive sur le compte de règlement `SETTLEMENT_PAWAPAY_USD`.
+
+Configuration de production :
+
+| Variable | Valeur |
+| --- | --- |
+| `MOBILE_MONEY_ROUTE_MPESA`, `…_AIRTEL`, `…_ORANGE` | `PAWAPAY` (le serveur refuse de démarrer sur le simulateur quand `SIMULATORS_ENABLED=false`) |
+| `PAWAPAY_API_TOKEN` | jeton API du tableau de bord pawaPay (obligatoire dès qu'une route est `PAWAPAY`) |
+| `PAWAPAY_BASE_URL` | `https://api.pawapay.io` en production (bac à sable par défaut) |
+| `PAWAPAY_CALLBACK_AUTHORITY` | domaine public de l'API, si un proxy change l'en-tête `Host` |
+
+Dans le tableau de bord pawaPay, déclarer l'URL de notification des dépôts : `https://<domaine de l'API>/v1/webhooks/mobile-money/pawapay`, et activer les notifications signées.
+
+Back-office (`COMPLIANCE`, `ADMIN`) : `GET /v1/backoffice/topups/review`, `POST /v1/backoffice/topups/{id}/resolve`, `GET|POST /v1/backoffice/reconciliation/runs`, `GET /v1/backoffice/reconciliation/items`, `POST /v1/backoffice/reconciliation/items/{id}/resolve`.
 
 ## Règles du grand livre
 

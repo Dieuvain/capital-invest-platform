@@ -137,6 +137,28 @@ void main() {
     expect(find.text('Recharge reçue'), findsOneWidget);
   });
 
+  for (final (outcome, title, text) in [
+    ({'status': 'REVIEW'}, 'Recharge en vérification', 'Vous n\'avez rien à refaire'),
+    ({'status': 'FAILED', 'failureCode': 'INSUFFICIENT_BALANCE'}, 'Recharge refusée', 'Solde M-Pesa insuffisant'),
+    ({'status': 'FAILED', 'failureCode': 'QUELQUE_CHOSE'}, 'Recharge refusée', 'L\'opérateur a refusé le paiement'),
+  ]) {
+    testWidgets('recharge : $title (${outcome['failureCode'] ?? outcome['status']})', (tester) async {
+      server.topupOutcome = outcome;
+      await start(tester);
+      await login(tester);
+      await pay(tester, 'Recharger');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+      await tester.tap(find.widgetWithText(FilledButton, 'Recharger'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+      expect(find.text(title), findsOneWidget);
+      expect(find.textContaining(text), findsOneWidget);
+      expect(find.text('Terminé'), findsOneWidget);
+    });
+  }
+
   testWidgets('une session expirée ramène à l\'écran de connexion', (tester) async {
     await start(tester);
     await login(tester);

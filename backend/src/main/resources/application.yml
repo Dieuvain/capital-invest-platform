@@ -65,3 +65,23 @@ capital-invest:
     bootstrap-admin-password: ${BACKOFFICE_ADMIN_PASSWORD:}
     # Domaines de l'écran back-office, séparés par des virgules. Vide : même domaine que l'API.
     allowed-origins: ${BACKOFFICE_ALLOWED_ORIGINS:}
+  # Opérateurs mobile money. Chaque opérateur passe par un prestataire : PAWAPAY (agrégateur),
+  # SIMULATOR (développement), ou plus tard un connecteur direct. En production, les trois routes
+  # sont obligatoires puisque le simulateur est désactivé.
+  mobile-money:
+    routes:
+      MPESA: ${MOBILE_MONEY_ROUTE_MPESA:SIMULATOR}
+      AIRTEL: ${MOBILE_MONEY_ROUTE_AIRTEL:SIMULATOR}
+      ORANGE: ${MOBILE_MONEY_ROUTE_ORANGE:SIMULATOR}
+    first-check-seconds: 10        # première relecture du statut, puis l'intervalle double…
+    max-check-interval-seconds: 300 # …jusqu'à 5 minutes
+    not-found-timeout-minutes: 30  # inconnue de l'opérateur après 30 min : échec
+    review-after-hours: 24         # sans réponse sûre après 24 h : à vérifier par un agent
+    poll-delay-ms: 5000
+    reconciliation-cron: "0 0 2 * * *"  # chaque nuit à 2 h, heure de Lubumbashi
+    pawapay:
+      base-url: ${PAWAPAY_BASE_URL:https://api.sandbox.pawapay.io}
+      api-token: ${PAWAPAY_API_TOKEN:}
+      require-signed-callbacks: ${PAWAPAY_REQUIRE_SIGNED_CALLBACKS:true}
+      # Domaine public appelé par pawaPay, s'il diffère de l'en-tête Host vu par l'API (proxy).
+      callback-authority: ${PAWAPAY_CALLBACK_AUTHORITY:}

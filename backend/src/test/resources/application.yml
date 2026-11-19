@@ -13,3 +13,7 @@ capital-invest:
     encryption-key: dGVzdC1vbmx5LWtleS10ZXN0LW9ubHkta2V5LTMyYiE=
     simulated-watchlist:
       - Mutombo Fictif Sanction
+  mobile-money:
+    # Les tests déclenchent eux-mêmes relances et rapprochement.
+    poller-enabled: false
+    reconciliation-enabled: false

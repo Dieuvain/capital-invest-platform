@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { ageOn, fromLocalInput, initials, toLocalInput, waitingFor } from '../format'
+import { ageOn, formatUsd, fromLocalInput, initials, toLocalInput, waitingFor } from '../format'
 
 describe('formats', () => {
+  it('montants en dollars', () => {
+    expect(formatUsd(125075)).toBe('1 250,75 $')
+    expect(formatUsd(50)).toBe('0,50 $')
+  })
   it('âge en années révolues', () => {
     expect(ageOn('2008-11-20', new Date(2026, 10, 19))).toBe(17)
     expect(ageOn('2008-11-19', new Date(2026, 10, 19))).toBe(18)
