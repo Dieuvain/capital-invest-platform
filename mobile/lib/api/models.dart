@@ -386,3 +386,64 @@ class NotificationInbox {
   factory NotificationInbox.fromJson(Map<String, dynamic> j) =>
       NotificationInbox((j['items'] as List).map((e) => AppNotification.fromJson(e)).toList(), j['unread'] ?? 0);
 }
+
+/// Demande d'argent entre deux clients. [incoming] : on vous demande de payer.
+class MoneyRequest {
+  MoneyRequest({
+    required this.id,
+    required this.incoming,
+    required this.counterpartyName,
+    required this.counterpartyPhone,
+    required this.amountMinor,
+    required this.status,
+    required this.createdAt,
+    required this.expiresAt,
+    this.note,
+    this.transactionId,
+  });
+
+  final String id;
+  final bool incoming;
+
+  /// Le demandeur pour une demande reçue, le client sollicité pour une demande faite.
+  final String counterpartyName;
+  final String counterpartyPhone;
+  final int amountMinor;
+  final String? note;
+
+  /// PENDING, PAID, DECLINED, CANCELLED ou EXPIRED.
+  final String status;
+
+  /// Envoi qui a payé la demande.
+  final String? transactionId;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  bool get pending => status == 'PENDING';
+
+  factory MoneyRequest.fromJson(Map<String, dynamic> j) => MoneyRequest(
+    id: j['id'],
+    incoming: j['direction'] == 'INCOMING',
+    counterpartyName: j['counterpartyName'],
+    counterpartyPhone: j['counterpartyPhone'],
+    amountMinor: j['amountMinor'],
+    note: j['note'],
+    status: j['status'],
+    transactionId: j['transactionId'],
+    createdAt: DateTime.parse(j['createdAt']),
+    expiresAt: DateTime.parse(j['expiresAt']),
+  );
+}
+
+class MoneyRequestList {
+  MoneyRequestList({required this.toPay, required this.recent});
+
+  /// Demandes reçues à payer ou refuser, plus anciennes d'abord.
+  final List<MoneyRequest> toPay;
+  final List<MoneyRequest> recent;
+
+  factory MoneyRequestList.fromJson(Map<String, dynamic> j) => MoneyRequestList(
+    toPay: [for (final r in j['toPay'] as List) MoneyRequest.fromJson(r)],
+    recent: [for (final r in j['recent'] as List) MoneyRequest.fromJson(r)],
+  );
+}

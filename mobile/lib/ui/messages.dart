@@ -22,6 +22,8 @@ String messageFor(Object error) {
     'PIN_RECENTLY_RESET' => 'Par sécurité, les envois sont suspendus 24 h après un changement de PIN.',
     'MERCHANT_NOT_FOUND' => 'Aucun marchand avec ce code. Vérifiez le code sous le QR.',
     'MERCHANT_NOT_ACTIVE' => 'Ce marchand n\'accepte pas de paiement pour le moment.',
+    'REQUEST_EXPIRED' => 'Cette demande a expiré.',
+    'REQUEST_CLOSED' => 'Cette demande a déjà été payée, refusée ou annulée.',
     'KYC_UNDERAGE' => 'Il faut avoir 18 ans pour le niveau 2.',
     'KYC_REQUEST_PENDING' => 'Votre demande est déjà en cours d\'examen.',
     'DOCUMENT_TYPE_INVALID' => 'Photo JPEG ou PNG attendue.',

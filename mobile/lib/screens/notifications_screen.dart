@@ -7,6 +7,7 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
+import 'request_screens.dart';
 
 IconData _icon(AppNotification n) => switch (n.kind) {
   'TOPUP' => Icons.bolt_rounded,
@@ -16,6 +17,8 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'WITHDRAWAL_REFUNDED' => Icons.undo_rounded,
   'KYC_APPROVED' || 'KYC_REJECTED' => Icons.verified_user_outlined,
   'PIN_CHANGED' => Icons.lock_outline_rounded,
+  'MONEY_REQUEST' => Icons.call_made_rounded,
+  'MONEY_REQUEST_DECLINED' => Icons.call_received_rounded,
   _ => Icons.notifications_none_rounded,
 };
 
@@ -47,10 +50,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
     if (box.unread > 0) await api.markNotificationsRead().catchError((_) {});
   }
 
+  static const _requestKinds = {'MONEY_REQUEST', 'MONEY_REQUEST_DECLINED'};
+
   void _open(AppNotification n) {
     final tx = n.transactionId;
-    if (tx == null) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(app: widget.app, id: tx)));
+    final Widget? screen = _requestKinds.contains(n.kind)
+        ? MoneyRequestsScreen(app: widget.app)
+        : tx == null
+        ? null
+        : ReceiptScreen(app: widget.app, id: tx);
+    if (screen == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
   @override
@@ -75,7 +85,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
                 for (final n in box.items)
                   InkWell(
                     key: ValueKey('notification-${n.id}'),
-                    onTap: n.transactionId == null ? null : () => _open(n),
+                    onTap: n.transactionId == null && !_requestKinds.contains(n.kind) ? null : () => _open(n),
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),

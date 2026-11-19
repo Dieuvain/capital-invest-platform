@@ -236,6 +236,76 @@ void main() {
     expect(server.requests.last.headers['Idempotency-Key'], isNotNull);
   });
 
+  testWidgets('demande reçue : bandeau sur l\'accueil, frais montrés, avertissement, PIN, puis payée', (tester) async {
+    server.moneyRequests = [
+      // Plus récentes d'abord : celle de Grâce attend depuis plus longtemps.
+      FakeServer.moneyRequest('rq-b', incoming: true, name: 'Patrick Ilunga', phone: '+243990000870', amount: 500),
+      FakeServer.moneyRequest('rq-a', incoming: true, name: 'Grâce Mbuyi', phone: '+243810000214', amount: 2000, note: 'Frais scolaires'),
+    ];
+    await start(tester);
+    await login(tester);
+    expect(find.text('Grâce vous demande ${formatUsd(2000)}'), findsOneWidget);
+    expect(find.text('et 1 autre demande · Voir'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('requests-banner')));
+    await tester.pumpAndSettle();
+    expect(find.text('À payer'), findsOneWidget);
+    await tester.tap(find.text('Grâce Mbuyi vous demande'));
+    await tester.pumpAndSettle();
+    expect(find.text('Payer la demande'), findsOneWidget);
+    expect(find.text('Frais scolaires'), findsOneWidget);
+    expect(find.text(formatUsd(20)), findsOneWidget);
+    expect(find.text(formatUsd(2020)), findsOneWidget);
+    expect(find.textContaining('Ne payez que si vous connaissez'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Payer ${formatUsd(2000)}'));
+    await tester.pumpAndSettle();
+    expect(find.text('${formatUsd(2000)} envoyés'), findsOneWidget);
+    expect(server.balance, 5000 - 2020);
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    // Reste la demande de Patrick, que le client refuse.
+    await tester.tap(find.text('Patrick Ilunga vous demande'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Refuser la demande'));
+    await tester.pumpAndSettle();
+    expect(find.text('À payer'), findsNothing);
+    expect(server.moneyRequests.map((r) => r['status']), ['DECLINED', 'PAID']);
+  });
+
+  testWidgets('demander de l\'argent depuis le menu, puis annuler la demande', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demander de l\'argent'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('new-request')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du client')), '0970 000 001');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '15');
+    await tester.tap(find.text('Envoyer la demande'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vous ne pouvez pas vous envoyer de l\'argent.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du client')), '970000402');
+    await tester.enterText(find.byKey(const ValueKey('note')), 'Part du taxi');
+    await tester.tap(find.text('Envoyer la demande'));
+    await tester.pumpAndSettle();
+    expect(find.text('${formatUsd(1500)} demandés'), findsOneWidget);
+    final sent = server.requests.where((r) => r.url.path == '/v1/money-requests' && r.method == 'POST').toList();
+    expect(sent, hasLength(2));
+    expect(sent[0].headers['Idempotency-Key'], isNot(sent[1].headers['Idempotency-Key']));
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    expect(find.text('Demandé à Béni Mukendi'), findsOneWidget);
+    await tester.tap(find.text('Annuler'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Annulée'), findsOneWidget);
+  });
+
   testWidgets('paiement marchand : QR scanné, commerce vérifié, sans frais, PIN, puis preuve pour le caissier', (tester) async {
     app.scanQr = (_) async => 'capitalinvest://pay?m=K7P2QX';
     await start(tester);

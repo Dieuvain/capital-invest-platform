@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
 }
 
 data class NotificationView(
@@ -154,6 +154,29 @@ class NotificationService(
             )
         }
         queueForMerchant(merchantId, "merchant-payout:${if (paid) "paid" else "failed"}:$withdrawalId", draft, transactionId)
+    }
+
+    /** Un client demande de l'argent : SMS et notification au client sollicité, qui paie ou refuse dans l'app. */
+    fun moneyRequest(requestId: UUID, payerId: UUID, requesterName: String, requesterPhone: String, amountMinor: Long, note: String?) {
+        val why = note?.let { " ($it)" } ?: ""
+        queue(
+            payerId, "money-request:$requestId",
+            Draft(
+                NotificationKind.MONEY_REQUEST, "Demande d'argent",
+                "$requesterName ($requesterPhone) vous demande ${money(amountMinor)}$why. Payez ou refusez dans l'app.",
+                "Capital Invest: ${short(requesterName)} vous demande ${money(amountMinor)}. Ouvrez l'app pour payer ou refuser. Ne payez que si vous le connaissez.",
+            ),
+            null,
+        )
+    }
+
+    /** Demande refusée : le demandeur le voit dans l'app, sans SMS. */
+    fun moneyRequestDeclined(requestId: UUID, requesterId: UUID, payerName: String, amountMinor: Long) {
+        queue(
+            requesterId, "money-request-declined:$requestId",
+            Draft(NotificationKind.MONEY_REQUEST_DECLINED, "Demande refusée", "$payerName a refusé votre demande de ${money(amountMinor)}.", null),
+            null,
+        )
     }
 
     /** Le compte de reversement a changé : le marchand est prévenu sur son numéro habituel. */
