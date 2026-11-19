@@ -13,6 +13,12 @@ const paths: Record<string, string> = {
   alert: 'M12 4l9 16H3zM12 10v4M12 17v.01',
   plus: 'M12 5v14M5 12h14',
   shield: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z',
+  home: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  bell: 'M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0',
+  up: 'M12 19V5M6 11l6-6 6 6',
+  down: 'M12 5v14M6 13l6 6 6-6',
+  out: 'M7 17L17 7M9 7h8v8',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
 }
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths | string; size?: number }) {
@@ -61,7 +67,7 @@ export function PageHead({ title, subtitle, back, children }: {
         </button>
       )}
       <div className="grow">
-        <h1>{title}</h1>
+        <h2 style={{ fontSize: 24, fontWeight: 500 }}>{title}</h2>
         {subtitle && <p className="muted">{subtitle}</p>}
       </div>
       {children}

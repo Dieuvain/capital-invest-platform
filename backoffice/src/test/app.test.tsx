@@ -15,16 +15,19 @@ beforeEach(() => {
   URL.revokeObjectURL = vi.fn()
 })
 
-async function signIn(email: string) {
+const menu = () => within(screen.getByRole('navigation', { name: 'Menu principal' }))
+
+/** Connexion, puis ouverture d'un menu (par défaut, l'agent arrive sur le tableau de bord). */
+async function signIn(email: string, open?: string) {
   const user = userEvent.setup()
   render(<App api={api} />)
   await user.type(await screen.findByLabelText('Adresse e-mail'), email)
   await user.type(screen.getByLabelText('Mot de passe'), server.password)
   await user.click(screen.getByRole('button', { name: 'Se connecter' }))
+  await screen.findByRole('navigation', { name: 'Menu principal' })
+  if (open) await user.click(menu().getByRole('link', { name: new RegExp(open) }))
   return user
 }
-
-const menu = () => within(screen.getByRole('navigation', { name: 'Menu principal' }))
 
 describe('connexion', () => {
   it('affiche une erreur claire si le mot de passe est faux', async () => {
@@ -38,10 +41,10 @@ describe('connexion', () => {
   })
 
   it.each([
-    ['kyc@capitalinvest.cd', ['Demandes KYC 2']],
-    ['marketing@capitalinvest.cd', ['Promotions']],
-    ['conformite@capitalinvest.cd', ['Demandes KYC 2', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Demandes KYC 2', 'Promotions', 'Agents', "Journal d'audit"]],
+    ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
+    ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -50,11 +53,11 @@ describe('connexion', () => {
   it('retrouve la session après un rechargement de la page', async () => {
     sessionStorage.setItem('capital-invest-agent', server.login('KYC_AGENT'))
     render(<App api={api} />)
-    expect(await screen.findByText('Patrick Ilunga')).toBeInTheDocument()
+    expect(await screen.findByText('Bonjour, Patrick !')).toBeInTheDocument()
   })
 
   it('une session expirée ramène à la connexion avec une explication', async () => {
-    const user = await signIn('kyc@capitalinvest.cd')
+    const user = await signIn('kyc@capitalinvest.cd', 'Demandes KYC')
     await screen.findByText('Amani Kabeya')
     server.sessions.clear()
     await user.click(screen.getByText('Amani Kabeya'))
@@ -63,16 +66,48 @@ describe('connexion', () => {
   })
 })
 
+describe('tableau de bord et notifications', () => {
+  it("l'agent arrive sur le tableau de bord avec les chiffres clés", async () => {
+    server.kyc.push({ ...server.kyc[0], id: 'k-9', customerName: 'Esther Mbuyi', status: 'APPROVED',
+      createdAt: new Date(Date.now() - 3 * 3600e3).toISOString(), decidedAt: new Date(Date.now() - 3600e3).toISOString() })
+    await signIn('kyc@capitalinvest.cd')
+    expect(await screen.findByText('Bonjour, Patrick !')).toBeInTheDocument()
+    expect(screen.getByText('Demandes en attente')).toBeInTheDocument()
+    expect(await screen.findByText('Esther Mbuyi')).toBeInTheDocument() // décisions récentes
+    expect(screen.getByText('2 h')).toBeInTheDocument() // délai médian
+    expect(screen.getByRole('img', { name: /Demandes reçues/ })).toBeInTheDocument()
+  })
+
+  it("les notifications signalent les nouvelles demandes et l'alerte sanctions", async () => {
+    const user = await signIn('kyc@capitalinvest.cd')
+    const bell = screen.getByRole('button', { name: 'Notifications' })
+    await waitFor(() => expect(bell.querySelector('.dot')).not.toBeNull())
+    await user.click(bell)
+    const panel = within(screen.getByRole('region', { name: 'Notifications' }))
+    expect(panel.getByText(/correspondance au contrôle sanctions/)).toBeInTheDocument()
+    expect(panel.getByText(/Nouvelle demande de niveau 2/)).toBeInTheDocument()
+    await user.click(panel.getByText('Mutombo Fictif Sanction'))
+    expect(await screen.findByText(/Seule la conformité peut valider/)).toBeInTheDocument()
+    expect(bell.querySelector('.dot')).toBeNull()
+  })
+
+  it('le marketing voit les promotions en ligne sur son tableau de bord', async () => {
+    await signIn('marketing@capitalinvest.cd')
+    expect(await screen.findByText("En ligne dans l'app")).toBeInTheDocument()
+    expect(screen.queryByText('Demandes en attente')).toBeNull()
+  })
+})
+
 describe('demandes KYC 2', () => {
   it('liste les demandes en attente, avec le compteur et l\'alerte sanctions', async () => {
-    await signIn('kyc@capitalinvest.cd')
+    await signIn('kyc@capitalinvest.cd', 'Demandes KYC')
     expect(await screen.findByText('Amani Kabeya')).toBeInTheDocument()
     expect(screen.getByText('1 demande signalée par le contrôle sanctions.')).toBeInTheDocument()
     expect(menu().getByLabelText('2 en attente')).toBeInTheDocument()
   })
 
   it('un agent valide une demande après avoir vu les trois photos', async () => {
-    const user = await signIn('kyc@capitalinvest.cd')
+    const user = await signIn('kyc@capitalinvest.cd', 'Demandes KYC')
     await user.click(await screen.findByText('Amani Kabeya'))
     expect(await screen.findByText('Recto de la pièce')).toBeInTheDocument()
     await waitFor(() => expect(server.documentsViewed).toEqual(['k-1-front', 'k-1-back', 'k-1-selfie']))
@@ -84,7 +119,7 @@ describe('demandes KYC 2', () => {
   })
 
   it('un refus demande un motif, qui est envoyé au serveur', async () => {
-    const user = await signIn('kyc@capitalinvest.cd')
+    const user = await signIn('kyc@capitalinvest.cd', 'Demandes KYC')
     await user.click(await screen.findByText('Amani Kabeya'))
     await user.click(await screen.findByRole('button', { name: 'Refuser…' }))
     const confirm = screen.getByRole('button', { name: 'Refuser la demande' })
@@ -96,14 +131,14 @@ describe('demandes KYC 2', () => {
   })
 
   it('une correspondance sanctions ne peut pas être validée par un agent KYC', async () => {
-    const user = await signIn('kyc@capitalinvest.cd')
+    const user = await signIn('kyc@capitalinvest.cd', 'Demandes KYC')
     await user.click(await screen.findByText('Mutombo Fictif Sanction'))
     expect(await screen.findByText(/Seule la conformité peut valider cette demande/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Valider le niveau 2/ })).toBeDisabled()
   })
 
   it('la conformité peut valider une correspondance sanctions', async () => {
-    const user = await signIn('conformite@capitalinvest.cd')
+    const user = await signIn('conformite@capitalinvest.cd', 'Demandes KYC')
     await user.click(await screen.findByText('Mutombo Fictif Sanction'))
     await user.click(await screen.findByRole('button', { name: /Valider le niveau 2/ }))
     await screen.findByRole('status')
@@ -113,7 +148,7 @@ describe('demandes KYC 2', () => {
 
 describe('promotions', () => {
   it('le marketing publie une promotion en voyant l\'aperçu de l\'app', async () => {
-    const user = await signIn('marketing@capitalinvest.cd')
+    const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
     await user.click(await screen.findByRole('button', { name: /Nouvelle promotion/ }))
     await user.type(screen.getByLabelText(/^Titre/), 'Fête de l\'indépendance')
     await user.type(screen.getByLabelText(/^Texte 140/), 'Envois sans souci tout le week-end.')
@@ -128,14 +163,14 @@ describe('promotions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publier' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Promotion publiée')
-    expect(server.requests.at(-2)).toMatchObject({
+    expect(server.requests.find((r) => r.method === 'POST' && r.path === '/v1/backoffice/promotions')).toMatchObject({
       method: 'POST',
       body: { title: "Fête de l'indépendance", action: 'TRANSFER', ctaLabel: 'Envoyer', style: 'GREEN', audience: 'ALL' },
     })
   })
 
   it('une action sans texte de bouton est refusée avant l\'envoi', async () => {
-    const user = await signIn('marketing@capitalinvest.cd')
+    const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
     await user.click(await screen.findByRole('button', { name: /Nouvelle promotion/ }))
     await user.type(screen.getByLabelText(/^Titre/), 'Titre')
     await user.type(screen.getByLabelText(/^Texte 140/), 'Texte')
@@ -146,7 +181,7 @@ describe('promotions', () => {
   })
 
   it('retirer une promotion la garde dans la liste', async () => {
-    const user = await signIn('marketing@capitalinvest.cd')
+    const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
     await user.click(await screen.findByText('Passez au niveau 2'))
     await user.click(await screen.findByRole('button', { name: "Retirer de l'app" }))
     expect(await screen.findByRole('status')).toHaveTextContent("Promotion retirée de l'app")
@@ -157,8 +192,7 @@ describe('promotions', () => {
 
 describe('agents', () => {
   it("l'administrateur crée un agent puis le désactive", async () => {
-    const user = await signIn('admin@capitalinvest.cd')
-    await user.click(menu().getByRole('link', { name: 'Agents' }))
+    const user = await signIn('admin@capitalinvest.cd', 'Agents')
     await user.click(await screen.findByRole('button', { name: /Nouvel agent/ }))
     await user.type(screen.getByLabelText('Nom complet'), 'Sarah Kalala')
     await user.type(screen.getByLabelText('Adresse e-mail professionnelle'), 'sarah@capitalinvest.cd')
@@ -174,8 +208,7 @@ describe('agents', () => {
   })
 
   it("l'administrateur ne peut pas se désactiver lui-même", async () => {
-    const user = await signIn('admin@capitalinvest.cd')
-    await user.click(menu().getByRole('link', { name: 'Agents' }))
+    await signIn('admin@capitalinvest.cd', 'Agents')
     const row = (await screen.findByText('admin@capitalinvest.cd')).closest('tr')!
     expect(within(row).queryByRole('button')).toBeNull()
   })
