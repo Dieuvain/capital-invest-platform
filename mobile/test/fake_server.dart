@@ -47,6 +47,9 @@ class FakeServer {
   /// PIN du client, changé par /v1/me/security/pin.
   String pin = '2580';
 
+  /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
+  bool blocked = false;
+
   /// Connexions servies par /v1/me/security/sessions, celle de ce téléphone en tête.
   List<Map<String, dynamic>> deviceSessions = [
     deviceSession('s-1', 'Samsung Galaxy A14', '2026-11-19T09:10:00Z', current: true),
@@ -392,6 +395,11 @@ class FakeServer {
       return http.Response('', 204);
     }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
+      if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      blocked = true;
+      return http.Response('', 204);
+    }
     if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
@@ -406,6 +414,7 @@ class FakeServer {
       case ('POST', '/v1/auth/login'):
         final b = body();
         if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        if (blocked) return _error(403, 'CUSTOMER_BLOCKED', 'Compte bloqué à votre demande');
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,

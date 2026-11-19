@@ -124,7 +124,7 @@ function CustomerFile({ api, customer, notify, changed }: {
         <div className="card stat">
           <span className="lbl">Niveau</span>
           <span className="val mono">{customer.kycLevel}</span>
-          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? 'compte suspendu' : `compte ${customer.status.toLowerCase()}`}</span>
+          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? (customer.blockedByCustomerAt ? 'bloqué par le client' : 'compte suspendu') : `compte ${customer.status.toLowerCase()}`}</span>
         </div>
       </div>
       <AccountStatus api={api} customer={customer} notify={notify} changed={changed} />
@@ -253,6 +253,7 @@ function AccountStatus({ api, customer, notify, changed }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const suspended = customer.status === 'SUSPENDED'
+  const selfBlocked = suspended && customer.blockedByCustomerAt ? customer.blockedByCustomerAt : null
 
   useEffect(() => {
     setEditing(false)
@@ -265,9 +266,10 @@ function AccountStatus({ api, customer, notify, changed }: {
     setError(null)
     try {
       const r = await api.setCustomerStatus(customer.id, suspended ? 'ACTIVE' : 'SUSPENDED', reason.trim())
-      changed({ ...customer, status: r.status })
+      changed({ ...customer, status: r.status, blockedByCustomerAt: r.status === 'ACTIVE' ? null : customer.blockedByCustomerAt })
       setEditing(false)
-      notify(r.status === 'SUSPENDED' ? `Compte de ${customer.fullName} suspendu` : `Compte de ${customer.fullName} réactivé`)
+      notify(r.status === 'SUSPENDED' ? `Compte de ${customer.fullName} suspendu`
+        : selfBlocked ? `Compte de ${customer.fullName} débloqué, le client reçoit un SMS` : `Compte de ${customer.fullName} réactivé`)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -281,9 +283,11 @@ function AccountStatus({ api, customer, notify, changed }: {
     <section className={`card pad stack${suspended ? ' suspended' : ''}`} aria-label="Compte" style={{ gap: 10 }}>
       <div className="row">
         <div>
-          <b>{suspended ? 'Compte suspendu' : 'Compte actif'}</b>
+          <b>{selfBlocked ? 'Bloqué par le client' : suspended ? 'Compte suspendu' : 'Compte actif'}</b>
           <div className="muted small">
-            {suspended
+            {selfBlocked
+              ? `Bloqué le ${formatDateTime(selfBlocked)} : téléphone perdu ou volé. Débloquez seulement après avoir vu sa pièce d'identité en agence.`
+              : suspended
               ? 'Le client ne peut ni se connecter ni faire bouger son argent.'
               : list.some((a) => a.status === 'OPEN')
                 ? `${list.filter((a) => a.status === 'OPEN').length} alerte de surveillance à traiter`
@@ -293,7 +297,7 @@ function AccountStatus({ api, customer, notify, changed }: {
         <span className="spacer" />
         {!editing && (
           <button type="button" className="btn ghost small" onClick={() => { setEditing(true); setReason('') }}>
-            {suspended ? 'Réactiver' : 'Suspendre le compte'}
+            {selfBlocked ? 'Débloquer' : suspended ? 'Réactiver' : 'Suspendre le compte'}
           </button>
         )}
       </div>
@@ -301,14 +305,14 @@ function AccountStatus({ api, customer, notify, changed }: {
         <form className="decision" onSubmit={save}>
           <ErrorBanner error={error} />
           <label className="field">
-            {suspended ? 'Pourquoi réactiver ?' : 'Pourquoi suspendre ? Le client ne sera pas prévenu de la raison.'}
+            {selfBlocked ? 'Pièce d\'identité vérifiée : type et numéro' : suspended ? 'Pourquoi réactiver ?' : 'Pourquoi suspendre ? Le client ne sera pas prévenu de la raison.'}
             <input type="text" required minLength={5} maxLength={500} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
           <div className="row">
             <span className="spacer" />
             <button type="button" className="btn ghost small" onClick={() => setEditing(false)} disabled={busy}>Annuler</button>
             <button className={`btn small${suspended ? ' success' : ' danger'}`} disabled={busy || reason.trim().length < 5}>
-              {suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
+              {selfBlocked ? 'Débloquer le compte' : suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
             </button>
           </div>
         </form>

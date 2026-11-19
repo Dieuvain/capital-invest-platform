@@ -174,6 +174,12 @@ class ApiClient {
   Future<List<DeviceSession>> deviceSessions() async =>
       (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();
 
+  /// « Bloquer mon compte » : toutes les sessions tombent, celle-ci comprise. Déblocage en agence seulement.
+  Future<void> blockAccount(String pin) => _post('/v1/me/security/block', {'pin': pin});
+
+  /// Même blocage, depuis un autre téléphone, sans se connecter.
+  Future<void> blockAccountFromPhone(String phone, String pin) => _post('/v1/auth/block', {'phone': phone, 'pin': pin});
+
   /// Déconnecte tous les autres téléphones. Renvoie le nombre de sessions fermées.
   Future<int> signOutOtherDevices() async =>
       (await _post('/v1/me/security/sessions/sign-out-others', null))['closed'] as int;

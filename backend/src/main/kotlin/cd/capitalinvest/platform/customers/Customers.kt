@@ -24,6 +24,8 @@ data class Customer(
     val language: Language,
     val kycLevel: Int,
     val status: String,
+    /** Le client a bloqué lui-même son compte (téléphone perdu ou volé). */
+    val blockedByCustomerAt: java.time.OffsetDateTime? = null,
 )
 
 @Repository
@@ -74,6 +76,7 @@ class CustomerRepository(private val jdbc: JdbcClient) {
         language = Language.valueOf(rs.getString("language")),
         kycLevel = rs.getInt("kyc_level"),
         status = rs.getString("status"),
+        blockedByCustomerAt = rs.getObject("blocked_by_customer_at", java.time.OffsetDateTime::class.java),
     )
 }
 

@@ -77,6 +77,30 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - API : `POST /v1/me/security/pin` (`currentPin`, `newPin`), `GET /v1/me/security/sessions`, `POST /v1/me/security/sessions/sign-out-others`. `deviceName` est facultatif à l'inscription, à la connexion et au PIN oublié.
 - En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
+## Téléphone perdu ou volé : bloquer son compte
+
+Le client bloque lui-même son compte, sans attendre le service client :
+
+- depuis l'app : Profil, **Sécurité et PIN**, **Bloquer mon compte**, avec le PIN ;
+- depuis le téléphone d'un proche, sans se connecter : **Téléphone perdu ou volé ?** sur l'écran de connexion, avec son numéro et son PIN.
+
+Ce qui se passe :
+
+- Toutes les sessions tombent et la connexion est refusée avec la marche à suivre (`CUSTOMER_BLOCKED`).
+- Plus rien ne part : envois, retraits, paiements, envois programmés. Le compte ne reçoit plus d'argent non plus.
+- Le client reçoit un SMS de confirmation.
+- Le PIN est exigé pour qu'un inconnu ne puisse pas bloquer le compte de quelqu'un d'autre. Les erreurs comptent comme à la connexion : 5 erreurs bloquent le PIN 15 minutes.
+- Un compte déjà suspendu par la conformité le reste : le client ne peut pas changer une suspension en « bloqué à sa demande ».
+
+Le déblocage se fait **en agence seulement**, après vérification de la pièce d'identité. Le voleur a souvent la carte SIM, donc un code SMS ne prouve rien. Dans le back-office, la fiche client affiche « Bloqué par le client » et la date, avec un bouton **Débloquer** qui demande le type et le numéro de la pièce vue. Le client reçoit un SMS qui l'invite à changer son PIN.
+
+- API : `POST /v1/me/security/block` (`pin`) depuis l'app, `POST /v1/auth/block` (`phone`, `pin`) sans session. Le déblocage passe par la route existante `POST /v1/backoffice/customers/{id}/status`.
+- Journal d'audit : `CUSTOMER_SELF_BLOCKED`, puis `CUSTOMER_REACTIVATED` avec la pièce notée par l'agent.
+
+| Bloquer depuis l'app | Compte bloqué |
+|---|---|
+| ![Bloquer mon compte](docs/captures-app/15-bloquer-compte.png) | ![Compte bloqué](docs/captures-app/15b-compte-bloque.png) |
+
 ## Plafonds KYC
 
 Valeurs **provisoires**, à valider par la conformité (fichier `application.yml`, section `capital-invest.limits`).

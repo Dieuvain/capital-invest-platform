@@ -2,6 +2,9 @@ package cd.capitalinvest.platform.auth
 
 import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.notifications.NotificationService
+import cd.capitalinvest.platform.common.ActorType
+import cd.capitalinvest.platform.common.AuditLog
+import cd.capitalinvest.platform.customers.Customer
 import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.customers.CustomerService
 import cd.capitalinvest.platform.customers.CustomerView
@@ -44,6 +47,7 @@ class AuthService(
     private val props: SecurityProperties,
     private val clock: Clock,
     private val notifications: NotificationService,
+    private val audit: AuditLog,
 ) {
     private val encoder = BCryptPasswordEncoder(12)
     private val random = SecureRandom()
@@ -65,7 +69,7 @@ class AuthService(
         val customer = customers.findByPhone(phone)
             ?: throw UnauthorizedException("INVALID_CREDENTIALS", "Numéro ou PIN incorrect")
         checkPin(customer.id, pin)
-        if (customer.status != "ACTIVE") throw BusinessException("CUSTOMER_NOT_ACTIVE", "Compte suspendu ou fermé", HttpStatus.FORBIDDEN)
+        requireActive(customer)
         val known = jdbc.sql("SELECT EXISTS (SELECT 1 FROM session WHERE customer_id = :c AND device_id = :d)")
             .param("c", customer.id).param("d", deviceId.take(100)).query(Boolean::class.java).single()
         if (!known) notifications.newDevice(customer.id, deviceName?.trim(), now())
@@ -87,7 +91,7 @@ class AuthService(
         PinPolicy.validate(newPin)
         val customer = customers.findByPhone(phone) ?: throw BusinessException("OTP_INVALID", "Code invalide ou expiré")
         otp.verify(phone, OtpPurpose.RESET_PIN, code)
-        if (customer.status != "ACTIVE") throw BusinessException("CUSTOMER_NOT_ACTIVE", "Compte suspendu ou fermé", HttpStatus.FORBIDDEN)
+        requireActive(customer)
         val now = now()
         customers.setPinHash(customer.id, encoder.encode(newPin))
         jdbc.sql("UPDATE customer SET pin_reset_at = :now WHERE id = :id").param("now", now).param("id", customer.id).update()
@@ -95,6 +99,49 @@ class AuthService(
             .param("now", now).param("id", customer.id).update()
         notifications.pinChanged(customer.id, now)
         return openSession(customerService.get(customer.id), deviceId, deviceName)
+    }
+
+    /**
+     * Téléphone perdu ou volé : le client bloque son compte depuis un autre téléphone, avec son numéro et son PIN.
+     * Le PIN est exigé pour qu'un inconnu ne puisse pas bloquer le compte de quelqu'un d'autre ; les erreurs comptent
+     * comme à la connexion. Déjà bloqué : ne change rien.
+     */
+    @Transactional(noRollbackFor = [BusinessException::class])
+    fun blockWithPhone(phone: String, pin: String) {
+        val customer = customers.findByPhone(phone)
+            ?: throw UnauthorizedException("INVALID_CREDENTIALS", "Numéro ou PIN incorrect")
+        checkPin(customer.id, pin)
+        block(customer)
+    }
+
+    /** Blocage depuis l'app, PIN redemandé : toutes les sessions tombent, y compris celle-ci. */
+    @Transactional(noRollbackFor = [BusinessException::class])
+    fun blockFromApp(customerId: UUID, pin: String) {
+        checkPin(customerId, pin)
+        block(customers.findById(customerId) ?: throw UnauthorizedException("SESSION_INVALID", "Session invalide"))
+    }
+
+    private fun block(customer: Customer) {
+        // Un compte suspendu par la conformité ou fermé le reste : le client n'y change rien.
+        if (customer.status != "ACTIVE") return
+        val now = now()
+        jdbc.sql("UPDATE customer SET status = 'SUSPENDED', blocked_by_customer_at = :now WHERE id = :id AND status = 'ACTIVE'")
+            .param("now", now).param("id", customer.id).update()
+        jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
+            .param("now", now).param("id", customer.id).update()
+        audit.record(ActorType.CUSTOMER, customer.id, "CUSTOMER_SELF_BLOCKED", "CUSTOMER", customer.id)
+        notifications.accountBlocked(customer.id, now)
+    }
+
+    private fun requireActive(customer: Customer) {
+        if (customer.status == "ACTIVE") return
+        if (customer.blockedByCustomerAt != null) {
+            throw BusinessException(
+                "CUSTOMER_BLOCKED", "Compte bloqué à votre demande. Pour le débloquer, présentez-vous en agence avec votre pièce d'identité.",
+                HttpStatus.FORBIDDEN,
+            )
+        }
+        throw BusinessException("CUSTOMER_NOT_ACTIVE", "Compte suspendu ou fermé", HttpStatus.FORBIDDEN)
     }
 
     /** Confirmation d'une opération sensible (envoi, retrait, blocage de carte). */

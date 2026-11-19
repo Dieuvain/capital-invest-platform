@@ -1,5 +1,6 @@
 package cd.capitalinvest.platform.monitoring
 
+import cd.capitalinvest.platform.notifications.NotificationService
 import cd.capitalinvest.platform.backoffice.AGENT_ATTRIBUTE
 import cd.capitalinvest.platform.backoffice.AgentPrincipal
 import cd.capitalinvest.platform.backoffice.AgentRole
@@ -117,6 +118,7 @@ class MonitoringService(
     private val props: MonitoringProperties,
     private val audit: AuditLog,
     private val clock: Clock,
+    private val notifications: NotificationService,
 ) {
     private fun now() = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
 
@@ -339,6 +341,11 @@ class MonitoringService(
             if (status == "SUSPENDED") {
                 jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
                     .param("now", now()).param("id", customerId).update()
+            }
+            // Débloqué en agence après un blocage par le client : on efface la marque et on le prévient.
+            if (status == "ACTIVE" && c.blockedByCustomerAt != null) {
+                jdbc.sql("UPDATE customer SET blocked_by_customer_at = NULL WHERE id = :id").param("id", customerId).update()
+                notifications.accountUnblocked(customerId, now())
             }
             audit.record(
                 ActorType.AGENT, agentId, if (status == "SUSPENDED") "CUSTOMER_SUSPENDED" else "CUSTOMER_REACTIVATED",

@@ -373,6 +373,22 @@ describe('surveillance', () => {
     expect(server.requests.find((r) => r.path === '/v1/backoffice/customers/c-1/status')?.body)
       .toEqual({ status: 'ACTIVE', reason: 'Justificatifs reçus' })
   })
+
+  it('un compte bloqué par le client (téléphone volé) se débloque avec la pièce d\'identité vue en agence', async () => {
+    Object.assign(server.customer, { status: 'SUSPENDED', blockedByCustomerAt: '2026-11-19T09:42:00Z' })
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const account = await screen.findByRole('region', { name: 'Compte' })
+    expect(within(account).getByText('Bloqué par le client')).toBeInTheDocument()
+    expect(within(account).getByText(/téléphone perdu ou volé/)).toBeInTheDocument()
+    expect(screen.getByText('bloqué par le client')).toBeInTheDocument()
+    await user.click(within(account).getByRole('button', { name: 'Débloquer' }))
+    await user.type(within(account).getByLabelText(/Pièce d'identité vérifiée/), "Carte d'électeur n° 1234567")
+    await user.click(within(account).getByRole('button', { name: 'Débloquer le compte' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Compte de Amani Kabeya débloqué, le client reçoit un SMS')
+    expect(await within(account).findByText('Compte actif')).toBeInTheDocument()
+  })
 })
 
 describe('marchands', () => {

@@ -55,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED
 }
 
 data class NotificationView(
@@ -219,6 +219,27 @@ class NotificationService(
             NotificationKind.PIN_CHANGED, "PIN changé",
             "Votre PIN vient d'être changé et vos autres sessions ont été fermées. Si ce n'est pas vous, appelez tout de suite le service client.",
             "Capital Invest: votre PIN vient d'etre change. Si ce n'est pas vous, appelez vite le service client.",
+        ),
+        null,
+    )
+
+    /** Le client a bloqué son compte. Le SMS sert de preuve si quelqu'un d'autre l'a fait avec son PIN. */
+    fun accountBlocked(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "blocked:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.ACCOUNT_BLOCKED, "Compte bloqué",
+            "Votre compte est bloqué à votre demande : plus personne ne peut se connecter ni envoyer votre argent. Pour le débloquer, présentez-vous en agence avec votre pièce d'identité.",
+            "Capital Invest: votre compte est bloque a votre demande. Pour le debloquer, presentez-vous en agence avec votre piece d'identite.",
+        ),
+        null,
+    )
+
+    fun accountUnblocked(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "unblocked:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.ACCOUNT_UNBLOCKED, "Compte débloqué",
+            "Votre compte est débloqué. Si votre téléphone a été volé, changez votre PIN dans Sécurité dès votre connexion.",
+            "Capital Invest: votre compte est debloque. Si votre telephone a ete vole, changez votre PIN des votre connexion.",
         ),
         null,
     )
