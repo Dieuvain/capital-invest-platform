@@ -247,7 +247,22 @@ Après chaque mouvement d'argent, le serveur regarde le comportement récent des
 - Le contrôle tourne après la fin de l'opération, dans sa propre transaction : une erreur de surveillance ne bloque jamais l'argent.
 - Seuils PROVISOIRES dans `capital-invest.monitoring` (`application.yml`) : à valider par la conformité, puis à ajuster avec les premiers mois d'activité réelle.
 - API : `GET /v1/backoffice/monitoring/alerts` (`status` : `OPEN`, `CLOSED` ou `ALL` ; `customerId` facultatif), `POST /v1/backoffice/monitoring/alerts/{id}/resolve` (`action` : `DISMISS` ou `SUSPEND`, `note`), `POST /v1/backoffice/customers/{id}/status` (`status` : `ACTIVE` ou `SUSPENDED`, `reason`).
-- Pas encore fait : déclaration de soupçon à la CENAREF depuis le back-office (aujourd'hui, la note garde la trace de la décision) et règles sur les marchands.
+- Pas encore fait : règles sur les marchands.
+
+### Déclarations de soupçon (CENAREF)
+
+Quand une alerte ne s'explique pas, la conformité clique **Déclarer** (sur une alerte à traiter, ou sur un compte déjà suspendu). Le back-office ouvre un dossier prérempli :
+
+- l'identité de la personne déclarée (nom, téléphone, pièce d'identité vérifiée au KYC 2, date de naissance, solde, ancienneté) ;
+- les faits, préremplis avec les alertes du client, à compléter ;
+- l'analyse : pourquoi c'est suspect, à rédiger ;
+- les alertes et toutes les opérations de la période (par défaut les 30 jours avant l'alerte), avec le total des entrées et des sorties. Au-delà de 500 opérations, seules les plus récentes figurent : joindre l'extrait complet.
+
+Capital Invest ne transmet rien elle-même : la conformité **imprime** le dossier, l'envoie par le canal officiel de la CENAREF, puis note la date d'envoi et la référence reçue. Le dossier est alors figé : plus aucune modification n'est possible. Chaque ouverture, rédaction et transmission passe au journal d'audit. Comme pour les alertes, le client n'est jamais prévenu.
+
+- Réservé à la conformité et aux administrateurs. Menu **Surveillance**, onglet **Déclarations**.
+- API : `GET /v1/backoffice/suspicion-reports`, `POST /v1/backoffice/suspicion-reports` (`customerId`, `alertId` facultatif), `GET` et `PUT /v1/backoffice/suspicion-reports/{id}` (`periodFrom`, `periodTo`, `facts`, `analysis`), `POST /v1/backoffice/suspicion-reports/{id}/submit` (`submittedOn`, `cenarefReference`).
+- À valider avec la conformité : le contenu exact attendu par la CENAREF et le délai de transmission. Le dossier suit les rubriques habituelles d'une déclaration (identité, faits, analyse, opérations), pas encore un formulaire officiel.
 
 ## Règles du grand livre
 

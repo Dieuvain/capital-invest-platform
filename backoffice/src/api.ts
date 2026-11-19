@@ -98,6 +98,51 @@ export interface MonitoringAlert {
   resolutionNote?: string | null
 }
 
+/** Déclaration de soupçon à la CENAREF. */
+export interface SuspicionReportSummary {
+  id: string
+  status: 'DRAFT' | 'SUBMITTED'
+  customerId: string
+  customerName: string
+  customerPhone: string
+  periodFrom: string
+  periodTo: string
+  createdByName: string
+  createdAt: string
+  submittedOn?: string | null
+  cenarefReference?: string | null
+}
+
+export interface SuspicionReport {
+  id: string
+  status: 'DRAFT' | 'SUBMITTED'
+  subject: {
+    customerId: string
+    fullName: string
+    phone: string
+    kycLevel: number
+    status: string
+    openedAt: string
+    balanceMinor: number
+    idType?: string | null
+    idNumber?: string | null
+    birthDate?: string | null
+  }
+  periodFrom: string
+  periodTo: string
+  facts: string
+  analysis: string
+  alerts: MonitoringAlert[]
+  operations: HistoryItem[]
+  totals: { count: number; inMinor: number; outMinor: number; truncated: boolean }
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+  submittedByName?: string | null
+  submittedOn?: string | null
+  cenarefReference?: string | null
+}
+
 export interface CustomerSummary {
   id: string
   phone: string
@@ -383,6 +428,14 @@ export class Api {
   // ---- Surveillance des opérations ----
   alerts = (status: 'OPEN' | 'CLOSED' | 'ALL' = 'OPEN', customerId?: string) =>
     this.json<MonitoringAlert[]>('GET', `/v1/backoffice/monitoring/alerts?status=${status}${customerId ? `&customerId=${customerId}` : ''}`)
+  suspicionReports = () => this.json<SuspicionReportSummary[]>('GET', '/v1/backoffice/suspicion-reports')
+  suspicionReport = (id: string) => this.json<SuspicionReport>('GET', `/v1/backoffice/suspicion-reports/${id}`)
+  draftSuspicionReport = (customerId: string, alertId?: string) =>
+    this.json<SuspicionReport>('POST', '/v1/backoffice/suspicion-reports', { customerId, alertId })
+  saveSuspicionReport = (id: string, r: { periodFrom: string; periodTo: string; facts: string; analysis: string }) =>
+    this.json<SuspicionReport>('PUT', `/v1/backoffice/suspicion-reports/${id}`, r)
+  submitSuspicionReport = (id: string, submittedOn: string, cenarefReference: string) =>
+    this.json<SuspicionReport>('POST', `/v1/backoffice/suspicion-reports/${id}/submit`, { submittedOn, cenarefReference })
   resolveAlert = (id: string, action: 'DISMISS' | 'SUSPEND', note: string) =>
     this.json<MonitoringAlert>('POST', `/v1/backoffice/monitoring/alerts/${id}/resolve`, { action, note })
   customerHistory = (id: string, category: HistoryCategory | null, cursor: string | null = null) => {
