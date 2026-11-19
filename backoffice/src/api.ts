@@ -146,6 +146,8 @@ export interface Merchant {
   payoutPhone?: string | null
   /** Reversements bloqués jusqu'à cette heure, après un changement du compte. */
   payoutBlockedUntil?: string | null
+  /** Ce qui est dû part tout seul chaque nuit vers le compte de reversement. */
+  autoPayout: boolean
 }
 
 export interface MerchantInput {
@@ -168,6 +170,8 @@ export interface MerchantPayout {
   failureMessage?: string | null
   reviewReason?: string | null
   createdAt: string
+  /** Parti avec la tâche de nuit, sans demande d'un agent. */
+  automatic: boolean
 }
 
 export interface MerchantPayment {
@@ -369,6 +373,8 @@ export class Api {
   /** requestId : un double clic ne reverse pas deux fois. */
   payoutMerchant = (id: string, amountMinor: number, requestId: string) =>
     this.json<MerchantPayout>('POST', `/v1/backoffice/merchants/${id}/payouts`, { amountMinor, requestId })
+  setAutoPayout = (id: string, enabled: boolean) =>
+    this.json<Merchant>('POST', `/v1/backoffice/merchants/${id}/auto-payout`, { enabled })
   setMerchantStatus = (id: string, status: MerchantStatus, reason: string) =>
     this.json<Merchant>('POST', `/v1/backoffice/merchants/${id}/status`, { status, reason })
   // ---- Recharges et rapprochement ----

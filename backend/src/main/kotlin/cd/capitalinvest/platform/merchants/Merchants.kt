@@ -22,6 +22,7 @@ import cd.capitalinvest.platform.ledger.LedgerRepository
 import cd.capitalinvest.platform.ledger.LedgerService
 import cd.capitalinvest.platform.ledger.PostingLine
 import cd.capitalinvest.platform.ledger.PostingRequest
+import cd.capitalinvest.platform.limits.LimitsProperties
 import cd.capitalinvest.platform.limits.LimitsService
 import cd.capitalinvest.platform.notifications.NotificationService
 import cd.capitalinvest.platform.notifications.NotificationService.Companion.money
@@ -36,10 +37,13 @@ import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
+import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.scheduling.annotation.Scheduled
+import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.GetMapping
@@ -54,7 +58,9 @@ import org.springframework.web.bind.annotation.RestController
 import java.security.SecureRandom
 import java.sql.ResultSet
 import java.time.Clock
+import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -66,6 +72,10 @@ data class MerchantProperties(
     val payoutAccountCooldownHours: Long = 24,
     /** Plus petit reversement, en centimes. */
     val minPayoutMinor: Long = 100,
+    /** Reversement automatique chaque nuit (voir `auto-payout-cron`). Coupé dans les tests, qui le lancent eux-mêmes. */
+    val autoPayoutEnabled: Boolean = true,
+    /** En dessous de ce solde, la nuit ne reverse pas : on attend que le montant vaille l'opération. 10,00 $ par défaut. */
+    val autoPayoutMinMinor: Long = 1_000,
 )
 
 enum class MerchantStatus { ACTIVE, SUSPENDED }
@@ -85,6 +95,8 @@ data class Merchant(
     /** Numéro mobile money des reversements, au format international sans « + ». */
     val payoutMsisdn: String? = null,
     val payoutAccountChangedAt: OffsetDateTime? = null,
+    /** Reversement automatique chaque nuit. */
+    val autoPayout: Boolean = true,
 )
 
 /** Ce que l'app montre avant de payer : de quoi reconnaître le commerce, rien de plus. */
@@ -121,6 +133,8 @@ data class MerchantView(
     val payoutPhone: String?,
     /** Reversements suspendus jusqu'à cette heure, après un changement du compte. */
     val payoutBlockedUntil: OffsetDateTime?,
+    /** Ce qui est dû part tout seul chaque nuit vers le compte de reversement. */
+    val autoPayout: Boolean,
 )
 
 /** Un reversement au marchand, avec son état chez l'opérateur. */
@@ -134,6 +148,8 @@ data class MerchantPayoutLine(
     val failureMessage: String?,
     val reviewReason: String?,
     val createdAt: OffsetDateTime,
+    /** Parti avec la tâche de nuit, sans demande d'un agent. */
+    val automatic: Boolean,
 )
 
 data class MerchantPaymentLine(
@@ -145,6 +161,9 @@ data class MerchantPaymentLine(
     val commissionMinor: Long,
     val createdAt: OffsetDateTime,
 )
+
+/** Bilan d'une nuit de reversements automatiques. */
+data class AutoPayoutReport(val date: LocalDate, val sent: Int, val skipped: Int, val failed: Int)
 
 data class MerchantDetail(val merchant: MerchantView, val payments: List<MerchantPaymentLine>, val payouts: List<MerchantPayoutLine>)
 
@@ -169,6 +188,7 @@ class MerchantService(
     private val notifications: NotificationService,
 ) {
     private val random = SecureRandom()
+    private val log = LoggerFactory.getLogger(MerchantService::class.java)
     private val feesAccountId by lazy {
         ledgerRepository.findAccountByCode("FEES_REVENUE_USD")?.id ?: error("Compte FEES_REVENUE_USD absent")
     }
@@ -317,7 +337,7 @@ class MerchantService(
      * Reverse au marchand ce que Capital Invest lui doit (tout, ou le montant donné), vers son compte de reversement.
      * Le même identifiant de demande rejoué ne reverse jamais deux fois.
      */
-    fun payout(agentId: UUID, id: UUID, amountMinor: Long?, requestId: String): MerchantPayoutLine {
+    fun payout(agentId: UUID?, id: UUID, amountMinor: Long?, requestId: String): MerchantPayoutLine {
         val m = get(id)
         val operator = m.payoutOperator
         val msisdn = m.payoutMsisdn
@@ -338,8 +358,52 @@ class MerchantService(
         }
         if (amount > balance) throw BusinessException("INSUFFICIENT_FUNDS", "Le marchand n'a que ${money(balance)} à reverser")
         val w = withdrawals.initiateMerchantPayout(requestId, m.id, m.walletAccountId, operator, msisdn, amount, agentId)
-        audit.record(ActorType.AGENT, agentId, "MERCHANT_PAYOUT_REQUESTED", "MERCHANT", id, "${money(amount)} vers ${operator.name} +$msisdn")
+        audit.record(
+            if (agentId == null) ActorType.SYSTEM else ActorType.AGENT, agentId,
+            if (agentId == null) "MERCHANT_PAYOUT_AUTOMATIC" else "MERCHANT_PAYOUT_REQUESTED", "MERCHANT", id,
+            "${money(amount)} vers ${operator.name} +$msisdn",
+        )
         return line(w)
+    }
+
+    /** Active ou coupe le reversement automatique de nuit pour ce marchand. */
+    @Transactional
+    fun setAutoPayout(agentId: UUID, id: UUID, enabled: Boolean): MerchantView {
+        val m = get(id)
+        if (m.autoPayout != enabled) {
+            jdbc.sql("UPDATE merchant SET auto_payout = :on, updated_at = :now WHERE id = :id")
+                .param("on", enabled).param("now", now()).param("id", id).update()
+            audit.record(ActorType.AGENT, agentId, if (enabled) "MERCHANT_AUTO_PAYOUT_ON" else "MERCHANT_AUTO_PAYOUT_OFF", "MERCHANT", id)
+        }
+        return view(get(id))
+    }
+
+    /**
+     * Reversements de la nuit : chaque marchand actif, en reversement automatique, avec un compte de reversement
+     * hors délai de sécurité et au moins [MerchantProperties.autoPayoutMinMinor] dû, reçoit tout son solde.
+     * Un marchand qui a déjà un reversement en cours ou à vérifier attend la nuit suivante.
+     * L'identifiant `auto:<date>` empêche un second reversement la même nuit, même si la tâche repasse.
+     */
+    fun runAutoPayouts(date: LocalDate): AutoPayoutReport {
+        val candidates = jdbc.sql(
+            """SELECT m.* FROM merchant m
+               WHERE m.status = 'ACTIVE' AND m.auto_payout AND m.payout_msisdn IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM withdrawal w WHERE w.merchant_id = m.id AND w.status IN ('PENDING', 'REVIEW'))
+               ORDER BY m.code""",
+        ).query(::map).list()
+        var sent = 0
+        var skipped = 0
+        var failed = 0
+        for (m in candidates) {
+            if (payoutBlockedUntil(m) != null || ledgerRepository.balance(m.walletAccountId) < props.autoPayoutMinMinor) {
+                skipped++
+                continue
+            }
+            runCatching { payout(null, m.id, null, "auto:$date") }
+                .onSuccess { sent++ }
+                .onFailure { failed++; log.error("Reversement automatique de {} : {}", m.code, it.toString()) }
+        }
+        return AutoPayoutReport(date, sent, skipped, failed)
     }
 
     private fun payoutBlockedUntil(m: Merchant): OffsetDateTime? {
@@ -349,6 +413,7 @@ class MerchantService(
 
     private fun line(w: Withdrawal) = MerchantPayoutLine(
         w.id, w.amountMinor, w.operator, "+${w.msisdn}", w.status, w.failureMessage, w.reviewReason, w.createdAt,
+        automatic = w.requestedBy == null,
     )
 
     fun list(): List<MerchantView> =
@@ -374,7 +439,7 @@ class MerchantService(
     fun view(m: Merchant) = MerchantView(
         m.id, m.code, m.name, m.category, m.city, m.phone, m.commissionBps, m.status,
         ledgerRepository.balance(m.walletAccountId), qrPayload(m.code), m.createdAt,
-        m.payoutOperator, m.payoutMsisdn?.let { "+$it" }, payoutBlockedUntil(m),
+        m.payoutOperator, m.payoutMsisdn?.let { "+$it" }, payoutBlockedUntil(m), m.autoPayout,
     )
 
     private fun newCode(): String = (1..6).map { CODE_ALPHABET[random.nextInt(CODE_ALPHABET.length)] }.joinToString("")
@@ -393,6 +458,7 @@ class MerchantService(
         payoutOperator = rs.getString("payout_operator")?.let(Operator::valueOf),
         payoutMsisdn = rs.getString("payout_msisdn"),
         payoutAccountChangedAt = rs.getObject("payout_account_changed_at", OffsetDateTime::class.java),
+        autoPayout = rs.getBoolean("auto_payout"),
     )
 
     companion object {
@@ -457,6 +523,8 @@ data class PayoutRequest(
     @field:NotBlank @field:Size(max = 100) val requestId: String,
 )
 
+data class AutoPayoutRequest(val enabled: Boolean)
+
 data class MerchantStatusRequest(val status: MerchantStatus, @field:Size(max = 300) val reason: String? = null)
 
 /** Création et suivi des marchands. Les administrateurs créent et suspendent ; la conformité consulte. */
@@ -506,9 +574,35 @@ class BackofficeMerchantController(private val merchants: MerchantService) {
         return merchants.payout(me.id, id, b.amountMinor, b.requestId)
     }
 
+    @PostMapping("/{id}/auto-payout")
+    fun autoPayout(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @RequestBody b: AutoPayoutRequest): MerchantView {
+        requireAdmin(me)
+        return merchants.setAutoPayout(me.id, id, b.enabled)
+    }
+
     @PostMapping("/{id}/status")
     fun status(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @Valid @RequestBody b: MerchantStatusRequest): MerchantView {
         requireAdmin(me)
         return merchants.setStatus(me.id, id, b.status, b.reason)
+    }
+}
+
+/** Chaque nuit à 1 h 30 (heure de Lubumbashi), avant le rapprochement de 2 h : reversements automatiques aux marchands. */
+@Component
+class MerchantJobs(
+    private val merchants: MerchantService,
+    private val props: MerchantProperties,
+    private val limits: LimitsProperties,
+    private val clock: Clock,
+) {
+    private val log = LoggerFactory.getLogger(MerchantJobs::class.java)
+
+    @Scheduled(cron = "\${capital-invest.merchants.auto-payout-cron:0 30 1 * * *}", zone = "Africa/Lubumbashi")
+    fun nightly() {
+        if (!props.autoPayoutEnabled) return
+        val today = LocalDate.now(clock.withZone(ZoneId.of(limits.timezone)))
+        runCatching { merchants.runAutoPayouts(today) }
+            .onSuccess { log.info("Reversements automatiques du {} : {} partis, {} en attente, {} en erreur", today, it.sent, it.skipped, it.failed) }
+            .onFailure { log.error("Reversements automatiques du {} : {}", today, it.toString()) }
     }
 }

@@ -341,6 +341,34 @@ describe('reversements aux marchands', () => {
     expect(section.getByRole('note')).toHaveTextContent('reversements possibles à partir du')
     expect(section.getByRole('button', { name: /^Reverser/ })).toBeDisabled()
   })
+
+  it("l'administrateur coupe puis réactive le reversement automatique de nuit", async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Marchands')
+    await user.click(await screen.findByText('Alimentation Mama Nzuzi'))
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    const section = within(await within(panel).findByRole('region', { name: 'Reversements' }))
+    expect(section.getByText('Chaque nuit').closest('.row')).toHaveTextContent('reversement automatique')
+    expect(section.getByText(/Vers 1 h 30/)).toBeInTheDocument()
+    expect(section.getByText(/· automatique/)).toBeInTheDocument()
+
+    await user.click(section.getByRole('button', { name: 'Couper' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Reversement automatique coupé')
+    expect(await section.findByText('pas de reversement automatique')).toBeInTheDocument()
+    expect(section.queryByText(/Vers 1 h 30/)).not.toBeInTheDocument()
+    await user.click(section.getByRole('button', { name: 'Activer' }))
+    expect(await section.findByText('reversement automatique')).toBeInTheDocument()
+    expect(server.requests.filter((r) => r.path === '/v1/backoffice/merchants/m-1/auto-payout').map((r) => r.body))
+      .toEqual([{ enabled: false }, { enabled: true }])
+  })
+
+  it('la conformité voit le réglage de nuit sans pouvoir le changer', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Marchands')
+    await user.click(await screen.findByText('Alimentation Mama Nzuzi'))
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    const section = within(await within(panel).findByRole('region', { name: 'Reversements' }))
+    expect(section.getByText('reversement automatique')).toBeInTheDocument()
+    expect(section.queryByRole('button', { name: 'Couper' })).not.toBeInTheDocument()
+  })
 })
 
 describe('agents', () => {

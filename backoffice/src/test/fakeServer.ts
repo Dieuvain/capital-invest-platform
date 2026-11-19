@@ -70,7 +70,7 @@ export class FakeServer {
       id: 'm-1', code: 'K7P2QX', name: 'Alimentation Mama Nzuzi', category: 'Alimentation', city: 'Lubumbashi',
       phone: '+243990000101', commissionBps: 100, status: 'ACTIVE', balanceMinor: 1237,
       qrPayload: 'capitalinvest://pay?m=K7P2QX', createdAt: '2026-11-18T08:00:00Z',
-      payoutOperator: 'AIRTEL', payoutPhone: '+243990000101', payoutBlockedUntil: null,
+      payoutOperator: 'AIRTEL', payoutPhone: '+243990000101', payoutBlockedUntil: null, autoPayout: true,
     },
   ]
   merchantPayments: Record<string, MerchantPayment[]> = {
@@ -82,6 +82,7 @@ export class FakeServer {
   merchantPayouts: Record<string, MerchantPayout[]> = {
     'm-1': [{
       id: 'po-0', amountMinor: 5000, operator: 'AIRTEL', phone: '+243990000101', status: 'CONFIRMED', createdAt: '2026-11-18T18:00:00Z',
+      automatic: true,
     }],
   }
   requests: { method: string; path: string; body: unknown }[] = []
@@ -180,6 +181,7 @@ export class FakeServer {
           id: `m-${n}`, code, name: body.name, category: body.category, city: body.city, phone: `+243${digits.slice(-9)}`,
           commissionBps: body.commissionBps, status: 'ACTIVE', balanceMinor: 0, qrPayload: `capitalinvest://pay?m=${code}`,
           createdAt: '2026-11-19T10:00:00Z', payoutOperator: body.payoutOperator, payoutPhone: body.payoutPhone, payoutBlockedUntil: null,
+          autoPayout: true,
         }
         this.merchants.push(created)
         return json(created, 201)
@@ -199,10 +201,15 @@ export class FakeServer {
         found.balanceMinor -= body.amountMinor
         const p: MerchantPayout = {
           id: `po-${body.requestId}`, amountMinor: body.amountMinor, operator: found.payoutOperator!, phone: found.payoutPhone!,
-          status: 'PENDING', createdAt: '2026-11-19T10:05:00Z',
+          status: 'PENDING', createdAt: '2026-11-19T10:05:00Z', automatic: false,
         }
         this.merchantPayouts[found.id] = [p, ...(this.merchantPayouts[found.id] ?? [])]
         return json(p, 202)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/auto-payout$/))) {
+        const found = this.merchants.find((x) => x.id === m![1])!
+        found.autoPayout = body.enabled
+        return json(found)
       }
       if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/status$/))) {
         const found = this.merchants.find((x) => x.id === m![1])!

@@ -56,6 +56,10 @@ capital-invest:
   # Paiement chez un marchand par QR : le client ne paie rien, le marchand paie une commission.
   merchants:
     default-commission-bps: 100  # 1 %, PROVISOIRE : à fixer par la direction générale
+    # Chaque nuit, ce qui est dû part vers le compte de reversement de chaque marchand (à partir de 10,00 $).
+    auto-payout-enabled: true
+    auto-payout-min-minor: 1000
+    auto-payout-cron: "0 30 1 * * *"  # heure de Lubumbashi, avant le rapprochement de 2 h
   # Passage au KYC 2.
   kyc:
     # Clé AES-256 (base64, 32 octets) de chiffrement des pièces d'identité. A fournir en production.

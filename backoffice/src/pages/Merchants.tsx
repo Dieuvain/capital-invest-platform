@@ -361,6 +361,21 @@ function Payouts({ api, merchant: m, payouts, admin, done }: {
     setPaying(true)
   }
 
+  async function toggleAuto() {
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.setAutoPayout(m.id, !m.autoPayout)
+      done(updated.autoPayout
+        ? 'Reversement automatique activé : ce qui est dû partira chaque nuit'
+        : 'Reversement automatique coupé : les reversements se font à la main')
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function pay(e: FormEvent) {
     e.preventDefault()
     const minor = parseUsd(amount)
@@ -411,7 +426,7 @@ function Payouts({ api, merchant: m, payouts, admin, done }: {
         </form>
       ) : (
         <div className="row" style={{ fontSize: 13 }}>
-          <span className="muted">Vers</span>
+          <span className="muted" style={{ whiteSpace: 'nowrap' }}>Vers</span>
           <b>{m.payoutOperator ? `${operatorLabel[m.payoutOperator]} ${m.payoutPhone}` : 'aucun compte renseigné'}</b>
           <span className="spacer" />
           {admin && (
@@ -419,6 +434,25 @@ function Payouts({ api, merchant: m, payouts, admin, done }: {
               {m.payoutOperator ? 'Modifier' : 'Renseigner'}
             </button>
           )}
+        </div>
+      )}
+      {!editing && (
+        <div className="row" style={{ fontSize: 13 }}>
+          <span className="muted" style={{ whiteSpace: 'nowrap' }}>Chaque nuit</span>
+          <b>{m.autoPayout ? 'reversement automatique' : 'pas de reversement automatique'}</b>
+          <span className="spacer" />
+          {admin && (
+            <button type="button" className="btn ghost small" onClick={toggleAuto} disabled={busy}>
+              {m.autoPayout ? 'Couper' : 'Activer'}
+            </button>
+          )}
+        </div>
+      )}
+      {!editing && m.autoPayout && (
+        <div className="muted small">
+          {m.payoutOperator
+            ? 'Vers 1 h 30, tout ce qui est dû part vers ce compte, à partir de 10,00 $.'
+            : 'Renseignez le compte de reversement pour que les reversements de nuit partent.'}
         </div>
       )}
       {blocked && (
@@ -455,7 +489,7 @@ function Payouts({ api, merchant: m, payouts, admin, done }: {
               <div>
                 <div className="mono" style={{ fontWeight: 600 }}>{formatUsd(p.amountMinor)}</div>
                 <div className="muted">{operatorLabel[p.operator]} {p.phone}</div>
-                <div className="muted">{formatDateTime(p.createdAt)}</div>
+                <div className="muted">{formatDateTime(p.createdAt)}{p.automatic && ' · automatique'}</div>
                 {(p.failureMessage || p.reviewReason) && <div className="muted">{p.failureMessage ?? p.reviewReason}</div>}
               </div>
               <div><span className={`badge ${payoutStatus[p.status].cls}`}>{payoutStatus[p.status].label}</span></div>
