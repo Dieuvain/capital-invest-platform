@@ -298,6 +298,32 @@ String? merchantCodeFrom(String raw) {
   return RegExp(r'^[A-Z2-9]{6}$').hasMatch(code) ? code : null;
 }
 
+/// Ce que contient le QR « Recevoir » d'un client : son numéro et, s'il l'a choisi, le montant attendu.
+class ReceiveQr {
+  ReceiveQr(this.phone, this.amountMinor);
+
+  /// +243…
+  final String phone;
+  final int? amountMinor;
+
+  /// capitalinvest://send?p=243970000001&a=2500 : lisible par l'app, sans donnée secrète.
+  String get payload => Uri(
+    scheme: 'capitalinvest',
+    host: 'send',
+    queryParameters: {'p': phone.replaceFirst('+', ''), if (amountMinor != null) 'a': '$amountMinor'},
+  ).toString();
+
+  /// Null si ce n'est pas un QR « Recevoir » Capital Invest valable.
+  static ReceiveQr? parse(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || uri.scheme != 'capitalinvest' || uri.host != 'send') return null;
+    final p = uri.queryParameters['p'] ?? '';
+    if (!RegExp(r'^243[0-9]{9}$').hasMatch(p)) return null;
+    final a = int.tryParse(uri.queryParameters['a'] ?? '');
+    return ReceiveQr('+$p', a != null && a > 0 ? a : null);
+  }
+}
+
 class KycState {
   KycState({required this.kycLevel, this.requestStatus, this.rejectionReason});
 

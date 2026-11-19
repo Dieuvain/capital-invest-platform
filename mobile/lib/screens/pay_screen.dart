@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -9,6 +11,7 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
+import 'money_screens.dart';
 
 /// Ouvre l'appareil photo, ou l'outil des tests quand il est fourni.
 Future<String?> scanQr(AppState app, BuildContext context) {
@@ -53,6 +56,16 @@ class _PayMerchantScreenState extends State<PayMerchantScreen> with ApiAction {
   Future<void> _scan() async {
     final raw = await scanQr(widget.app, context);
     if (raw == null || !mounted) return;
+    // Le QR « Recevoir » d'un client : c'est un envoi, pas un paiement marchand.
+    final person = ReceiveQr.parse(raw);
+    if (person != null) {
+      unawaited(
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => TransferScreen(app: widget.app, limits: widget.limits, scanned: person)),
+        ),
+      );
+      return;
+    }
     final c = merchantCodeFrom(raw);
     if (c == null) return setState(() => error = 'Ce QR n\'est pas un QR de paiement Capital Invest.');
     code.text = '${c.substring(0, 3)} ${c.substring(3)}';

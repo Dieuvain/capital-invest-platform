@@ -399,6 +399,16 @@ Un envoi au mauvais numéro ne se rattrape pas. Avant la confirmation par PIN, l
 - Même vérification pour un envoi programmé. Un compte suspendu ou fermé est signalé (« ne peut pas recevoir d'argent pour le moment »).
 - API : `GET /v1/transfers/recipient?phone=…` (`{"phone", "displayName"}`), `GET /v1/transfers/recent` (5 derniers destinataires).
 
+## Mon QR pour recevoir
+
+Dans le menu, « Mon QR pour recevoir » affiche un QR avec le nom et le numéro du client. Un proche le scanne avec **Payer**, comme un QR marchand : l'app reconnaît un QR de client et ouvre **l'envoi avec le numéro déjà rempli**. Le client peut aussi y mettre un montant : celui qui scanne n'a plus qu'à vérifier le nom et confirmer avec son PIN. « Partager mon numéro » envoie le numéro par WhatsApp ou SMS.
+
+![Mon QR pour recevoir](docs/captures-app/22-recevoir.png)
+
+- Contenu du QR : `capitalinvest://send?p=243970000001&a=2500` (le montant `a`, en centimes, est facultatif). Il n'y a rien de secret dedans : seulement le numéro et le montant.
+- Même vérification qu'un envoi tapé à la main : le nom du destinataire s'affiche avant le PIN. Le QR est dessiné en noir sur blanc même en mode sombre, ce qui le rend plus facile à lire.
+- Tout se passe dans l'app : le serveur ne change pas.
+
 ## Envois programmés
 
 Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.

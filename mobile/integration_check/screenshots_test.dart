@@ -161,6 +161,16 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mon QR pour recevoir'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('receive-amount-field')), '25');
+      await tester.pump();
+      await shot('22-recevoir$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byKey(const ValueKey('quick-Payer')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('amount')), '18,75');
