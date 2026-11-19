@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, BackofficeComplaint, CustomerSummary, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -44,7 +44,7 @@ export class FakeServer {
     },
   ]
   reports: SuspicionReport[] = []
-  customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
+  customer: CustomerSummary = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
   history: HistoryItem[] = [
     item('w1', 'WITHDRAWAL', -1015, 15, { status: 'PENDING', operator: 'AIRTEL', msisdn: '+243970000001' }),
     item('s1', 'TRANSFER_SENT', -2020, 20, { counterpartyName: 'Béni Mukendi', counterpartyPhone: '+243970000402', note: 'Loyer' }),
@@ -60,6 +60,44 @@ export class FakeServer {
       id: 'w-review', type: 'WITHDRAWAL', operator: 'AIRTEL', provider: 'PAWAPAY', amountMinor: 3000, currency: 'USD',
       reason: 'Aucune réponse définitive après 24 h (toujours en cours chez l\'opérateur)', customerName: 'Esther Mbuyi',
       customerPhone: '+243970000005', checks: 12, createdAt: '2026-11-18T09:00:00Z',
+    },
+  ]
+  scheduled: ScheduledTransfer[] = [
+    {
+      id: 'st-1', recipientName: 'Béni Mukendi', recipientPhone: '+243970000402', amountMinor: 15000, feeMinor: 150, note: 'Loyer',
+      frequency: 'MONTHLY', day: 5, status: 'ACTIVE', nextRunAt: '2026-12-05T06:00:00Z', lastRunAt: '2026-11-05T06:00:00Z',
+      lastResult: 'FAILED', lastFailure: 'Solde insuffisant', createdAt: '2026-10-01T10:00:00Z',
+    },
+  ]
+  complaints: BackofficeComplaint[] = [
+    {
+      complaint: {
+        id: 'cp-1', reference: 'REC-20261119-9C41D0', category: 'NOT_ME', categoryLabel: "Je n'ai pas fait cette opération",
+        message: "Je n'ai jamais envoyé cet argent, quelqu'un a mon téléphone", status: 'OPEN',
+        operation: item('s1', 'TRANSFER_SENT', -2020, 20, { counterpartyName: 'Béni Mukendi', counterpartyPhone: '+243970000402' }),
+        dueAt: '2026-11-26T09:00:00Z', answer: null, outcome: null, answeredAt: null, createdAt: '2026-11-19T09:00:00Z',
+      },
+      customerId: 'c-1', customerName: 'Amani Kabeya', customerPhone: '+243970000001', overdue: false, urgent: true, answeredByName: null,
+    },
+    {
+      complaint: {
+        id: 'cp-2', reference: 'REC-20261110-1A2B3C', category: 'NOT_RECEIVED', categoryLabel: "L'argent n'est pas arrivé",
+        message: 'Mon frère dit ne rien avoir reçu', status: 'OPEN', operation: null,
+        dueAt: '2026-11-17T09:00:00Z', answer: null, outcome: null, answeredAt: null, createdAt: '2026-11-10T09:00:00Z',
+      },
+      customerId: 'c-5', customerName: 'Esther Mbuyi', customerPhone: '+243970000005', overdue: true, urgent: false, answeredByName: null,
+    },
+  ]
+  purchases: PendingPurchase[] = [
+    {
+      type: 'BILL', id: 'b-review', customerName: 'Amani Kabeya', customerPhone: '+243970000001', label: 'SNEL prépayé',
+      target: '01234567890', holderName: 'KABEYA AMANI', needsToken: true, amountMinor: 2000, provider: 'SIMULATOR',
+      status: 'REVIEW', reason: 'Aucune réponse définitive après 24 h', checks: 14, createdAt: '2026-11-18T08:30:00Z',
+    },
+    {
+      type: 'AIRTIME', id: 'a-review', customerName: 'Esther Mbuyi', customerPhone: '+243970000005', label: 'Crédit Vodacom',
+      target: '+243812345678', holderName: null, needsToken: false, amountMinor: 500, provider: 'SIMULATOR',
+      status: 'PENDING', reason: null, checks: 3, createdAt: '2026-11-19T09:00:00Z',
     },
   ]
   runs: ReconciliationRun[] = [
@@ -230,12 +268,15 @@ export class FakeServer {
       if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
       if (path.endsWith('/status') && method === 'POST') {
         this.customer.status = body.status
+        if (body.status === 'ACTIVE') this.customer.blockedByCustomerAt = null
         return json({ customerId: this.customer.id, status: body.status })
       }
       if (path === '/v1/backoffice/customers') {
         const phone = u.searchParams.get('phone')!.replace(/[^+\d]/g, '')
         return phone === this.customer.phone ? json(this.customer) : problem(404, 'CUSTOMER_NOT_FOUND', 'Aucun client avec ce numéro')
       }
+      if (path.endsWith('/scheduled-transfers')) return json(this.scheduled)
+      if (path.endsWith('/complaints')) return json(this.complaints.filter((c) => path.includes(`/${c.customerId}/`)))
       if ((m = path.match(/^\/v1\/backoffice\/customers\/[^/]+\/history\/([^/]+)$/))) {
         const i = this.history.find((h) => h.id === m![1])
         return i ? json({ item: i, holderName: this.customer.fullName, holderPhone: this.customer.phone, issuedAt: '2026-11-19T10:00:00Z' })
@@ -345,7 +386,16 @@ export class FakeServer {
       if (!a.active) for (const [t, id] of this.sessions) if (id === a.id) this.sessions.delete(t)
       return json(a)
     }
-    if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals)/.test(path)) {
+    if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals|purchases|airtime|bills)/.test(path)) {
+      if (path === '/v1/backoffice/purchases/review') return json(this.purchases)
+      if ((m = path.match(/^\/v1\/backoffice\/(airtime|bills)\/([^/]+)\/resolve$/))) {
+        const p = this.purchases.find((x) => x.id === m![2])!
+        if (body.action === 'DONE' && p.needsToken && !/^\d{20}$/.test(String(body.token ?? '').replace(/\D/g, ''))) {
+          return problem(422, 'TOKEN_REQUIRED', 'Le code du compteur (20 chiffres) est obligatoire')
+        }
+        this.purchases = this.purchases.filter((x) => x.id !== p.id)
+        return json({ id: p.id, status: body.action === 'DONE' ? (p.type === 'AIRTIME' ? 'DELIVERED' : 'PAID') : 'FAILED' })
+      }
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
       if (path === '/v1/backoffice/topups/review') return json(this.review)
       if ((m = path.match(/^\/v1\/backoffice\/topups\/([^/]+)\/resolve$/))) {
@@ -375,6 +425,17 @@ export class FakeServer {
         Object.assign(i, { resolvedAt: '2026-11-19T10:00:00Z', resolvedByName: me.fullName, resolution: body.note })
         return json(i)
       }
+    }
+    if (path.startsWith('/v1/backoffice/complaints')) {
+      if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
+      if ((m = path.match(/^\/v1\/backoffice\/complaints\/([^/]+)\/answer$/))) {
+        const c = this.complaints.find((x) => x.complaint.id === m![1])!
+        Object.assign(c.complaint, { status: 'ANSWERED', answer: body.answer, outcome: body.outcome, answeredAt: '2026-11-19T11:00:00Z' })
+        Object.assign(c, { overdue: false, answeredByName: me.fullName })
+        return json(c)
+      }
+      const status = u.searchParams.get('status') ?? 'OPEN'
+      return json(this.complaints.filter((c) => c.complaint.status === status))
     }
     if (path === '/v1/backoffice/audit') {
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')

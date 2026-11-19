@@ -12,6 +12,7 @@ import { Audit } from './pages/Audit'
 import { Customers } from './pages/Customers'
 import { Merchants } from './pages/Merchants'
 import { Reconciliation } from './pages/Reconciliation'
+import { Complaints } from './pages/Complaints'
 import { Monitoring } from './pages/Monitoring'
 import { SuspicionReportPage } from './pages/SuspicionReport'
 import { Dashboard } from './pages/Dashboard'
@@ -26,6 +27,7 @@ export const sections: { path: string; label: string; icon: string; roles: Role[
   { path: 'accueil', label: 'Tableau de bord', icon: 'home', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN', 'MARKETING'] },
   { path: 'kyc', label: 'Demandes KYC 2', icon: 'id', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN'] },
   { path: 'promotions', label: 'Promotions', icon: 'promo', roles: ['MARKETING', 'ADMIN'] },
+  { path: 'reclamations', label: 'Réclamations', icon: 'chat', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'clients', label: 'Clients', icon: 'search', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'marchands', label: 'Marchands', icon: 'shop', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'surveillance', label: 'Surveillance', icon: 'shield', roles: ['COMPLIANCE', 'ADMIN'] },
@@ -138,6 +140,9 @@ export function App({ api }: { api: Api }) {
       ) : (
         <Promotions api={api} open={(pid) => go(`promotions/${pid}`)} />
       )
+      break
+    case 'reclamations':
+      page = <Complaints api={api} notify={notify} openCustomer={(cid) => go(`clients/${cid}`)} />
       break
     case 'clients':
       page = <Customers api={api} id={id ?? null} open={(cid) => go(cid ? `clients/${cid}` : 'clients')} notify={notify} />

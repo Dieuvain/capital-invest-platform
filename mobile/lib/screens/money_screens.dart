@@ -9,6 +9,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'scheduled_screens.dart';
 
 /// Recharge par mobile money : le client valide ensuite sur son téléphone, l'app attend la confirmation.
 class TopupScreen extends StatefulWidget {
@@ -370,9 +371,26 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
   final note = TextEditingController();
   final pin = TextEditingController();
   String? toPhone;
+  Recipient? recipient;
   FeeQuote? quote;
   TransferResult? done;
+  List<Recipient> recent = const [];
   String _key = newIdempotencyKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecent();
+  }
+
+  Future<void> _loadRecent() async {
+    try {
+      final r = await widget.app.api.recentRecipients();
+      if (mounted) setState(() => recent = r);
+    } on ApiException {
+      // Pas de raccourcis : le client tape le numéro.
+    }
+  }
 
   Future<void> _review() async {
     final p = normalizePhone(phone.text);
@@ -383,10 +401,14 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
     if (l != null && minor > l.perTransactionMinor) {
       return setState(() => error = 'Votre plafond par opération est de ${formatUsd(l.perTransactionMinor)}.');
     }
+    // Le nom d'abord : un mauvais numéro est arrêté avant de calculer quoi que ce soit.
+    final who = await run(widget.app, () => widget.app.api.lookupRecipient(p));
+    if (who == null) return;
     final q = await run(widget.app, () => widget.app.api.transferFee(minor));
     if (q == null) return;
     setState(() {
       toPhone = p;
+      recipient = who;
       quote = q;
       _key = newIdempotencyKey(); // une nouvelle vérification est un nouvel envoi
     });
@@ -424,12 +446,27 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
           ),
           const SizedBox(height: 8),
           Text(
-            'au $toPhone. Frais : ${formatUsd(done!.feeMinor)}.',
+            'à ${recipient!.displayName} ($toPhone). Frais : ${formatUsd(done!.feeMinor)}.',
             textAlign: TextAlign.center,
             style: TextStyle(color: context.pal.muted),
           ),
           const SizedBox(height: 24),
           FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => NewScheduledTransferScreen(
+                  app: widget.app,
+                  toPhone: toPhone,
+                  amountMinor: done!.amountMinor,
+                  note: note.text.trim(),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.event_repeat_rounded),
+            label: const Text('Répéter cet envoi chaque mois'),
+          ),
         ],
       );
     }
@@ -442,7 +479,8 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
           SoftCard(
             child: Column(
               children: [
-                _Row('Destinataire', toPhone!),
+                _Row('Destinataire', recipient!.displayName, key: const ValueKey('recipient-name')),
+                _Row('Numéro', toPhone!),
                 _Row('Montant reçu', formatUsd(q.amountMinor)),
                 _Row('Frais', formatUsd(q.feeMinor)),
                 Divider(height: 28, color: context.pal.divider),
@@ -450,7 +488,12 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 10),
+          Text(
+            'Ce n\'est pas la bonne personne ? Touchez « Modifier » : un envoi ne peut pas être annulé.',
+            style: TextStyle(color: context.pal.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
           PinField(controller: pin, label: 'PIN pour confirmer', autofocus: true, onSubmitted: (_) => _send()),
           const SizedBox(height: 20),
           BusyButton(label: 'Envoyer ${formatUsd(q.amountMinor)}', busy: busy, onPressed: _send),
@@ -463,6 +506,25 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
       subtitle: 'À un autre client Capital Invest, avec son numéro de téléphone.',
       children: [
         ErrorBanner(error),
+        if (recent.isNotEmpty) ...[
+          Text('Récents', style: TextStyle(color: context.pal.muted, fontSize: 13)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final r in recent)
+                ActionChip(
+                  key: ValueKey('recent-${r.phone}'),
+                  avatar: const Icon(Icons.person_outline_rounded, size: 18),
+                  label: Text(r.displayName),
+                  // Le champ affiche déjà +243 : on n'y met que les 9 chiffres.
+                  onPressed: () => setState(() => phone.text = r.phone.replaceFirst('+243', '')),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         PhoneField(controller: phone, label: 'Numéro du destinataire'),
         const SizedBox(height: 12),
         TextField(
@@ -485,7 +547,7 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
 }
 
 class _Row extends StatelessWidget {
-  const _Row(this.label, this.value, {this.strong = false});
+  const _Row(this.label, this.value, {super.key, this.strong = false});
 
   final String label;
   final String value;

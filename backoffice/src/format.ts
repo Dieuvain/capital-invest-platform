@@ -66,6 +66,12 @@ const auditLabels: Record<string, string> = {
   MERCHANT_PAYOUT_AUTOMATIC: 'Reversement automatique de nuit',
   MERCHANT_AUTO_PAYOUT_ON: 'Reversement automatique activé',
   MERCHANT_AUTO_PAYOUT_OFF: 'Reversement automatique coupé',
+  AIRTIME_REVIEW_DONE: 'Crédit téléphone noté envoyé',
+  AIRTIME_REVIEW_REFUND: 'Crédit téléphone remboursé',
+  BILL_REVIEW_DONE: 'Facture notée payée',
+  BILL_REVIEW_REFUND: 'Facture remboursée',
+  COMPLAINT_ANSWERED_FOUNDED: 'Réclamation fondée, réponse envoyée',
+  COMPLAINT_ANSWERED_UNFOUNDED: 'Réclamation non fondée, réponse envoyée',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 
@@ -164,6 +170,10 @@ export function historyTitle(i: HistoryItem): string {
     case 'WITHDRAWAL': return `Retrait vers ${op ?? 'mobile money'}`
     case 'WITHDRAWAL_REFUND': return 'Retrait remboursé'
     case 'MERCHANT_PAYMENT': return `Paiement à ${i.counterpartyName ?? 'un marchand'}`
+    case 'AIRTIME': return `Crédit téléphone ${i.msisdn ?? ''}`.trim()
+    case 'AIRTIME_REFUND': return 'Crédit non envoyé, remboursé'
+    case 'BILL_PAYMENT': return `Facture ${i.counterpartyName ?? ''} ${i.billReference ?? ''}`.replace(/\s+/g, ' ').trim()
+    case 'BILL_REFUND': return 'Facture non payée, remboursée'
     case 'SAVINGS_DEPOSIT': return 'Mis de côté (épargne)'
     case 'SAVINGS_WITHDRAWAL': return 'Repris de l\'épargne'
     default: return 'Correction de solde'
@@ -178,3 +188,12 @@ export const historyStatus: Record<HistoryItem['status'], { label: string; cls: 
 }
 
 export const formatSigned = (minor: number) => `${minor > 0 ? '+' : ''}${formatUsd(minor)}`
+
+const weekdays = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+
+/** « Chaque mois, le 5 », « Chaque vendredi ». */
+export function scheduleLabel(frequency: 'WEEKLY' | 'MONTHLY', day: number): string {
+  if (frequency === 'WEEKLY') return `Chaque ${weekdays[day - 1]}`
+  if (day === 31) return 'Chaque mois, le dernier jour'
+  return `Chaque mois, le ${day === 1 ? '1er' : day}`
+}

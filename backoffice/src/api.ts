@@ -159,11 +159,17 @@ export interface CustomerSummary {
   balanceMinor: number
   /** Épargne du client, en plus du solde du portefeuille. */
   savingsMinor?: number
+  /** Bloqué par le client lui-même (téléphone perdu ou volé) : débloquer après avoir vu sa pièce d'identité. */
+  blockedByCustomerAt?: string | null
+  /** Plafond d'envoi par jour choisi par le client ; null : celui de son niveau. */
+  personalDailyOutMinor?: number | null
+  /** Hausse de ce plafond en attente ; dailyOutMinor null : retour au plafond du niveau. */
+  pendingDailyOut?: { dailyOutMinor: number | null; effectiveAt: string } | null
 }
 
 export type HistoryKind =
   | 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'MERCHANT_PAYMENT'
-  | 'SAVINGS_DEPOSIT' | 'SAVINGS_WITHDRAWAL' | 'ADJUSTMENT'
+  | 'AIRTIME' | 'AIRTIME_REFUND' | 'BILL_PAYMENT' | 'BILL_REFUND' | 'SAVINGS_DEPOSIT' | 'SAVINGS_WITHDRAWAL' | 'ADJUSTMENT'
 export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL' | 'PAYMENT' | 'SAVINGS'
 
 /** Une opération du client : une ligne par opération, montants en centimes. */
@@ -182,6 +188,8 @@ export interface HistoryItem {
   counterpartyPhone?: string | null
   operator?: Operator | null
   msisdn?: string | null
+  /** Facture : n° de compteur ou d'abonné. */
+  billReference?: string | null
   merchantCode?: string | null
   note?: string | null
   failureMessage?: string | null
@@ -323,6 +331,77 @@ export interface ReviewTopup {
   createdAt: string
 }
 
+/** Crédit téléphone ou facture sans réponse sûre du prestataire. */
+export interface PendingPurchase {
+  type: 'AIRTIME' | 'BILL'
+  id: string
+  customerName: string
+  customerPhone: string
+  /** « Crédit Vodacom », « SNEL prépayé »… */
+  label: string
+  /** Numéro rechargé, ou n° de compteur ou d'abonné. */
+  target: string
+  holderName: string | null
+  /** Compteur prépayé : « payé » demande le code du compteur. */
+  needsToken: boolean
+  amountMinor: number
+  provider: string
+  status: 'PENDING' | 'REVIEW'
+  reason: string | null
+  checks: number
+  createdAt: string
+}
+
+export type ComplaintCategory = 'NOT_RECEIVED' | 'WRONG_AMOUNT' | 'NOT_ME' | 'OTHER'
+export type ComplaintOutcome = 'FOUNDED' | 'UNFOUNDED'
+
+/** Réclamation d'un client, avec l'opération visée telle que son reçu la montre. */
+export interface Complaint {
+  id: string
+  /** REC-20261119-3F9A2C : le numéro que le client rappelle. */
+  reference: string
+  category: ComplaintCategory
+  categoryLabel: string
+  message: string
+  status: 'OPEN' | 'ANSWERED'
+  operation: HistoryItem | null
+  dueAt: string
+  answer: string | null
+  outcome: ComplaintOutcome | null
+  answeredAt: string | null
+  createdAt: string
+}
+
+export interface BackofficeComplaint {
+  complaint: Complaint
+  customerId: string
+  customerName: string
+  customerPhone: string
+  /** Échéance passée sans réponse. */
+  overdue: boolean
+  /** « Je n'ai pas fait cette opération » : peut-être un vol de compte. */
+  urgent: boolean
+  answeredByName: string | null
+}
+
+/** Envoi répété d'un client, vu depuis sa fiche. */
+export interface ScheduledTransfer {
+  id: string
+  recipientName: string
+  recipientPhone: string
+  amountMinor: number
+  feeMinor: number
+  note: string | null
+  frequency: 'WEEKLY' | 'MONTHLY'
+  day: number
+  status: 'ACTIVE' | 'PAUSED'
+  nextRunAt: string | null
+  lastRunAt: string | null
+  lastResult: 'SENT' | 'FAILED' | null
+  lastFailure: string | null
+  createdAt: string
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -431,6 +510,8 @@ export class Api {
     this.json<Agent>('POST', `/v1/backoffice/agents/${id}/${active ? 'enable' : 'disable'}`)
   // ---- Clients ----
   findCustomer = (phone: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers?phone=${encodeURIComponent(phone)}`)
+  customerScheduledTransfers = (id: string) => this.json<ScheduledTransfer[]>('GET', `/v1/backoffice/customers/${id}/scheduled-transfers`)
+  customerComplaints = (id: string) => this.json<BackofficeComplaint[]>('GET', `/v1/backoffice/customers/${id}/complaints`)
   customer = (id: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers/${id}`)
   /** Suspendre ou réactiver : un client suspendu ne peut plus se connecter ni faire bouger son argent. */
   setCustomerStatus = (id: string, status: 'ACTIVE' | 'SUSPENDED', reason: string) =>
@@ -476,6 +557,13 @@ export class Api {
     this.json<unknown>('POST', `/v1/backoffice/topups/${id}/resolve`, { action, note })
   resolveWithdrawal = (id: string, action: WithdrawalDecision, note: string) =>
     this.json<unknown>('POST', `/v1/backoffice/withdrawals/${id}/resolve`, { action, note })
+  complaints = (status: Complaint['status']) => this.json<BackofficeComplaint[]>('GET', `/v1/backoffice/complaints?status=${status}`)
+  answerComplaint = (id: string, outcome: ComplaintOutcome, answer: string) =>
+    this.json<BackofficeComplaint>('POST', `/v1/backoffice/complaints/${id}/answer`, { outcome, answer })
+  pendingPurchases = () => this.json<PendingPurchase[]>('GET', '/v1/backoffice/purchases/review')
+  resolvePurchase = (p: Pick<PendingPurchase, 'type' | 'id'>, action: 'DONE' | 'REFUND', note: string, token?: string) =>
+    this.json<unknown>('POST', `/v1/backoffice/${p.type === 'AIRTIME' ? 'airtime' : 'bills'}/${p.id}/resolve`,
+      token ? { action, note, token } : { action, note })
   reconciliationRuns = (limit = 14) => this.json<ReconciliationRun[]>('GET', `/v1/backoffice/reconciliation/runs?limit=${limit}`)
   runReconciliation = (businessDate?: string) =>
     this.json<ReconciliationRun>('POST', '/v1/backoffice/reconciliation/runs', businessDate ? { businessDate } : {})

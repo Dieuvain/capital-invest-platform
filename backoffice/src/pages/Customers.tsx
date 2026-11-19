@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Api, CustomerSummary, HistoryCategory, HistoryItem, MonitoringAlert, Receipt } from '../api'
-import { formatDateTime, formatSigned, formatUsd, historyStatus, historyTitle, operatorLabel } from '../format'
+import { formatDateTime, formatSigned, formatUsd, historyStatus, historyTitle, operatorLabel, scheduleLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
 const filters: { value: HistoryCategory | null; label: string }[] = [
@@ -124,10 +124,18 @@ function CustomerFile({ api, customer, notify, changed }: {
         <div className="card stat">
           <span className="lbl">Niveau</span>
           <span className="val mono">{customer.kycLevel}</span>
-          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? 'compte suspendu' : `compte ${customer.status.toLowerCase()}`}</span>
+          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? (customer.blockedByCustomerAt ? 'bloqué par le client' : 'compte suspendu') : `compte ${customer.status.toLowerCase()}`}</span>
         </div>
       </div>
+      {(customer.personalDailyOutMinor != null || customer.pendingDailyOut) && (
+        <p className="muted small" aria-label="Plafond choisi par le client">
+          Plafond d'envoi choisi par le client : {customer.personalDailyOutMinor != null ? `${formatUsd(customer.personalDailyOutMinor)} par jour` : 'celui de son niveau'}
+          {customer.pendingDailyOut && `, hausse à ${customer.pendingDailyOut.dailyOutMinor != null ? formatUsd(customer.pendingDailyOut.dailyOutMinor) : 'celui de son niveau'} prévue le ${formatDateTime(customer.pendingDailyOut.effectiveAt)}`}
+          . Un client qui appelle pour faire monter son plafond doit attendre ce délai : il protège contre le vol du PIN.
+        </p>
+      )}
       <AccountStatus api={api} customer={customer} notify={notify} changed={changed} />
+      <Recurring api={api} customerId={customer.id} />
       <div className={selected ? 'history-split' : undefined}>
         <section className="card table-wrap" aria-labelledby="t-history">
           <div className="card-head row">
@@ -252,6 +260,7 @@ function AccountStatus({ api, customer, notify, changed }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const suspended = customer.status === 'SUSPENDED'
+  const selfBlocked = suspended && customer.blockedByCustomerAt ? customer.blockedByCustomerAt : null
 
   useEffect(() => {
     setEditing(false)
@@ -264,9 +273,10 @@ function AccountStatus({ api, customer, notify, changed }: {
     setError(null)
     try {
       const r = await api.setCustomerStatus(customer.id, suspended ? 'ACTIVE' : 'SUSPENDED', reason.trim())
-      changed({ ...customer, status: r.status })
+      changed({ ...customer, status: r.status, blockedByCustomerAt: r.status === 'ACTIVE' ? null : customer.blockedByCustomerAt })
       setEditing(false)
-      notify(r.status === 'SUSPENDED' ? `Compte de ${customer.fullName} suspendu` : `Compte de ${customer.fullName} réactivé`)
+      notify(r.status === 'SUSPENDED' ? `Compte de ${customer.fullName} suspendu`
+        : selfBlocked ? `Compte de ${customer.fullName} débloqué, le client reçoit un SMS` : `Compte de ${customer.fullName} réactivé`)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -280,9 +290,11 @@ function AccountStatus({ api, customer, notify, changed }: {
     <section className={`card pad stack${suspended ? ' suspended' : ''}`} aria-label="Compte" style={{ gap: 10 }}>
       <div className="row">
         <div>
-          <b>{suspended ? 'Compte suspendu' : 'Compte actif'}</b>
+          <b>{selfBlocked ? 'Bloqué par le client' : suspended ? 'Compte suspendu' : 'Compte actif'}</b>
           <div className="muted small">
-            {suspended
+            {selfBlocked
+              ? `Bloqué le ${formatDateTime(selfBlocked)} : téléphone perdu ou volé. Débloquez seulement après avoir vu sa pièce d'identité en agence.`
+              : suspended
               ? 'Le client ne peut ni se connecter ni faire bouger son argent.'
               : list.some((a) => a.status === 'OPEN')
                 ? `${list.filter((a) => a.status === 'OPEN').length} alerte de surveillance à traiter`
@@ -292,7 +304,7 @@ function AccountStatus({ api, customer, notify, changed }: {
         <span className="spacer" />
         {!editing && (
           <button type="button" className="btn ghost small" onClick={() => { setEditing(true); setReason('') }}>
-            {suspended ? 'Réactiver' : 'Suspendre le compte'}
+            {selfBlocked ? 'Débloquer' : suspended ? 'Réactiver' : 'Suspendre le compte'}
           </button>
         )}
       </div>
@@ -300,14 +312,14 @@ function AccountStatus({ api, customer, notify, changed }: {
         <form className="decision" onSubmit={save}>
           <ErrorBanner error={error} />
           <label className="field">
-            {suspended ? 'Pourquoi réactiver ?' : 'Pourquoi suspendre ? Le client ne sera pas prévenu de la raison.'}
+            {selfBlocked ? 'Pièce d\'identité vérifiée : type et numéro' : suspended ? 'Pourquoi réactiver ?' : 'Pourquoi suspendre ? Le client ne sera pas prévenu de la raison.'}
             <input type="text" required minLength={5} maxLength={500} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
           <div className="row">
             <span className="spacer" />
             <button type="button" className="btn ghost small" onClick={() => setEditing(false)} disabled={busy}>Annuler</button>
             <button className={`btn small${suspended ? ' success' : ' danger'}`} disabled={busy || reason.trim().length < 5}>
-              {suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
+              {selfBlocked ? 'Débloquer le compte' : suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
             </button>
           </div>
         </form>
@@ -327,5 +339,70 @@ function AccountStatus({ api, customer, notify, changed }: {
         </ul>
       )}
     </section>
+  )
+}
+
+/** Envois programmés et réclamations du client : ce qu'on vérifie quand il dit « de l'argent part tout seul ». */
+function Recurring({ api, customerId }: { api: Api; customerId: string }) {
+  const scheduled = useLoad(() => api.customerScheduledTransfers(customerId), [customerId])
+  const complaints = useLoad(() => api.customerComplaints(customerId), [customerId])
+  return (
+    <>
+      <ErrorBanner error={scheduled.error ?? complaints.error} />
+      {scheduled.data && scheduled.data.length > 0 && (
+        <section className="card table-wrap" aria-labelledby="t-scheduled">
+          <div className="card-head">
+            <h3 id="t-scheduled">Envois programmés</h3>
+            <p className="muted small">Confirmés par le PIN du client, envoyés à 8 h. Seul le client peut les arrêter, depuis l'app.</p>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Destinataire</th><th>Montant</th><th>Rythme</th><th>État</th></tr>
+            </thead>
+            <tbody>
+              {scheduled.data.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{s.recipientName}</div>
+                    <div className="muted small mono">{s.recipientPhone}</div>
+                  </td>
+                  <td className="mono">{formatUsd(s.amountMinor)}<div className="muted small">+ {formatUsd(s.feeMinor)} de frais</div></td>
+                  <td>{scheduleLabel(s.frequency, s.day)}{s.note && <div className="muted small">{s.note}</div>}</td>
+                  <td className="small">
+                    {s.status === 'ACTIVE'
+                      ? <><span className="badge ok">Actif</span> <span className="muted">prochain le {formatDateTime(s.nextRunAt!)}</span></>
+                      : <span className="badge off">En pause</span>}
+                    {s.lastResult === 'FAILED' && <div className="muted" style={{ marginTop: 4 }}>Dernier échec : {s.lastFailure}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+      {complaints.data && complaints.data.length > 0 && (
+        <section className="card table-wrap" aria-labelledby="t-customer-complaints">
+          <div className="card-head"><h3 id="t-customer-complaints">Réclamations</h3></div>
+          <table>
+            <thead>
+              <tr><th>Numéro</th><th>Motif</th><th>État</th></tr>
+            </thead>
+            <tbody>
+              {complaints.data.map(({ complaint: c, overdue }) => (
+                <tr key={c.id}>
+                  <td className="mono">{c.reference}<div className="muted small">{formatDateTime(c.createdAt)}</div></td>
+                  <td>{c.categoryLabel}<div className="muted small">« {c.message} »</div></td>
+                  <td className="small">
+                    {c.status === 'OPEN'
+                      ? <span className={`badge ${overdue ? 'alert' : 'wait'}`}>{overdue ? 'En retard' : 'À traiter'}</span>
+                      : <span className={`badge ${c.outcome === 'FOUNDED' ? 'ok' : 'off'}`}>{c.outcome === 'FOUNDED' ? 'Fondée' : 'Non fondée'}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
   )
 }

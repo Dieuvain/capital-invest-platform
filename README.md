@@ -77,6 +77,30 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - API : `POST /v1/me/security/pin` (`currentPin`, `newPin`), `GET /v1/me/security/sessions`, `POST /v1/me/security/sessions/sign-out-others`. `deviceName` est facultatif à l'inscription, à la connexion et au PIN oublié.
 - En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
+## Téléphone perdu ou volé : bloquer son compte
+
+Le client bloque lui-même son compte, sans attendre le service client :
+
+- depuis l'app : Profil, **Sécurité et PIN**, **Bloquer mon compte**, avec le PIN ;
+- depuis le téléphone d'un proche, sans se connecter : **Téléphone perdu ou volé ?** sur l'écran de connexion, avec son numéro et son PIN.
+
+Ce qui se passe :
+
+- Toutes les sessions tombent et la connexion est refusée avec la marche à suivre (`CUSTOMER_BLOCKED`).
+- Plus rien ne part : envois, retraits, paiements, envois programmés. Le compte ne reçoit plus d'argent non plus.
+- Le client reçoit un SMS de confirmation.
+- Le PIN est exigé pour qu'un inconnu ne puisse pas bloquer le compte de quelqu'un d'autre. Les erreurs comptent comme à la connexion : 5 erreurs bloquent le PIN 15 minutes.
+- Un compte déjà suspendu par la conformité le reste : le client ne peut pas changer une suspension en « bloqué à sa demande ».
+
+Le déblocage se fait **en agence seulement**, après vérification de la pièce d'identité. Le voleur a souvent la carte SIM, donc un code SMS ne prouve rien. Dans le back-office, la fiche client affiche « Bloqué par le client » et la date, avec un bouton **Débloquer** qui demande le type et le numéro de la pièce vue. Le client reçoit un SMS qui l'invite à changer son PIN.
+
+- API : `POST /v1/me/security/block` (`pin`) depuis l'app, `POST /v1/auth/block` (`phone`, `pin`) sans session. Le déblocage passe par la route existante `POST /v1/backoffice/customers/{id}/status`.
+- Journal d'audit : `CUSTOMER_SELF_BLOCKED`, puis `CUSTOMER_REACTIVATED` avec la pièce notée par l'agent.
+
+| Bloquer depuis l'app | Compte bloqué |
+|---|---|
+| ![Bloquer mon compte](docs/captures-app/15-bloquer-compte.png) | ![Compte bloqué](docs/captures-app/15b-compte-bloque.png) |
+
 ## Plafonds KYC
 
 Valeurs **provisoires**, à valider par la conformité (fichier `application.yml`, section `capital-invest.limits`).
@@ -89,6 +113,24 @@ Valeurs **provisoires**, à valider par la conformité (fichier `application.yml
 - La journée se compte à l'heure de Lubumbashi.
 - Le solde maximal compte aussi les recharges en attente et l'épargne, et s'applique au destinataire d'un envoi sans révéler son solde.
 - Les contrôles se font sous verrou du portefeuille : deux opérations simultanées ne peuvent pas dépasser un plafond ensemble.
+
+## Plafond d'envoi choisi par le client
+
+Dans l'app, sous Sécurité, puis **Plafond d'envoi par jour**, le client choisit un plafond plus bas que celui de son niveau, par exemple 50 $ par jour. Si quelqu'un lui vole son téléphone et son PIN, il ne peut pas tout prendre.
+
+- **Baisser** le plafond s'applique tout de suite.
+- **Remonter** le plafond, ou revenir à celui du niveau, ne prend effet que **24 heures plus tard**. Le client reçoit un SMS et peut annuler la hausse depuis l'app, sans PIN. Il a ainsi le temps de réagir si ce n'est pas lui, et de bloquer son compte.
+- Le plafond compte tout ce qui sort dans la journée, comme le plafond du niveau : envois, retraits, paiements chez les marchands, factures et crédit téléphone.
+- Bornes : de 10 $ jusqu'au plafond du niveau. Le PIN est demandé à chaque changement.
+- Code d'erreur `LIMIT_DAILY_PERSONAL`, distinct de `LIMIT_DAILY`, pour que l'app indique où changer le plafond.
+- Le back-office affiche ce plafond et la hausse en attente sur la fiche client.
+- API :
+  - `PUT /v1/me/limits/daily` (`dailyOutMinor`, ou `null` pour revenir au plafond du niveau, et `pin`) ;
+  - `DELETE /v1/me/limits/daily/pending` pour annuler la hausse en attente ;
+  - `GET /v1/me/limits` renvoie en plus `levelDailyOutMinor`, `personalDailyOutMinor` et `pendingDailyOut`.
+- Journal d'audit : `DAILY_LIMIT_LOWERED`, `DAILY_LIMIT_RAISE_REQUESTED`, `DAILY_LIMIT_RAISE_CANCELLED`.
+
+![Plafond d'envoi par jour](docs/captures-app/17-plafond-par-jour.png)
 
 ## Frais d'envoi
 
@@ -189,6 +231,26 @@ Le client voit **une ligne par opération** (pas une ligne par écriture comptab
 
 Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
 
+## Mes dépenses
+
+Dans l'app, Historique, puis **Mes dépenses** : où part l'argent du mois, par catégorie, comparé au mois d'avant.
+
+- Catégories :
+  - envois ;
+  - paiements chez un marchand ;
+  - factures ;
+  - crédit téléphone ;
+  - retraits ;
+  - frais, à part pour qu'ils se voient.
+- Un remboursement (crédit refusé, facture ou retrait rendu) vient en déduction. Une opération échouée ne compte pas.
+- L'épargne n'est pas une dépense : « Mis de côté » est affiché à part, comme « Reçu » (recharges et envois reçus).
+- Le mois en cours se compare au mois d'avant **arrêté au même jour** : le 19 novembre se compare au 1er–19 octobre, pas à tout octobre.
+- « À qui vous envoyez le plus » : les 3 personnes qui ont reçu le plus, numéro masqué.
+- Le client choisit parmi les 6 derniers mois. Les montants viennent du même calcul que le relevé.
+- API : `GET /v1/me/spending?month=2026-11`, le mois en cours si `month` est absent.
+
+![Mes dépenses](docs/captures-app/16-depenses.png)
+
 ## Relevés de compte
 
 Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l'ouverture du compte (24 au plus), le mois en cours arrêté à aujourd'hui. Le relevé donne le solde au 1er du mois, les entrées, les sorties (dont les frais), le solde de fin et chaque opération avec son n° de reçu. Le client le télécharge en PDF A4 et le partage (WhatsApp, e-mail, Fichiers) : utile pour tenir ses comptes ou prouver ses revenus à un bailleur ou une banque.
@@ -196,6 +258,42 @@ Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l
 - Les montants viennent du grand livre, comme l'historique : le solde de fin d'un mois est le solde d'ouverture du suivant. Les numéros des autres clients restent masqués.
 - API : `GET /v1/me/statements` (mois disponibles), `GET /v1/me/statements/{AAAA-MM}`, `GET /v1/me/statements/{AAAA-MM}/pdf`.
 - PDF produit par OpenPDF (LGPL/MPL). Exemple : `docs/captures-app/9b-releve-octobre.pdf`.
+
+## Paiement de factures
+
+Menu **Plus** → **Payer une facture** : électricité (SNEL, compteurs prépayés), eau (REGIDESO), télévision (Canal+, DStv). Le client tape son numéro de compteur ou d'abonné, l'app affiche le **nom du titulaire** chez le facturier (et le montant dû pour une facture) avant tout paiement, puis il paie avec son PIN. Pour un compteur prépayé, il reçoit le **code à taper sur le compteur** à l'écran et par SMS. Les comptes déjà payés sont proposés en un geste.
+
+| Facturiers | Compteur vérifié | Code du compteur |
+|---|---|---|
+| ![](docs/captures-app/12-factures.png) | ![](docs/captures-app/12b-facture-snel.png) | ![](docs/captures-app/12c-code-compteur.png) |
+
+- Sans frais pour le client, de 1 $ à 500 $ par paiement (`capital-invest.bills`), dans le plafond par opération et le plafond journalier d'envoi.
+- Même schéma que le crédit téléphone : le montant passe du portefeuille au compte `BILLERS_USD` sous verrou, le facturier est payé hors transaction, un refus rembourse aussitôt le client (avec notification), un doute laisse le paiement « en cours » sans remboursement.
+- Le code du compteur part aussi par SMS : le client l'a même si l'app se ferme ou si le téléphone s'éteint. Il reste dans le reçu.
+- API : `GET /v1/bills/billers`, `POST /v1/bills/lookup` (`{"biller", "reference"}`), `POST /v1/bills` (`{"biller", "reference", "amountMinor", "pin"}`, en-tête `Idempotency-Key`), `GET /v1/bills/recent`, `GET /v1/bills/{id}`.
+- **Pas encore branché** : l'agrégateur de factures réel (interface `BillConnector`). Le simulateur ne connaît pas les références qui finissent par 0000 et refuse le paiement de celles qui finissent par 9999. Les facturiers proposés et les formats de référence sont à confirmer avec l'agrégateur retenu.
+
+## Crédit téléphone (unités)
+
+Menu **Plus** → **Acheter du crédit téléphone** : des unités pour son numéro ou celui d'un proche, sur Vodacom, Airtel, Orange et Africell. Le réseau est deviné d'après le préfixe (le client peut le changer pour un numéro porté), les derniers numéros rechargés sont proposés en un geste, et l'achat se confirme par le PIN.
+
+![Crédit téléphone](docs/captures-app/11-credit.png)
+
+- Sans frais pour le client, de 0,50 $ à 50 $ par achat (`capital-invest.airtime`). L'achat compte dans le plafond journalier d'envoi.
+- Dans le grand livre : le montant passe du portefeuille au compte `AIRTIME_PROVIDER_USD` (crédit prépayé chez le prestataire). Si le prestataire refuse (numéro inactif…), le montant revient aussitôt au client, qui est prévenu. Sans réponse sûre, l'achat reste « en cours » et n'est pas remboursé : les unités sont peut-être parties.
+- Historique, reçu et relevé : « Crédit Vodacom » avec le numéro rechargé ; « Crédit non envoyé, remboursé » pour un refus.
+- API : `POST /v1/airtime` (`{"phone", "network"?, "amountMinor", "pin"}`, en-tête `Idempotency-Key`), `GET /v1/airtime/recent`, `GET /v1/airtime/{id}`.
+- **Pas encore branché** : le prestataire réel. Le simulateur envoie toujours les unités, sauf vers un numéro qui finit par 0000. Il faudra choisir un agrégateur d'unités (contrat, commission reçue sur chaque achat), écrire son connecteur (interface `AirtimeConnector`) avant la mise en service.
+
+### Achats restés « en cours »
+
+Quand le prestataire d'unités ou l'agrégateur de factures ne répond pas clairement, l'achat n'est ni perdu ni remboursé à l'aveugle :
+
+- **Relance automatique** (`PurchaseJobs`, chaque minute) : le statut est redemandé au prestataire après 1 min, puis 2, 4, 8… jusqu'à une relance par heure. Une réponse « envoyé » ou « payé » termine l'achat (le code du compteur part par SMS), un refus rembourse le client.
+- **Après 24 h sans réponse**, l'achat passe « en vérification » : le client le voit ainsi dans son historique, et il apparaît dans le back-office (**Rapprochement** → « Crédit téléphone et factures sans réponse »), avec ceux qui attendent depuis plus de 10 minutes.
+- **Décision d'un agent** (conformité ou administrateur), toujours motivée et inscrite au journal d'audit : « Noter envoyé / payé » (pour un compteur prépayé, le code de 20 chiffres donné par l'agrégateur est obligatoire et envoyé au client), ou « Rembourser » quand le prestataire confirme l'échec.
+- Réglages : `capital-invest.airtime.first-check-after`, `review-after` (idem sous `bills`), `capital-invest.purchases.poll-delay-ms`. API : `GET /v1/backoffice/purchases/review`, `POST /v1/backoffice/airtime/{id}/resolve` et `/bills/{id}/resolve` (`{"action": "DONE" | "REFUND", "note", "token"?}`).
+- Simulateur : un numéro qui finit par 5555 (ou une référence en 5555) ne répond pas tout de suite mais aboutit à la relance ; 6666 ne répond jamais et finit en vérification.
 
 ## Épargne
 
@@ -254,6 +352,49 @@ Un client demande un montant à un autre client (menu « Demander de l'argent »
 - Le refus prévient le demandeur dans l'app (sans SMS). Le demandeur peut annuler une demande en attente. Sans réponse, une demande expire au bout de 7 jours.
 - Contre le harcèlement : 10 demandes par client en 24 h, et 3 demandes en attente au plus vers un même client (`capital-invest.money-requests`).
 - API : `POST /v1/money-requests` (`payerPhone`, `amountMinor`, `note`, en-tête `Idempotency-Key`), `GET /v1/money-requests` (`toPay`, `recent`), `POST /v1/money-requests/{id}/pay` (`pin`), `/decline`, `/cancel`.
+
+## Vérifier le destinataire avant d'envoyer
+
+Un envoi au mauvais numéro ne se rattrape pas. Avant la confirmation par PIN, l'app affiche donc le **prénom et l'initiale** du destinataire (« Josué K. »), assez pour reconnaître un proche sans exposer le nom complet d'un inconnu. Un numéro sans compte est arrêté avant même le calcul des frais. Les derniers destinataires sont proposés en un geste.
+
+| Destinataires récents | Nom vérifié avant le PIN |
+|---|---|
+| ![](docs/captures-app/3a-envoi-recents.png) | ![](docs/captures-app/3-envoi-verification.png) |
+
+- Contre la collecte des noms : 30 numéros vérifiés par heure et par client (`capital-invest.recipients.max-lookups-per-hour`). Les numéros inconnus comptent aussi.
+- Même vérification pour un envoi programmé. Un compte suspendu ou fermé est signalé (« ne peut pas recevoir d'argent pour le moment »).
+- API : `GET /v1/transfers/recipient?phone=…` (`{"phone", "displayName"}`), `GET /v1/transfers/recent` (5 derniers destinataires).
+
+## Envois programmés
+
+Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.
+
+| Envois programmés | Vérifier et confirmer |
+|---|---|
+| ![](docs/captures-app/14-envois-programmes.png) | ![](docs/captures-app/14b-programmer-envoi.png) |
+
+- L'envoi part à 8 h, heure de Lubumbashi (`capital-invest.scheduled-transfers.run-at`). Le 31 devient le dernier jour d'un mois plus court.
+- Chaque échéance est un envoi ordinaire : frais, plafond par opération, plafond journalier, et pause de 24 h après un changement de PIN. Sa clé d'idempotence (`scheduled:<id>:<date>`) garantit qu'une même échéance ne part jamais deux fois, même traitée par deux serveurs.
+- Si l'envoi ne peut pas partir (solde insuffisant, plafond…), le client est prévenu par SMS et dans l'app avec la raison, et l'échéance suivante reste prévue. Après 3 échecs d'affilée, l'envoi se met en pause (`pause-after-failures`). Une reprise ne rattrape pas les échéances manquées.
+- Le client peut mettre en pause, reprendre ou supprimer à tout moment ; au plus 10 envois programmés. La fiche client du back-office montre ses envois programmés et ses réclamations, pour répondre à « de l'argent part tout seul de mon compte ».
+- API : `POST /v1/me/scheduled-transfers` (`{"toPhone", "amountMinor", "frequency": "WEEKLY" | "MONTHLY", "day", "note"?, "pin"}`), `GET /v1/me/scheduled-transfers`, `POST /v1/me/scheduled-transfers/{id}/pause` et `/resume`, `DELETE /v1/me/scheduled-transfers/{id}`. Back-office : `GET /v1/backoffice/customers/{id}/scheduled-transfers`.
+
+## Réclamations
+
+Depuis le reçu d'une opération, le client touche **Signaler un problème**, choisit ce qui ne va pas (argent non arrivé, mauvais montant ou frais, opération qu'il n'a pas faite, autre) et explique en quelques mots. Il reçoit aussitôt un numéro (REC-AAAAMMJJ-XXXXXX) et la date de réponse promise, dans l'app et par SMS. **Plus** → **Mes réclamations** montre celles en attente et les réponses.
+
+| Signaler depuis le reçu | Réclamation enregistrée |
+|---|---|
+| ![](docs/captures-app/13-reclamation.png) | ![](docs/captures-app/13b-reclamation-envoyee.png) |
+
+Dans le back-office, **Réclamations** (conformité et administrateurs) liste les réclamations à traiter avec l'opération telle que le reçu la montre, numéros en clair. Les « opération que je n'ai pas faite » passent en tête (vol de compte possible : l'app propose aussi au client de changer son PIN), puis les plus proches de l'échéance ; celles en retard sont signalées.
+
+![Réclamations dans le back-office](docs/captures-backoffice/14-reclamations.png)
+
+- L'agent conclut **fondée** ou **non fondée** et écrit la réponse que le client lira telle quelle. Elle part par SMS et dans l'app ; la décision entre au journal d'audit. Une correction d'argent se fait ensuite par les outils existants (rapprochement).
+- Une seule réclamation ouverte par client et par opération, et au plus 5 ouvertes en même temps (`capital-invest.complaints.max-open-per-customer`). Une opération qui ne touche pas le portefeuille du client n'existe pas pour lui.
+- Délai de réponse : 7 jours par défaut (`capital-invest.complaints.response-time`). **À confirmer avec la conformité** selon l'exigence de la BCC sur le traitement des réclamations.
+- API client : `POST /v1/me/complaints` (`{"transactionId"?, "category", "message"}`), `GET /v1/me/complaints`, `GET /v1/me/complaints/{id}`. Back-office : `GET /v1/backoffice/complaints?status=OPEN|ANSWERED`, `GET /v1/backoffice/customers/{id}/complaints`, `POST /v1/backoffice/complaints/{id}/answer` (`{"outcome", "answer"}`).
 
 ## Surveillance des opérations (anti-blanchiment)
 

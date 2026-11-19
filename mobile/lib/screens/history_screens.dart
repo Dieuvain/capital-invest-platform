@@ -6,6 +6,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'complaint_screens.dart';
 
 /// Titre d'une opération, tel que le client le comprend.
 String historyTitle(HistoryItem i) => switch (i.kind) {
@@ -15,6 +16,10 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'WITHDRAWAL' => 'Retrait vers ${i.operatorLabel ?? 'mobile money'}',
   'WITHDRAWAL_REFUND' => 'Retrait remboursé',
   'MERCHANT_PAYMENT' => 'Paiement à ${i.counterpartyName ?? 'un marchand'}',
+  'AIRTIME' => 'Crédit ${i.network?.label ?? 'téléphone'}',
+  'AIRTIME_REFUND' => 'Crédit non envoyé, remboursé',
+  'BILL_PAYMENT' => 'Facture ${i.counterpartyName ?? ''}'.trim(),
+  'BILL_REFUND' => 'Facture non payée, remboursée',
   'SAVINGS_DEPOSIT' => 'Mis de côté',
   'SAVINGS_WITHDRAWAL' => 'Repris de l\'épargne',
   _ => 'Correction de solde',
@@ -35,6 +40,9 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'WITHDRAWAL' => Icons.south_east_rounded,
   'WITHDRAWAL_REFUND' => Icons.undo_rounded,
   'MERCHANT_PAYMENT' => Icons.storefront_rounded,
+  'AIRTIME' => Icons.phone_android_rounded,
+  'AIRTIME_REFUND' || 'BILL_REFUND' => Icons.undo_rounded,
+  'BILL_PAYMENT' => Icons.receipt_rounded,
   'SAVINGS_DEPOSIT' || 'SAVINGS_WITHDRAWAL' => Icons.savings_outlined,
   _ => Icons.tune_rounded,
 };
@@ -53,6 +61,9 @@ String receiptText(Receipt r) {
     if (i.counterpartyPhone != null) 'Numéro : ${i.counterpartyPhone}',
     if (i.merchantCode != null) 'Code marchand : ${i.merchantCode}',
     if (i.msisdn != null && i.kind == 'WITHDRAWAL') 'Vers : ${i.msisdn}',
+    if (i.msisdn != null && i.kind == 'AIRTIME') 'Numéro rechargé : ${i.msisdn}',
+    if (i.billReference != null) 'Compteur ou abonné : ${i.billReference}',
+    if (i.token != null) 'Code du compteur : ${i.token}',
     'Montant : ${formatUsd(i.amountMinor)}',
     if (i.feeMinor != 0) '${i.kind == 'WITHDRAWAL_REFUND' ? 'Frais rendus' : 'Frais'} : ${formatUsd(i.feeMinor)}',
     if (i.feeMinor != 0) '${i.isIn ? 'Total crédité' : 'Total débité'} : ${formatUsd(i.netMinor.abs())}',
@@ -266,12 +277,16 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
         (switch (i.kind) {
           'TRANSFER_RECEIVED' => 'Expéditeur',
           'MERCHANT_PAYMENT' => 'Marchand',
+          'BILL_PAYMENT' || 'BILL_REFUND' => 'Facturier',
           _ => 'Destinataire',
         }, i.counterpartyName!),
       if (i.merchantCode != null) ('Code marchand', i.merchantCode!),
       if (i.counterpartyPhone != null) ('Numéro', i.counterpartyPhone!),
       if (i.operatorLabel != null) ('Opérateur', i.operatorLabel!),
       if (i.msisdn != null && i.kind == 'WITHDRAWAL') ('Envoyé vers', i.msisdn!),
+      if (i.msisdn != null && i.kind == 'AIRTIME') ('Numéro rechargé', i.msisdn!),
+      if (i.billReference != null) ('Compteur ou abonné', i.billReference!),
+      if (i.token != null) ('Code du compteur', i.token!),
       ('Montant', formatUsd(i.amountMinor)),
       if (i.feeMinor != 0) (i.kind == 'WITHDRAWAL_REFUND' ? 'Frais rendus' : 'Frais', formatUsd(i.feeMinor)),
       if (i.feeMinor != 0) (i.isIn ? 'Total crédité' : 'Total débité', formatUsd(i.netMinor.abs())),
@@ -334,10 +349,13 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
           label: const Text('Partager le reçu'),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Pour toute réclamation, donnez ce numéro de reçu au service client.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: context.pal.muted, fontSize: 13),
+        OutlinedButton.icon(
+          key: const ValueKey('report-problem'),
+          onPressed: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => NewComplaintScreen(app: widget.app, operation: i))),
+          icon: const Icon(Icons.report_problem_outlined),
+          label: const Text('Signaler un problème'),
         ),
       ],
     );

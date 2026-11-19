@@ -1,12 +1,15 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
+import 'package:capital_invest/screens/complaint_screens.dart';
 import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
 import 'package:capital_invest/screens/money_screens.dart';
+import 'package:capital_invest/screens/scheduled_screens.dart';
 import 'package:capital_invest/ui/chrome.dart';
 import 'package:capital_invest/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -215,16 +218,28 @@ void main() {
     expect(find.text('Se connecter'), findsOneWidget);
   });
 
-  testWidgets('envoi : les frais sont montrés avant la confirmation par PIN', (tester) async {
+  testWidgets('envoi : nom du destinataire et frais montrés avant la confirmation par PIN', (tester) async {
+    server.recentRecipients = [
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+    ];
     await start(tester);
     await login(tester);
     await pay(tester, 'Envoyer');
-    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
     await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsOneWidget);
+    expect(server.requests.where((r) => r.url.path == '/v1/transfers/fee'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
 
     expect(find.text('Vérifier l\'envoi'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('recipient-name')), matching: find.text('Josué K.')), findsOneWidget);
     expect(find.text('0,13 \$'), findsOneWidget);
     expect(find.text('12,63 \$'), findsOneWidget);
 
@@ -509,6 +524,117 @@ void main() {
     expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));
   });
 
+  testWidgets('plafond par jour : baisser tout de suite, remonter après 24 h, annuler la hausse', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('daily-limit-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text('600,00\u00A0\$ par jour'), findsOneWidget);
+    expect(find.text('Le plafond de votre niveau 1.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('preset-5000')));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(server.personalDailyLimit, 5000);
+    expect(find.text('Plafond changé : 50,00\u00A0\$ par jour, dès maintenant.'), findsOneWidget);
+    expect(find.text('50,00\u00A0\$ par jour'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('amount')), '200');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hausse enregistrée'), findsOneWidget);
+    expect(find.textContaining('Passera à 200,00\u00A0\$'), findsOneWidget);
+    expect(find.text('50,00\u00A0\$ par jour'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cancel-raise')));
+    await tester.pumpAndSettle();
+    expect(server.pendingDailyLimit, isNull);
+    expect(find.text('Hausse annulée. Votre plafond reste à 50,00\u00A0\$ par jour.'), findsOneWidget);
+  });
+
+  testWidgets('téléphone volé : bloquer son compte depuis Sécurité, PIN redemandé, retour à l\'accueil', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('block-account')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('présentez-vous en agence'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '1111');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('Numéro ou PIN incorrect.'), findsOneWidget);
+    expect(server.blocked, isFalse);
+
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.blocked, isTrue);
+    expect(find.text('Compte bloqué'), findsOneWidget);
+    expect(app.signedIn, isFalse);
+    await tester.tap(find.text('Compris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Se connecter'), findsOneWidget);
+    // La connexion explique comment débloquer.
+    await login(tester);
+    expect(find.textContaining('Compte bloqué à votre demande'), findsOneWidget);
+  });
+
+  testWidgets('téléphone volé : bloquer depuis le téléphone d\'un proche, sans se connecter', (tester) async {
+    await start(tester);
+    await tester.tap(find.text('Téléphone perdu ou volé ?'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du compte à bloquer')), '970000001');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.blocked, isTrue);
+    final req = server.requests.lastWhere((r) => r.url.path == '/v1/auth/block');
+    expect(req.body, contains('+243970000001'));
+    expect(find.text('Compte bloqué'), findsOneWidget);
+    // Le retour ramène à l'écran de connexion, pas au formulaire de blocage.
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Se connecter'), findsOneWidget);
+  });
+
+  testWidgets('mes dépenses : catégories du mois, comparaison au même jour du mois d\'avant, puis octobre', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Historique'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('spending')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dépensé depuis le 1er'), findsOneWidget);
+    expect(find.text('384,20\u00A0\$'), findsOneWidget);
+    expect(find.text('72,20\u00A0\$ de plus que du 1er–19 oct. (312,00\u00A0\$)'), findsOneWidget);
+    expect(find.text('Envois'), findsOneWidget);
+    expect(find.text('3 opérations · avant : 180,00\u00A0\$'), findsOneWidget);
+    expect(find.text('Frais'), findsOneWidget);
+    final page = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).last;
+    await tester.scrollUntilVisible(find.text('Grâce Mbuyi'), 200, scrollable: page);
+    expect(find.text('2 envois · +243 81• ••• 214'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('month-2026-10')), -200, scrollable: page);
+    await tester.tap(find.byKey(const ValueKey('month-2026-10')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dépensé ce mois-là'), findsOneWidget);
+    expect(find.text('91,20\u00A0\$'), findsOneWidget);
+    expect(find.textContaining('de plus que'), findsNothing);
+    expect(find.text('Grâce Mbuyi'), findsNothing);
+    expect(server.requests.last.url.query, 'month=2026-10');
+  });
+
   testWidgets('relevé de compte : choisir le mois, lire le résumé, partager le PDF', (tester) async {
     final shared = <(int, String, String)>[];
     app.shareFile = (bytes, name, type) async => shared.add((bytes.length, name, type));
@@ -529,6 +655,204 @@ void main() {
     await tester.tap(find.text('Télécharger le relevé (PDF)'));
     await tester.pumpAndSettle();
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
+  });
+
+  testWidgets('envoi programmé : loyer chaque mois après un envoi, puis pause et suppression', (tester) async {
+    server.scheduled = [
+      FakeServer.scheduledTransfer('st-0', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant'),
+    ];
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => TransferScreen(app: app)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '0970000402');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '30');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 30,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Répéter cet envoi chaque mois'));
+    await tester.pumpAndSettle();
+
+    // Prérempli avec le même destinataire et le même montant.
+    await tester.ensureVisible(find.byKey(const ValueKey('month-day')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('month-day')));
+    await tester.pumpAndSettle();
+    // Le menu s'ouvre sur le jour d'aujourd'hui : on remonte jusqu'au 5.
+    await tester.scrollUntilVisible(find.text('5'), -60, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('scheduled-note')), 'Loyer');
+    await tester.ensureVisible(find.text('Continuer'));
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chaque mois, le 5'), findsOneWidget);
+    expect(find.text('30,30\u00A0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Programmer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Premier envoi le 5 déc. 2026'), findsOneWidget);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/me/scheduled-transfers' && r.method == 'POST');
+    expect(jsonDecode(sent.body), {
+      'toPhone': '+243970000402', 'amountMinor': 3000, 'frequency': 'MONTHLY', 'day': 5, 'pin': '2580', 'note': 'Loyer',
+    });
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => ScheduledTransfersScreen(app: app)));
+    await tester.pumpAndSettle();
+    expect(find.text('Dernier envoi non effectué : Solde insuffisant.'), findsOneWidget);
+    expect(find.text('Chaque vendredi'), findsOneWidget);
+    expect(find.text('Chaque mois, le 5 · Loyer'), findsOneWidget);
+    final rent = find.byKey(const ValueKey('scheduled-st-2'));
+    await tester.tap(find.descendant(of: rent, matching: find.text('Mettre en pause')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: rent, matching: find.text('En pause')), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('scheduled-st-0')), matching: find.text('Supprimer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Maman Chantal'), findsNothing);
+    expect(server.scheduled.map((s) => s['id']), ['st-2']);
+  });
+
+  testWidgets('réclamation depuis le reçu : motif, message, numéro et date de réponse, puis suivi', (tester) async {
+    server.history = [FakeServer.historyItem('s1', 'TRANSFER_SENT', -2020, fee: 20, name: 'Béni Mukendi', phone: '+243 97• ••• 402')];
+    server.complaints = [
+      {
+        'id': 'cp-0', 'reference': 'REC-20261112-A1B2C3', 'category': 'OTHER', 'categoryLabel': 'Autre problème',
+        'message': 'Je ne reçois plus les SMS', 'status': 'ANSWERED', 'operation': null, 'dueAt': '2026-11-19T10:00:00Z',
+        'answer': 'Votre numéro était bloqué chez l\'opérateur, c\'est réglé.', 'outcome': 'FOUNDED',
+        'answeredAt': '2026-11-13T09:00:00Z', 'createdAt': '2026-11-12T10:00:00Z',
+      },
+    ];
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(app: app, id: 's1')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Signaler un problème'));
+    await tester.tap(find.text('Signaler un problème'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Envoyer la réclamation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisissez ce qui ne va pas.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('complaint-category-NOT_ME')));
+    await tester.pumpAndSettle();
+    expect(find.text('Changer mon PIN'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('complaint-category-NOT_RECEIVED')));
+    await tester.pumpAndSettle();
+    expect(find.text('Changer mon PIN'), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('complaint-message')), 'Béni dit ne rien avoir reçu');
+    await tester.ensureVisible(find.text('Envoyer la réclamation'));
+    await tester.tap(find.text('Envoyer la réclamation'));
+    await tester.pumpAndSettle();
+    expect(find.text('REC-20261119-3F9A21'), findsOneWidget);
+    expect(find.textContaining('au plus tard le 26 nov. 2026'), findsOneWidget);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/me/complaints' && r.method == 'POST');
+    expect(jsonDecode(sent.body), {'transactionId': 's1', 'category': 'NOT_RECEIVED', 'message': 'Béni dit ne rien avoir reçu'});
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => ComplaintsScreen(app: app)));
+    await tester.pumpAndSettle();
+    expect(find.text('En attente'), findsOneWidget);
+    expect(find.textContaining('Envoi à Béni Mukendi'), findsOneWidget);
+    expect(find.text('Réglée en votre faveur'), findsOneWidget);
+    expect(find.text('Votre numéro était bloqué chez l\'opérateur, c\'est réglé.'), findsOneWidget);
+  });
+
+  testWidgets('facture SNEL : compteur vérifié, montant, PIN, puis code du compteur', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Payer une facture'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('biller-SNEL_PREPAID')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('bill-reference')), '01234560000');
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('inconnu du facturier'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('bill-reference')), '01234567891');
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.text('KABEYA AMANI'), findsOneWidget);
+
+    await tester.tap(find.text('20 \$'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.ensureVisible(find.text('Payer 20,00\u00A0\$'));
+    await tester.tap(find.text('Payer 20,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Facture payée'), findsOneWidget);
+    expect(find.text('4821 0937 5512 8064 3379'), findsOneWidget);
+    expect(server.balance, 3000);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/bills');
+    expect(jsonDecode(sent.body), {'biller': 'SNEL_PREPAID', 'reference': '01234567891', 'amountMinor': 2000, 'pin': '2580'});
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bonjour Amani !'), findsOneWidget);
+  });
+
+  testWidgets('facture REGIDESO déjà payée : le montant dû est proposé', (tester) async {
+    server.recentBills = [
+      {'biller': 'REGIDESO', 'billerName': 'REGIDESO', 'reference': '4471203', 'holderName': 'KABEYA AMANI'},
+    ];
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Payer une facture'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('recent-bill-4471203')));
+    await tester.pumpAndSettle();
+    expect(find.text('Montant dû : 18,50\u00A0\$'), findsOneWidget);
+    expect(find.text('Payer 18,50\u00A0\$'), findsOneWidget);
+  });
+
+  testWidgets('crédit téléphone : numéro d\'un proche, réseau deviné, PIN, puis refus remboursé', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Acheter du crédit téléphone'));
+    await tester.pumpAndSettle();
+    // Mon numéro par défaut, réseau Airtel deviné (+243 97…).
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('network-AIRTEL'))).selected, isTrue);
+
+    await tester.tap(find.text('Vodacom 812345678'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('network-VODACOM'))).selected, isTrue);
+    await tester.tap(find.text('5 \$'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.ensureVisible(find.text('Acheter 5,00\u00A0\$'));
+    await tester.tap(find.text('Acheter 5,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Crédit envoyé'), findsOneWidget);
+    expect(server.balance, 4500);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/airtime');
+    expect(jsonDecode(sent.body), {'phone': '+243812345678', 'network': 'VODACOM', 'amountMinor': 500, 'pin': '2580'});
+
+    await tester.tap(find.text('Acheter encore'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro à recharger')), '990000000');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '2');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Acheter 2,00\u00A0\$'));
+    await tester.tap(find.text('Acheter 2,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Crédit non envoyé'), findsOneWidget);
+    expect(find.textContaining('Ce numéro n\'est pas actif chez Airtel. 2,00\u00A0\$ sont revenus'), findsOneWidget);
+    expect(server.balance, 4500);
   });
 
   testWidgets('épargne : mettre de côté, fixer un objectif, reprendre', (tester) async {

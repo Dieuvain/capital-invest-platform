@@ -15,6 +15,8 @@ import cd.capitalinvest.platform.customers.Customer
 import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.ledger.LedgerRepository
 import cd.capitalinvest.platform.limits.LimitsProperties
+import cd.capitalinvest.platform.payments.bills.BillService
+import cd.capitalinvest.platform.payments.bills.Biller
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
 import org.springframework.web.bind.annotation.GetMapping
@@ -34,14 +36,14 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
     TRANSFER(listOf("TRANSFER")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
-    PAYMENT(listOf("MERCHANT_PAYMENT")),
+    PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND", "BILL_PAYMENT", "BILL_REFUND")),
     SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
 }
 
@@ -71,6 +73,12 @@ data class HistoryItem(
     val operator: String?,
     /** Numéro mobile money qui a reçu un retrait (+243…). */
     val msisdn: String?,
+    /** Réseau du numéro rechargé, pour un achat de crédit (VODACOM, AIRTEL, ORANGE, AFRICELL). */
+    val network: String? = null,
+    /** Facture : n° de compteur, d'abonné ou de décodeur. */
+    val billReference: String? = null,
+    /** Facture SNEL prépayée : le code à taper sur le compteur. */
+    val token: String? = null,
     /** Code du commerce payé. */
     val merchantCode: String? = null,
     /** Message joint à un envoi ou à un paiement. */
@@ -176,7 +184,10 @@ class HistoryService(
                shop.name AS merchant_name, shop.code AS merchant_code,
                tp.operator AS topup_operator,
                w.operator AS withdrawal_operator, w.msisdn, w.status AS withdrawal_status,
-               w.failure_message, w.hold_transaction_id
+               COALESCE(w.failure_message, ap.failure_message, bp.failure_message) AS failure_message,
+               COALESCE(w.hold_transaction_id, ap.hold_transaction_id, bp.hold_transaction_id) AS hold_transaction_id,
+               bp.biller, bp.reference AS bill_reference, bp.token AS bill_token, bp.status AS bill_status,
+               ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status
         FROM tx
         LEFT JOIN LATERAL (
             SELECT c.full_name, c.phone
@@ -195,6 +206,9 @@ class HistoryService(
         -- Par la clé aussi : juste après l'écriture (notifications), la recharge n'est pas encore liée à sa transaction.
         LEFT JOIN topup tp ON tp.ledger_transaction_id = tx.id OR tx.idempotency_key = 'topup:' || tp.id
         LEFT JOIN withdrawal w ON w.hold_transaction_id = tx.id OR w.final_transaction_id = tx.id
+        -- Par la clé aussi : la notification du remboursement est écrite avant que l'achat soit lié au remboursement.
+        LEFT JOIN bill_payment bp ON bp.hold_transaction_id = tx.id OR tx.idempotency_key = 'bill-refund:' || bp.id
+        LEFT JOIN airtime_purchase ap ON ap.hold_transaction_id = tx.id OR tx.idempotency_key = 'airtime-refund:' || ap.id
         ORDER BY tx.created_at DESC, tx.id DESC
     """
 
@@ -211,6 +225,10 @@ class HistoryService(
             "WITHDRAWAL" -> HistoryKind.WITHDRAWAL
             "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND" -> HistoryKind.WITHDRAWAL_REFUND
             "MERCHANT_PAYMENT" -> HistoryKind.MERCHANT_PAYMENT
+            "AIRTIME" -> HistoryKind.AIRTIME
+            "AIRTIME_REFUND" -> HistoryKind.AIRTIME_REFUND
+            "BILL_PAYMENT" -> HistoryKind.BILL_PAYMENT
+            "BILL_REFUND" -> HistoryKind.BILL_REFUND
             "SAVINGS_DEPOSIT" -> HistoryKind.SAVINGS_DEPOSIT
             "SAVINGS_WITHDRAWAL" -> HistoryKind.SAVINGS_WITHDRAWAL
             else -> HistoryKind.ADJUSTMENT
@@ -234,6 +252,13 @@ class HistoryService(
                 "FAILED" -> HistoryStatus.FAILED
                 else -> HistoryStatus.COMPLETED
             }
+        } else if (kind == HistoryKind.AIRTIME || kind == HistoryKind.BILL_PAYMENT) {
+            when (rs.getString(if (kind == HistoryKind.AIRTIME) "airtime_status" else "bill_status")) {
+                "PENDING" -> HistoryStatus.PENDING
+                "REVIEW" -> HistoryStatus.REVIEW
+                "FAILED" -> HistoryStatus.FAILED
+                else -> HistoryStatus.COMPLETED
+            }
         } else {
             HistoryStatus.COMPLETED
         }
@@ -248,13 +273,17 @@ class HistoryService(
             netMinor = net,
             currency = Currency.valueOf(rs.getString("currency")),
             createdAt = createdAt,
-            counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name"),
+            counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name")
+                ?: rs.getString("biller")?.let { Biller.valueOf(it).label },
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
             operator = rs.getString("topup_operator") ?: rs.getString("withdrawal_operator"),
-            msisdn = rs.getString("msisdn")?.let { "+$it" },
+            msisdn = (rs.getString("msisdn") ?: rs.getString("airtime_msisdn"))?.let { "+$it" },
+            network = rs.getString("airtime_network"),
+            billReference = rs.getString("bill_reference"),
+            token = rs.getString("bill_token")?.let { BillService.formatToken(it) },
             merchantCode = rs.getString("merchant_code"),
             note = if (type == "TRANSFER" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
-            failureMessage = if (status == HistoryStatus.FAILED) rs.getString("failure_message") else null,
+            failureMessage = if (status == HistoryStatus.FAILED || kind == HistoryKind.AIRTIME_REFUND || kind == HistoryKind.BILL_REFUND) rs.getString("failure_message") else null,
         )
     }
 
@@ -308,6 +337,12 @@ data class CustomerSummary(
     val balanceMinor: Long,
     /** Épargne du client, en plus du solde du portefeuille. */
     val savingsMinor: Long = 0,
+    /** Bloqué par le client lui-même (téléphone perdu ou volé) : à débloquer après vérification de sa pièce d'identité. */
+    val blockedByCustomerAt: java.time.OffsetDateTime? = null,
+    /** Plafond d'envoi journalier choisi par le client ; null : celui de son niveau. */
+    val personalDailyOutMinor: Long? = null,
+    /** Hausse de ce plafond en attente (24 h après la demande). */
+    val pendingDailyOut: cd.capitalinvest.platform.limits.PendingDailyLimit? = null,
 )
 
 @RestController
@@ -318,6 +353,7 @@ class BackofficeCustomerController(
     private val ledger: LedgerRepository,
     private val history: HistoryService,
     private val audit: AuditLog,
+    private val limits: cd.capitalinvest.platform.limits.LimitsService,
 ) {
     /** Conformité et administrateurs : les autres rôles n'ont pas à lire les opérations des clients. */
     private fun requireAccess(me: AgentPrincipal) {
@@ -367,8 +403,10 @@ class BackofficeCustomerController(
 
     private fun summary(c: Customer): CustomerSummary {
         val wallet = ledger.findCustomerWallet(c.id, Currency.USD)
+        val personal = limits.personalLimit(c.id)
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
-        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings)
+        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt,
+            personal.dailyOutMinor, personal.pending)
     }
 }

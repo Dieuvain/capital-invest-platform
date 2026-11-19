@@ -25,6 +25,9 @@ void main() {
   setUp(() {
     server = FakeServer()
       ..balance = 123750
+      ..recentBills = [
+        {'biller': 'SNEL_PREPAID', 'billerName': 'SNEL prépayé', 'reference': '01234567891', 'holderName': 'KABEYA AMANI'},
+      ]
       ..savings = 18500
       ..savingsGoal = {'label': 'Rentrée scolaire', 'targetMinor': 30000}
       ..savingsMoves = [
@@ -56,6 +59,18 @@ void main() {
         FakeServer.historyItem('d1e2f3', 'WITHDRAWAL', -40600, fee: 600, at: '2026-11-16T18:30:00Z',
             operator: 'AIRTEL', msisdn: '+243970000001'),
       ];
+    server.recentRecipients = [
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+      {'phone': '+243990000870', 'displayName': 'Patrick I.'},
+    ];
+    server.scheduled = [
+      FakeServer.scheduledTransfer('st-1', 'Béni Mukendi', 15000, 'MONTHLY', 5, note: 'Loyer', lastResult: 'SENT'),
+      FakeServer.scheduledTransfer('st-2', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant')
+        ..['nextRunAt'] = '2026-11-20T06:00:00Z'
+        ..['lastRunAt'] = '2026-11-13T06:00:00Z',
+      FakeServer.scheduledTransfer('st-3', 'Josué Kalala', 1000, 'MONTHLY', 31, status: 'PAUSED', note: 'Frais scolaires'),
+    ];
     app = AppState(
       ApiClient(baseUrl: 'http://test', httpClient: server.client),
       deviceId: 'test',
@@ -128,8 +143,10 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('quick-Envoyer')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
+      await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
       await tester.enterText(find.byKey(const ValueKey('amount')), '150');
+      await tester.pump();
+      await shot('3a-envoi-recents$suffix');
       await tester.tap(find.text('Continuer'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
@@ -203,6 +220,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('spending')));
+      await tester.pumpAndSettle();
+      await shot('16-depenses$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Accueil'));
       await tester.pumpAndSettle();
@@ -215,6 +237,91 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('amount')), '20');
       await tester.pump();
       await shot('10b-mettre-de-cote$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(ListView).first, const Offset(0, 800));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Acheter du crédit téléphone'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vodacom 812345678'));
+      await tester.tap(find.text('5 \$'));
+      await tester.pumpAndSettle();
+      await shot('11-credit$suffix');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.ensureVisible(find.text('Acheter 5,00\u00A0\$'));
+      await tester.tap(find.text('Acheter 5,00\u00A0\$'));
+      await tester.pumpAndSettle();
+      await shot('11b-credit-envoye$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Payer une facture'));
+      await tester.pumpAndSettle();
+      await shot('12-factures$suffix');
+      await tester.tap(find.byKey(const ValueKey('recent-bill-01234567891')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20 \$'));
+      await tester.pumpAndSettle();
+      await shot('12b-facture-snel$suffix');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.ensureVisible(find.text('Payer 20,00\u00A0\$'));
+      await tester.tap(find.text('Payer 20,00\u00A0\$'));
+      await tester.pumpAndSettle();
+      await shot('12c-code-compteur$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Historique et reçus'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('history-bp-1')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Signaler un problème'));
+      await tester.tap(find.text('Signaler un problème'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('complaint-category-WRONG_AMOUNT')));
+      await tester.enterText(find.byKey(const ValueKey('complaint-message')), 'J\'ai payé 20 \$ mais le compteur n\'a reçu que 15 \$ d\'unités.');
+      await tester.pumpAndSettle();
+      await shot('13-reclamation$suffix');
+      await tester.ensureVisible(find.text('Envoyer la réclamation'));
+      await tester.tap(find.text('Envoyer la réclamation'));
+      await tester.pumpAndSettle();
+      await shot('13b-reclamation-envoyee$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Accueil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Envois programmés'));
+      await tester.pumpAndSettle();
+      await shot('14-envois-programmes$suffix');
+      await tester.ensureVisible(find.text('Programmer un envoi'));
+      await tester.tap(find.text('Programmer un envoi'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '0970000402');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+      await tester.enterText(find.byKey(const ValueKey('scheduled-note')), 'Argent pour maman');
+      await tester.tap(find.text('Chaque semaine'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('weekday-5')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continuer'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.pump();
+      await shot('14b-programmer-envoi$suffix');
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
@@ -233,6 +340,14 @@ void main() {
       await shot('8b-changer-pin$suffix');
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
+      server
+        ..personalDailyLimit = 5000
+        ..pendingDailyLimit = {'dailyOutMinor': 20000, 'effectiveAt': '2026-11-20T13:05:00Z'};
+      await tester.tap(find.byKey(const ValueKey('daily-limit-entry')));
+      await tester.pumpAndSettle();
+      await shot('17-plafond-par-jour$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Accueil'));
@@ -245,6 +360,24 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('idNumber')), 'CE 1234 5678');
       await tester.pump();
       await shot('5-niveau-2$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      // Téléphone perdu ou volé : en dernier, puisque le blocage ferme la session.
+      await tester.tap(find.byTooltip('Profil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sécurité et PIN'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('block-account')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+      await tester.pump();
+      await shot('15-bloquer-compte$suffix');
+      await tester.tap(find.byKey(const Key('block-confirm')));
+      await tester.pumpAndSettle();
+      await shot('15b-compte-bloque$suffix');
     });
   }
 }

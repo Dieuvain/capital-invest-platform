@@ -15,6 +15,8 @@ data class ChangePinRequest(val currentPin: String, val newPin: String)
 
 data class SignOutResult(val closed: Int)
 
+data class BlockAccountRequest(val pin: String)
+
 /** Écran « Sécurité » de l'app : changer son PIN, voir ses connexions récentes, fermer les autres. */
 @RestController
 @RequestMapping("/v1/me/security")
@@ -35,6 +37,12 @@ class SecurityController(private val auth: AuthService) {
     @PostMapping("/sessions/sign-out-others")
     fun signOutOthers(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @RequestHeader("Authorization") header: String) =
         SignOutResult(auth.signOutOthers(customerId, token(header)))
+
+    /** « Bloquer mon compte » : plus aucune connexion ni opération jusqu'au déblocage en agence. */
+    @PostMapping("/block")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun block(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @RequestBody b: BlockAccountRequest) =
+        auth.blockFromApp(customerId, b.pin)
 
     private fun token(header: String) = header.removePrefix("Bearer ").trim()
 }

@@ -47,6 +47,59 @@ class FakeServer {
   /// PIN du client, changé par /v1/me/security/pin.
   String pin = '2580';
 
+  /// « Mes dépenses » servies par /v1/me/spending, par mois (« current » sans paramètre).
+  Map<String, Map<String, dynamic>> spending = {
+    'current': {
+      'month': '2026-11', 'partial': true, 'from': '2026-11-01', 'to': '2026-11-19',
+      'comparedFrom': '2026-10-01', 'comparedTo': '2026-10-19',
+      'spentMinor': 38420, 'previousSpentMinor': 31200, 'receivedMinor': 104500, 'savedMinor': 3500,
+      'categories': [
+        {'category': 'TRANSFERS', 'amountMinor': 22000, 'previousMinor': 18000, 'count': 3},
+        {'category': 'WITHDRAWALS', 'amountMinor': 10000, 'previousMinor': 8000, 'count': 1},
+        {'category': 'BILLS', 'amountMinor': 4500, 'previousMinor': 4500, 'count': 2},
+        {'category': 'AIRTIME', 'amountMinor': 1000, 'previousMinor': 500, 'count': 2},
+        {'category': 'FEES', 'amountMinor': 920, 'previousMinor': 200, 'count': 0},
+      ],
+      'topRecipients': [
+        {'name': 'Grâce Mbuyi', 'phone': '+243 81• ••• 214', 'amountMinor': 20000, 'count': 2},
+        {'name': 'Josué Kalala', 'phone': '+243 97• ••• 002', 'amountMinor': 2000, 'count': 1},
+      ],
+    },
+    '2026-10': {
+      'month': '2026-10', 'partial': false, 'from': '2026-10-01', 'to': '2026-10-31',
+      'comparedFrom': null, 'comparedTo': null,
+      'spentMinor': 9120, 'previousSpentMinor': null, 'receivedMinor': 22000, 'savedMinor': 0,
+      'categories': [
+        {'category': 'TRANSFERS', 'amountMinor': 9000, 'previousMinor': null, 'count': 1},
+        {'category': 'FEES', 'amountMinor': 120, 'previousMinor': null, 'count': 0},
+      ],
+      'topRecipients': [],
+    },
+  };
+
+  /// Plafond d'envoi par jour choisi par le client (null : celui du niveau) et hausse en attente.
+  int? personalDailyLimit;
+  Map<String, dynamic>? pendingDailyLimit;
+
+  Map<String, dynamic> _limits() {
+    final daily = personalDailyLimit ?? 60000;
+    return {
+      'kycLevel': kycLevel,
+      'perTransactionMinor': kycLevel == 1 ? 20000 : 400000,
+      'dailyOutMinor': daily,
+      'dailyOutUsedMinor': 10000,
+      'dailyOutRemainingMinor': (daily - 10000).clamp(0, daily),
+      'maxBalanceMinor': 100000,
+      'levelDailyOutMinor': 60000,
+      'personalDailyOutMinor': personalDailyLimit,
+      'pendingDailyOut': pendingDailyLimit,
+      'personalMinMinor': 1000,
+    };
+  }
+
+  /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
+  bool blocked = false;
+
   /// Connexions servies par /v1/me/security/sessions, celle de ce téléphone en tête.
   List<Map<String, dynamic>> deviceSessions = [
     deviceSession('s-1', 'Samsung Galaxy A14', '2026-11-19T09:10:00Z', current: true),
@@ -57,6 +110,42 @@ class FakeServer {
   static Map<String, dynamic> deviceSession(String id, String? name, String at, {bool current = false, bool active = false}) => {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
+
+  /// Réclamations servies par /v1/me/complaints, la plus récente en tête.
+  List<Map<String, dynamic>> complaints = [];
+
+  /// Clients connus de /v1/transfers/recipient (numéro → prénom et initiale).
+  static const recipients = {'+243970000002': 'Josué K.', '+243970000402': 'Béni M.', '+243990000870': 'Patrick I.'};
+
+  /// Destinataires servis par /v1/transfers/recent.
+  List<Map<String, dynamic>> recentRecipients = [];
+
+  /// Envois programmés servis par /v1/me/scheduled-transfers.
+  List<Map<String, dynamic>> scheduled = [];
+
+  static Map<String, dynamic> scheduledTransfer(String id, String name, int amount, String frequency, int day,
+      {String status = 'ACTIVE', String? note, String? lastResult, String? lastFailure}) => {
+    'id': id, 'recipientName': name, 'recipientPhone': '+243 97• ••• 402', 'amountMinor': amount,
+    'feeMinor': ((amount * 100 + 5000) ~/ 10000).clamp(10, 500), 'note': note, 'frequency': frequency, 'day': day,
+    'status': status, 'nextRunAt': status == 'ACTIVE' ? '2026-12-05T06:00:00Z' : null,
+    'lastRunAt': lastResult == null ? null : '2026-11-05T06:00:00Z', 'lastResult': lastResult, 'lastFailure': lastFailure,
+    'createdAt': '2026-10-01T10:00:00Z',
+  };
+
+  /// Comptes servis par /v1/bills/recent.
+  List<Map<String, dynamic>> recentBills = [];
+
+  static const billers = [
+    {'code': 'SNEL_PREPAID', 'label': 'SNEL prépayé', 'category': 'Électricité', 'kind': 'PREPAID', 'referenceLabel': 'Numéro de compteur'},
+    {'code': 'REGIDESO', 'label': 'REGIDESO', 'category': 'Eau', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro d\'abonné'},
+    {'code': 'CANAL_PLUS', 'label': 'Canal+', 'category': 'Télévision', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro d\'abonné'},
+    {'code': 'DSTV', 'label': 'DStv', 'category': 'Télévision', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro de smartcard'},
+  ];
+
+  /// Numéros proposés par /v1/airtime/recent.
+  List<Map<String, dynamic>> airtimeRecent = [
+    {'phone': '+243812345678', 'network': 'VODACOM'},
+  ];
 
   /// Épargne servie par /v1/me/savings.
   int savings = 0;
@@ -219,6 +308,87 @@ class FakeServer {
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
     }
+    if (path == '/v1/me/scheduled-transfers' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final s = scheduledTransfer('st-${scheduled.length + 1}', 'Béni Mukendi', b['amountMinor'], b['frequency'], b['day'], note: b['note']);
+      scheduled.add(s);
+      return _json(s, 201);
+    }
+    if (path == '/v1/me/scheduled-transfers') return _json(scheduled);
+    final st = RegExp(r'^/v1/me/scheduled-transfers/([^/]+)(?:/(pause|resume))?$').firstMatch(path);
+    if (st != null) {
+      final s = scheduled.firstWhere((x) => x['id'] == st.group(1));
+      if (req.method == 'DELETE') {
+        scheduled.remove(s);
+        return http.Response('', 204);
+      }
+      s['status'] = st.group(2) == 'pause' ? 'PAUSED' : 'ACTIVE';
+      s['nextRunAt'] = s['status'] == 'ACTIVE' ? '2026-12-05T06:00:00Z' : null;
+      return _json(s);
+    }
+    if (path == '/v1/me/complaints' && req.method == 'POST') {
+      final b = body();
+      final tx = b['transactionId'] as String?;
+      if (tx != null && complaints.any((c) => c['operation']?['id'] == tx && c['status'] == 'OPEN')) {
+        return _error(409, 'COMPLAINT_ALREADY_OPEN', 'Déjà ouverte');
+      }
+      final c = {
+        'id': 'cp-${complaints.length + 1}', 'reference': 'REC-20261119-3F9A2${complaints.length}', 'category': b['category'],
+        'categoryLabel': {'NOT_RECEIVED': 'L\'argent n\'est pas arrivé', 'WRONG_AMOUNT': 'Mauvais montant ou frais',
+          'NOT_ME': 'Je n\'ai pas fait cette opération', 'OTHER': 'Autre problème'}[b['category']],
+        'message': b['message'], 'status': 'OPEN',
+        'operation': tx == null ? null : history.firstWhere((h) => h['id'] == tx),
+        'dueAt': '2026-11-26T10:00:00Z', 'answer': null, 'outcome': null, 'answeredAt': null, 'createdAt': '2026-11-19T10:00:00Z',
+      };
+      complaints.insert(0, c);
+      return _json(c, 201);
+    }
+    if (path == '/v1/me/complaints') return _json(complaints);
+    if (path == '/v1/bills/billers') return _json(billers);
+    if (path == '/v1/bills/recent') return _json(recentBills);
+    if (path == '/v1/bills/lookup') {
+      final b = body();
+      final ref = (b['reference'] as String).replaceAll(RegExp(r'[^0-9]'), '');
+      if (ref.endsWith('0000')) return _error(404, 'BILL_ACCOUNT_NOT_FOUND', 'Inconnu');
+      return _json({
+        'biller': b['biller'], 'reference': ref, 'holderName': 'KABEYA AMANI',
+        'amountDueMinor': b['biller'] == 'SNEL_PREPAID' ? null : 1850,
+      });
+    }
+    if (path == '/v1/bills' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final a = b['amountMinor'] as int;
+      if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+      balance -= a;
+      final label = billers.firstWhere((x) => x['code'] == b['biller'])['label'];
+      history.insert(0, historyItem('bp-1', 'BILL_PAYMENT', -a, at: '2026-11-19T10:40:00Z', name: label));
+      return _json({
+        'id': 'bp-1', 'biller': b['biller'], 'billerName': label, 'reference': b['reference'],
+        'holderName': 'KABEYA AMANI', 'amountMinor': a, 'currency': 'USD', 'status': 'PAID',
+        'token': b['biller'] == 'SNEL_PREPAID' ? '4821 0937 5512 8064 3379' : null,
+        'failureMessage': null, 'transactionId': 'bp-1', 'createdAt': '2026-11-19T10:40:00Z',
+      }, 201);
+    }
+    if (path == '/v1/airtime/recent') return _json(airtimeRecent);
+    if (path == '/v1/airtime' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final a = b['amountMinor'] as int;
+      if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+      final failed = (b['phone'] as String).endsWith('0000');
+      if (!failed) balance -= a;
+      final id = 'at-${history.length + 1}';
+      history.insert(0, historyItem(id, 'AIRTIME', -a, at: '2026-11-19T10:30:00Z', msisdn: b['phone'],
+          status: failed ? 'FAILED' : 'COMPLETED'));
+      return _json({
+        'id': id, 'network': b['network'], 'phone': b['phone'], 'amountMinor': a, 'currency': 'USD',
+        'status': failed ? 'FAILED' : 'DELIVERED',
+        'failureMessage': failed ? 'Ce numéro n\'est pas actif chez Airtel' : null,
+        'transactionId': id, 'createdAt': '2026-11-19T10:30:00Z',
+      }, 201);
+    }
     if (path == '/v1/me/savings') return _json(_savings);
     if (path == '/v1/me/savings/deposits' || path == '/v1/me/savings/withdrawals') {
       final a = body()['amountMinor'] as int;
@@ -274,7 +444,17 @@ class FakeServer {
       _signOutOthers();
       return http.Response('', 204);
     }
+    if (path == '/v1/me/spending') {
+      final m = req.url.queryParameters['month'];
+      final found = m == null || m == '2026-11' ? spending['current'] : spending[m];
+      return found == null ? _error(422, 'STATEMENT_UNAVAILABLE', 'Pas de relevé') : _json(found);
+    }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
+      if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      blocked = true;
+      return http.Response('', 204);
+    }
     if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
@@ -289,6 +469,7 @@ class FakeServer {
       case ('POST', '/v1/auth/login'):
         final b = body();
         if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        if (blocked) return _error(403, 'CUSTOMER_BLOCKED', 'Compte bloqué à votre demande');
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,
@@ -299,21 +480,29 @@ class FakeServer {
       case ('GET', '/v1/me/balance'):
         return _json({'accountId': 'w-1', 'currency': 'USD', 'balanceMinor': balance});
       case ('GET', '/v1/me/limits'):
-        return _json({
-          'kycLevel': kycLevel,
-          'perTransactionMinor': kycLevel == 1 ? 20000 : 400000,
-          'dailyOutMinor': 60000,
-          'dailyOutUsedMinor': 10000,
-          'dailyOutRemainingMinor': 50000,
-          'maxBalanceMinor': 100000,
-        });
+        return _json(_limits());
+      case ('PUT', '/v1/me/limits/daily'):
+        final b = body();
+        if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        final int? v = b['dailyOutMinor'];
+        if (v != null && (v < 1000 || v > 60000)) return _error(422, 'INVALID_DAILY_LIMIT', 'Choisissez entre 10,00 \$ et 600,00 \$');
+        if ((v ?? 60000) <= (personalDailyLimit ?? 60000)) {
+          personalDailyLimit = v != null && v < 60000 ? v : null;
+          pendingDailyLimit = null;
+        } else {
+          pendingDailyLimit = {'dailyOutMinor': v, 'effectiveAt': '2026-11-20T13:05:00Z'};
+        }
+        return _json(_limits());
+      case ('DELETE', '/v1/me/limits/daily/pending'):
+        pendingDailyLimit = null;
+        return _json(_limits());
       case ('GET', '/v1/me/history'):
         final category = req.url.queryParameters['category'];
         final kinds = switch (category) {
           'TOPUP' => ['TOPUP'],
           'TRANSFER' => ['TRANSFER_SENT', 'TRANSFER_RECEIVED'],
           'WITHDRAWAL' => ['WITHDRAWAL', 'WITHDRAWAL_REFUND'],
-          'PAYMENT' => ['MERCHANT_PAYMENT'],
+          'PAYMENT' => ['MERCHANT_PAYMENT', 'AIRTIME', 'AIRTIME_REFUND'],
           'SAVINGS' => ['SAVINGS_DEPOSIT', 'SAVINGS_WITHDRAWAL'],
           _ => null,
         };
@@ -322,6 +511,14 @@ class FakeServer {
         final start = int.parse(req.url.queryParameters['cursor'] ?? '0');
         final end = (start + limit).clamp(0, all.length);
         return _json({'items': all.sublist(start, end), 'nextCursor': end < all.length ? '$end' : null});
+      case ('GET', '/v1/transfers/recipient'):
+        final p = req.url.queryParameters['phone']!;
+        if (p == '+243970000001') return _error(422, 'SAME_ACCOUNT', 'Impossible');
+        final name = recipients[p];
+        if (name == null) return _error(404, 'RECIPIENT_NOT_FOUND', 'Aucun client');
+        return _json({'phone': p, 'displayName': name});
+      case ('GET', '/v1/transfers/recent'):
+        return _json(recentRecipients);
       case ('GET', '/v1/transfers/fee'):
         final a = int.parse(req.url.queryParameters['amountMinor']!);
         final fee = ((a * 100 + 5000) ~/ 10000).clamp(10, 500);

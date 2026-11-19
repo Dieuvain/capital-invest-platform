@@ -43,8 +43,8 @@ describe('connexion', () => {
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -225,6 +225,19 @@ describe('promotions', () => {
 })
 
 describe('clients', () => {
+  it('la fiche client montre ses envois programmés et ses réclamations', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const scheduled = await screen.findByRole('region', { name: 'Envois programmés' })
+    expect(within(scheduled).getByText('Chaque mois, le 5')).toBeInTheDocument()
+    expect(within(scheduled).getByText('+243970000402')).toBeInTheDocument()
+    expect(within(scheduled).getByText('Dernier échec : Solde insuffisant')).toBeInTheDocument()
+    const complaints = await screen.findByRole('region', { name: 'Réclamations' })
+    expect(within(complaints).getByText('REC-20261119-9C41D0')).toBeInTheDocument()
+    expect(within(complaints).queryByText('REC-20261110-1A2B3C')).toBeNull()
+  })
+
   it('la conformité retrouve un client, filtre ses opérations et ouvre un reçu', async () => {
     const user = await signIn('conformite@capitalinvest.cd', 'Clients')
     await user.type(screen.getByLabelText('Numéro du client'), '+243 970 000 999')
@@ -359,6 +372,31 @@ describe('surveillance', () => {
     expect(await within(account).findByText('Compte actif')).toBeInTheDocument()
     expect(server.requests.find((r) => r.path === '/v1/backoffice/customers/c-1/status')?.body)
       .toEqual({ status: 'ACTIVE', reason: 'Justificatifs reçus' })
+  })
+
+  it('la fiche client montre le plafond par jour choisi par le client et la hausse en attente', async () => {
+    Object.assign(server.customer, { personalDailyOutMinor: 5000, pendingDailyOut: { dailyOutMinor: 20000, effectiveAt: '2026-11-20T11:05:00Z' } })
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const note = await screen.findByLabelText('Plafond choisi par le client')
+    expect(note).toHaveTextContent(/Plafond d'envoi choisi par le client : 50,00\s\$ par jour, hausse à 200,00\s\$ prévue le/)
+  })
+
+  it('un compte bloqué par le client (téléphone volé) se débloque avec la pièce d\'identité vue en agence', async () => {
+    Object.assign(server.customer, { status: 'SUSPENDED', blockedByCustomerAt: '2026-11-19T09:42:00Z' })
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const account = await screen.findByRole('region', { name: 'Compte' })
+    expect(within(account).getByText('Bloqué par le client')).toBeInTheDocument()
+    expect(within(account).getByText(/téléphone perdu ou volé/)).toBeInTheDocument()
+    expect(screen.getByText('bloqué par le client')).toBeInTheDocument()
+    await user.click(within(account).getByRole('button', { name: 'Débloquer' }))
+    await user.type(within(account).getByLabelText(/Pièce d'identité vérifiée/), "Carte d'électeur n° 1234567")
+    await user.click(within(account).getByRole('button', { name: 'Débloquer le compte' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Compte de Amani Kabeya débloqué, le client reçoit un SMS')
+    expect(await within(account).findByText('Compte actif')).toBeInTheDocument()
   })
 })
 
@@ -546,6 +584,63 @@ describe('rapprochement', () => {
     await user.click(within(review).getByRole('button', { name: 'Rembourser le client' }))
     expect(await within(review).findByRole('alert')).toHaveTextContent('payer le client deux fois')
     expect(within(review).getByText('Esther Mbuyi')).toBeInTheDocument()
+  })
+
+  it("réclamations : l'urgente d'abord, conclusion et réponse obligatoires, puis la réponse part", async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Réclamations')
+    const urgent = await screen.findByRole('region', { name: 'REC-20261119-9C41D0' })
+    const other = screen.getByRole('region', { name: 'REC-20261110-1A2B3C' })
+    expect(urgent.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(urgent).getByText('Urgent : vol de compte possible')).toBeInTheDocument()
+    expect(within(other).getByText('En retard')).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('1 réclamation en retard')
+
+    await user.click(within(other).getByRole('button', { name: 'Répondre' }))
+    const send = within(other).getByRole('button', { name: 'Envoyer la réponse' })
+    await user.type(within(other).getByRole('textbox', { name: /Réponse au client/ }), "L'argent est bien arrivé chez Béni le 10/11.")
+    expect(send).toBeDisabled()
+    await user.click(within(other).getByRole('radio', { name: /Non fondée/ }))
+    await user.click(send)
+    expect(await screen.findByRole('status')).toHaveTextContent('Réponse envoyée à Esther Mbuyi')
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'REC-20261110-1A2B3C' })).toBeNull())
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/complaints/cp-2/answer')?.body).toEqual({
+      outcome: 'UNFOUNDED', answer: "L'argent est bien arrivé chez Béni le 10/11.",
+    })
+
+    await user.click(screen.getByRole('tab', { name: 'Répondues' }))
+    const answered = await screen.findByRole('region', { name: 'REC-20261110-1A2B3C' })
+    expect(within(answered).getByText(/Réponse de Ruth Conformité/)).toBeInTheDocument()
+  })
+
+  it('noter payée une facture SNEL sans réponse demande le code du compteur', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Rapprochement')
+    const region = await screen.findByRole('region', { name: 'Crédit téléphone et factures sans réponse' })
+    const row = (await within(region).findByText('Amani Kabeya')).closest('tr')!
+    expect(within(row).getByText(/SNEL prépayé/)).toBeInTheDocument()
+    await user.click(within(row).getByRole('button', { name: 'Noter payé' }))
+    const confirm = within(region).getByRole('button', { name: 'Noter la facture payée' })
+    await user.type(within(region).getByRole('textbox', { name: /Comment l'avez-vous vérifié/ }), 'Confirmé par l’agrégateur')
+    expect(confirm).toBeDisabled()
+    await user.type(within(region).getByRole('textbox', { name: /Code du compteur/ }), '1234 5678 9012 3456 7890')
+    await user.click(confirm)
+    await waitFor(() => expect(within(region).queryByText('Amani Kabeya')).toBeNull())
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/bills/b-review/resolve')?.body).toEqual({
+      action: 'DONE', note: 'Confirmé par l’agrégateur', token: '1234 5678 9012 3456 7890',
+    })
+  })
+
+  it('un crédit téléphone sans réponse se rembourse sans code', async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
+    const region = await screen.findByRole('region', { name: 'Crédit téléphone et factures sans réponse' })
+    const row = (await within(region).findByText('Esther Mbuyi')).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Rembourser' }))
+    expect(within(region).queryByRole('textbox', { name: /Code du compteur/ })).toBeNull()
+    await user.type(within(region).getByRole('textbox'), 'Échec confirmé par le prestataire')
+    await user.click(within(region).getByRole('button', { name: 'Rembourser le client' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Esther Mbuyi a été remboursé')
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/airtime/a-review/resolve')?.body).toEqual({
+      action: 'REFUND', note: 'Échec confirmé par le prestataire',
+    })
   })
 
   it('un retrait noté versé mais non payé se rembourse depuis les écarts', async () => {

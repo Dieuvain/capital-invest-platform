@@ -116,7 +116,23 @@ class Limits {
     required this.dailyOutRemainingMinor,
     required this.maxBalanceMinor,
     this.outgoingBlockedUntil,
-  });
+    int? levelDailyOutMinor,
+    this.personalDailyOutMinor,
+    this.pendingAt,
+    this.pendingDailyOutMinor,
+  }) : levelDailyOutMinor = levelDailyOutMinor ?? dailyOutMinor;
+
+  /// Plafond journalier du niveau KYC.
+  final int levelDailyOutMinor;
+
+  /// Plafond choisi par le client ; null : celui du niveau.
+  final int? personalDailyOutMinor;
+
+  /// Hausse du plafond personnel en attente : sa date d'effet. Null : aucune hausse en attente.
+  final DateTime? pendingAt;
+
+  /// Plafond après la hausse ; null : retour au plafond du niveau.
+  final int? pendingDailyOutMinor;
 
   final int kycLevel;
   final int perTransactionMinor;
@@ -132,6 +148,10 @@ class Limits {
     dailyOutRemainingMinor: j['dailyOutRemainingMinor'],
     maxBalanceMinor: j['maxBalanceMinor'],
     outgoingBlockedUntil: j['outgoingBlockedUntil'] == null ? null : DateTime.parse(j['outgoingBlockedUntil']),
+    levelDailyOutMinor: j['levelDailyOutMinor'],
+    personalDailyOutMinor: j['personalDailyOutMinor'],
+    pendingAt: j['pendingDailyOut'] == null ? null : DateTime.parse(j['pendingDailyOut']['effectiveAt']),
+    pendingDailyOutMinor: j['pendingDailyOut']?['dailyOutMinor'],
   );
 }
 
@@ -351,6 +371,9 @@ class HistoryItem {
     this.operator,
     this.msisdn,
     this.merchantCode,
+    this.network,
+    this.billReference,
+    this.token,
     this.note,
     this.failureMessage,
   });
@@ -359,7 +382,7 @@ class HistoryItem {
   final String receiptNumber;
 
   /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
-  /// SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
+  /// AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -377,6 +400,13 @@ class HistoryItem {
 
   /// Code du commerce payé (paiement marchand).
   final String? merchantCode;
+
+  /// Réseau du numéro rechargé (achat de crédit).
+  final MobileNetwork? network;
+
+  /// Facture : n° de compteur, d'abonné ou de décodeur ; code du compteur prépayé.
+  final String? billReference;
+  final String? token;
   final String? note;
   final String? failureMessage;
 
@@ -399,6 +429,9 @@ class HistoryItem {
     operator: j['operator'],
     msisdn: j['msisdn'],
     merchantCode: j['merchantCode'],
+    network: MobileNetwork.fromApi(j['network']),
+    billReference: j['billReference'],
+    token: j['token'],
     note: j['note'],
     failureMessage: j['failureMessage'],
   );
@@ -584,5 +617,336 @@ class Savings {
     savedThisMonthMinor: j['savedThisMonthMinor'],
     goal: j['goal'] == null ? null : SavingsGoal.fromJson(j['goal']),
     moves: (j['moves'] as List).map((m) => SavingsMove.fromJson(m)).toList(),
+  );
+}
+
+/// Réseaux mobiles de la RDC, pour le crédit téléphone.
+enum MobileNetwork {
+  vodacom('VODACOM', 'Vodacom', {'81', '82', '83'}),
+  airtel('AIRTEL', 'Airtel', {'97', '98', '99'}),
+  orange('ORANGE', 'Orange', {'80', '84', '85', '89'}),
+  africell('AFRICELL', 'Africell', {'90', '91'});
+
+  const MobileNetwork(this.apiName, this.label, this.prefixes);
+
+  final String apiName;
+  final String label;
+  final Set<String> prefixes;
+
+  static MobileNetwork? fromApi(String? name) => values.where((n) => n.apiName == name).firstOrNull;
+
+  /// Réseau d'origine d'après le préfixe ; null si inconnu (le client choisit).
+  static MobileNetwork? forPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final local = digits.startsWith('243') ? digits.substring(3) : (digits.startsWith('0') ? digits.substring(1) : digits);
+    if (local.length < 2) return null;
+    return values.where((n) => n.prefixes.contains(local.substring(0, 2))).firstOrNull;
+  }
+}
+
+/// Achat de crédit téléphone : DELIVERED (unités envoyées), FAILED (remboursé) ou PENDING.
+class AirtimePurchase {
+  AirtimePurchase({
+    required this.id,
+    required this.network,
+    required this.phone,
+    required this.amountMinor,
+    required this.status,
+    required this.failureMessage,
+    required this.transactionId,
+  });
+
+  final String id;
+  final MobileNetwork? network;
+  final String phone;
+  final int amountMinor;
+  final String status;
+  final String? failureMessage;
+  final String transactionId;
+
+  factory AirtimePurchase.fromJson(Map<String, dynamic> j) => AirtimePurchase(
+    id: j['id'],
+    network: MobileNetwork.fromApi(j['network']),
+    phone: j['phone'],
+    amountMinor: j['amountMinor'],
+    status: j['status'],
+    failureMessage: j['failureMessage'],
+    transactionId: j['transactionId'],
+  );
+}
+
+/// Numéro déjà rechargé, proposé en un geste.
+class RecentAirtimeNumber {
+  RecentAirtimeNumber(this.phone, this.network);
+
+  final String phone;
+  final MobileNetwork? network;
+
+  factory RecentAirtimeNumber.fromJson(Map<String, dynamic> j) =>
+      RecentAirtimeNumber(j['phone'], MobileNetwork.fromApi(j['network']));
+}
+
+/// Facturier : SNEL (compteur prépayé), REGIDESO, Canal+, DStv.
+class Biller {
+  Biller(this.code, this.label, this.category, this.prepaid, this.referenceLabel);
+
+  final String code;
+  final String label;
+  final String category;
+
+  /// Compteur prépayé : on achète de l'énergie et on reçoit un code à taper sur le compteur.
+  final bool prepaid;
+  final String referenceLabel;
+
+  factory Biller.fromJson(Map<String, dynamic> j) =>
+      Biller(j['code'], j['label'], j['category'], j['kind'] == 'PREPAID', j['referenceLabel']);
+}
+
+/// Compte chez le facturier, vérifié avant de payer.
+class BillAccount {
+  BillAccount(this.reference, this.holderName, this.amountDueMinor);
+
+  final String reference;
+  final String holderName;
+  final int? amountDueMinor;
+
+  factory BillAccount.fromJson(Map<String, dynamic> j) =>
+      BillAccount(j['reference'], j['holderName'], j['amountDueMinor']);
+}
+
+/// Paiement d'une facture : PAID, FAILED (remboursé) ou PENDING.
+class BillPayment {
+  BillPayment({
+    required this.id,
+    required this.billerName,
+    required this.reference,
+    required this.holderName,
+    required this.amountMinor,
+    required this.status,
+    required this.token,
+    required this.failureMessage,
+  });
+
+  final String id;
+  final String billerName;
+  final String reference;
+  final String holderName;
+  final int amountMinor;
+  final String status;
+  final String? token;
+  final String? failureMessage;
+
+  factory BillPayment.fromJson(Map<String, dynamic> j) => BillPayment(
+    id: j['id'],
+    billerName: j['billerName'],
+    reference: j['reference'],
+    holderName: j['holderName'],
+    amountMinor: j['amountMinor'],
+    status: j['status'],
+    token: j['token'],
+    failureMessage: j['failureMessage'],
+  );
+}
+
+/// Compte déjà payé, à repayer en un geste.
+class RecentBill {
+  RecentBill(this.biller, this.billerName, this.reference, this.holderName);
+
+  final String biller;
+  final String billerName;
+  final String reference;
+  final String holderName;
+
+  factory RecentBill.fromJson(Map<String, dynamic> j) =>
+      RecentBill(j['biller'], j['billerName'], j['reference'], j['holderName']);
+}
+
+/// Réclamation du client, sur une opération ou sur son compte.
+class Complaint {
+  Complaint({
+    required this.id,
+    required this.reference,
+    required this.category,
+    required this.categoryLabel,
+    required this.message,
+    required this.status,
+    required this.operation,
+    required this.dueAt,
+    required this.answer,
+    required this.outcome,
+    required this.answeredAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String reference;
+  final String category;
+  final String categoryLabel;
+  final String message;
+
+  /// OPEN, ANSWERED.
+  final String status;
+  final HistoryItem? operation;
+  final DateTime dueAt;
+  final String? answer;
+
+  /// FOUNDED (le client avait raison), UNFOUNDED.
+  final String? outcome;
+  final DateTime? answeredAt;
+  final DateTime createdAt;
+
+  bool get open => status == 'OPEN';
+
+  factory Complaint.fromJson(Map<String, dynamic> j) => Complaint(
+    id: j['id'],
+    reference: j['reference'],
+    category: j['category'],
+    categoryLabel: j['categoryLabel'],
+    message: j['message'],
+    status: j['status'],
+    operation: j['operation'] == null ? null : HistoryItem.fromJson(j['operation']),
+    dueAt: DateTime.parse(j['dueAt']),
+    answer: j['answer'],
+    outcome: j['outcome'],
+    answeredAt: j['answeredAt'] == null ? null : DateTime.parse(j['answeredAt']),
+    createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+/// Envoi répété chaque semaine ou chaque mois, confirmé une fois par le PIN.
+class ScheduledTransfer {
+  ScheduledTransfer({
+    required this.id,
+    required this.recipientName,
+    required this.recipientPhone,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.note,
+    required this.frequency,
+    required this.day,
+    required this.status,
+    required this.nextRunAt,
+    required this.lastRunAt,
+    required this.lastResult,
+    required this.lastFailure,
+  });
+
+  final String id;
+  final String recipientName;
+  final String recipientPhone;
+  final int amountMinor;
+  final int feeMinor;
+  final String? note;
+
+  /// WEEKLY ou MONTHLY.
+  final String frequency;
+
+  /// Jour de la semaine (1 = lundi) ou du mois.
+  final int day;
+
+  /// ACTIVE ou PAUSED.
+  final String status;
+  final DateTime? nextRunAt;
+  final DateTime? lastRunAt;
+  final String? lastResult;
+  final String? lastFailure;
+
+  bool get active => status == 'ACTIVE';
+
+  factory ScheduledTransfer.fromJson(Map<String, dynamic> j) => ScheduledTransfer(
+    id: j['id'],
+    recipientName: j['recipientName'],
+    recipientPhone: j['recipientPhone'],
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'],
+    note: j['note'],
+    frequency: j['frequency'],
+    day: j['day'],
+    status: j['status'],
+    nextRunAt: j['nextRunAt'] == null ? null : DateTime.parse(j['nextRunAt']),
+    lastRunAt: j['lastRunAt'] == null ? null : DateTime.parse(j['lastRunAt']),
+    lastResult: j['lastResult'],
+    lastFailure: j['lastFailure'],
+  );
+}
+
+/// Destinataire vérifié avant un envoi : prénom et initiale.
+class Recipient {
+  Recipient(this.phone, this.displayName);
+
+  final String phone;
+  final String displayName;
+
+  factory Recipient.fromJson(Map<String, dynamic> j) => Recipient(j['phone'], j['displayName']);
+}
+
+/// Une catégorie de « Mes dépenses ».
+class CategorySpending {
+  CategorySpending(this.category, this.amountMinor, this.previousMinor, this.count);
+
+  /// TRANSFERS, MERCHANTS, BILLS, AIRTIME, WITHDRAWALS ou FEES.
+  final String category;
+  final int amountMinor;
+
+  /// Même catégorie sur la période de comparaison ; null sans comparaison.
+  final int? previousMinor;
+  final int count;
+
+  factory CategorySpending.fromJson(Map<String, dynamic> j) =>
+      CategorySpending(j['category'], j['amountMinor'], j['previousMinor'], j['count'] ?? 0);
+}
+
+class TopRecipient {
+  TopRecipient(this.name, this.phone, this.amountMinor, this.count);
+
+  final String name;
+  final String? phone;
+  final int amountMinor;
+  final int count;
+
+  factory TopRecipient.fromJson(Map<String, dynamic> j) =>
+      TopRecipient(j['name'], j['phone'], j['amountMinor'], j['count'] ?? 0);
+}
+
+/// « Mes dépenses » d'un mois, comparées au mois d'avant (arrêté au même jour pour le mois en cours).
+class SpendingSummary {
+  SpendingSummary({
+    required this.month,
+    required this.partial,
+    required this.to,
+    required this.comparedFrom,
+    required this.comparedTo,
+    required this.spentMinor,
+    required this.previousSpentMinor,
+    required this.receivedMinor,
+    required this.savedMinor,
+    required this.categories,
+    required this.topRecipients,
+  });
+
+  final String month;
+  final bool partial;
+  final DateTime to;
+  final DateTime? comparedFrom;
+  final DateTime? comparedTo;
+  final int spentMinor;
+  final int? previousSpentMinor;
+  final int receivedMinor;
+  final int savedMinor;
+  final List<CategorySpending> categories;
+  final List<TopRecipient> topRecipients;
+
+  factory SpendingSummary.fromJson(Map<String, dynamic> j) => SpendingSummary(
+    month: j['month'],
+    partial: j['partial'] == true,
+    to: DateTime.parse(j['to']),
+    comparedFrom: j['comparedFrom'] == null ? null : DateTime.parse(j['comparedFrom']),
+    comparedTo: j['comparedTo'] == null ? null : DateTime.parse(j['comparedTo']),
+    spentMinor: j['spentMinor'],
+    previousSpentMinor: j['previousSpentMinor'],
+    receivedMinor: j['receivedMinor'],
+    savedMinor: j['savedMinor'],
+    categories: (j['categories'] as List).map((c) => CategorySpending.fromJson(c)).toList(),
+    topRecipients: (j['topRecipients'] as List).map((r) => TopRecipient.fromJson(r)).toList(),
   );
 }

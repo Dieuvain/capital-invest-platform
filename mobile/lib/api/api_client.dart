@@ -146,6 +146,10 @@ class ApiClient {
 
   // ---- Relevés de compte -------------------------------------------------------------------
 
+  /// « Mes dépenses » : [month] au format 2026-11, le mois en cours par défaut.
+  Future<SpendingSummary> spending([String? month]) async =>
+      SpendingSummary.fromJson(await _get(month == null ? '/v1/me/spending' : '/v1/me/spending?month=$month'));
+
   Future<List<StatementMonth>> statementMonths() async =>
       (await _get('/v1/me/statements') as List).map((j) => StatementMonth.fromJson(j)).toList();
 
@@ -174,6 +178,12 @@ class ApiClient {
   Future<List<DeviceSession>> deviceSessions() async =>
       (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();
 
+  /// « Bloquer mon compte » : toutes les sessions tombent, celle-ci comprise. Déblocage en agence seulement.
+  Future<void> blockAccount(String pin) => _post('/v1/me/security/block', {'pin': pin});
+
+  /// Même blocage, depuis un autre téléphone, sans se connecter.
+  Future<void> blockAccountFromPhone(String phone, String pin) => _post('/v1/auth/block', {'phone': phone, 'pin': pin});
+
   /// Déconnecte tous les autres téléphones. Renvoie le nombre de sessions fermées.
   Future<int> signOutOtherDevices() async =>
       (await _post('/v1/me/security/sessions/sign-out-others', null))['closed'] as int;
@@ -184,6 +194,97 @@ class ApiClient {
   }
 
   // ---- Compte --------------------------------------------------------------------------------
+
+  // ---- Crédit téléphone -------------------------------------------------------------------------
+
+  /// Achète du crédit pour [phone] (+243…), confirmé par le PIN. Le réseau est deviné par le serveur s'il manque.
+  Future<AirtimePurchase> buyAirtime({
+    required String phone,
+    required MobileNetwork? network,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+  }) async => AirtimePurchase.fromJson(
+    await _post('/v1/airtime', {
+      'phone': phone,
+      'network': ?network?.apiName,
+      'amountMinor': amountMinor,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<List<RecentAirtimeNumber>> recentAirtimeNumbers() async =>
+      (await _get('/v1/airtime/recent') as List).map((j) => RecentAirtimeNumber.fromJson(j)).toList();
+
+  // ---- Factures ----------------------------------------------------------------------------------
+
+  Future<List<Biller>> billers() async =>
+      (await _get('/v1/bills/billers') as List).map((j) => Biller.fromJson(j)).toList();
+
+  /// Nom du titulaire chez le facturier (et montant dû pour une facture), avant de payer.
+  Future<BillAccount> lookupBill(String biller, String reference) async =>
+      BillAccount.fromJson(await _post('/v1/bills/lookup', {'biller': biller, 'reference': reference}));
+
+  Future<BillPayment> payBill({
+    required String biller,
+    required String reference,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+  }) async => BillPayment.fromJson(
+    await _post('/v1/bills', {
+      'biller': biller,
+      'reference': reference,
+      'amountMinor': amountMinor,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<List<RecentBill>> recentBills() async =>
+      (await _get('/v1/bills/recent') as List).map((j) => RecentBill.fromJson(j)).toList();
+
+  // ---- Envois programmés -------------------------------------------------------------------------
+
+  Future<List<ScheduledTransfer>> scheduledTransfers() async =>
+      (await _get('/v1/me/scheduled-transfers') as List).map((j) => ScheduledTransfer.fromJson(j)).toList();
+
+  /// Le PIN autorise toutes les échéances à venir.
+  Future<ScheduledTransfer> scheduleTransfer({
+    required String toPhone,
+    required int amountMinor,
+    required String frequency,
+    required int day,
+    required String pin,
+    String? note,
+  }) async => ScheduledTransfer.fromJson(
+    await _post('/v1/me/scheduled-transfers', {
+      'toPhone': toPhone,
+      'amountMinor': amountMinor,
+      'frequency': frequency,
+      'day': day,
+      'pin': pin,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }),
+  );
+
+  Future<ScheduledTransfer> pauseScheduledTransfer(String id) async =>
+      ScheduledTransfer.fromJson(await _post('/v1/me/scheduled-transfers/$id/pause', null));
+
+  Future<ScheduledTransfer> resumeScheduledTransfer(String id) async =>
+      ScheduledTransfer.fromJson(await _post('/v1/me/scheduled-transfers/$id/resume', null));
+
+  Future<void> cancelScheduledTransfer(String id) => _delete('/v1/me/scheduled-transfers/$id');
+
+  // ---- Réclamations -----------------------------------------------------------------------------
+
+  /// Sur une opération (depuis son reçu) ou, sans [transactionId], sur le compte.
+  Future<Complaint> openComplaint({String? transactionId, required String category, required String message}) async =>
+      Complaint.fromJson(
+        await _post('/v1/me/complaints', {'transactionId': ?transactionId, 'category': category, 'message': message}),
+      );
+
+  Future<List<Complaint>> complaints() async =>
+      (await _get('/v1/me/complaints') as List).map((j) => Complaint.fromJson(j)).toList();
 
   // ---- Épargne ---------------------------------------------------------------------------------
 
@@ -208,6 +309,13 @@ class ApiClient {
 
   Future<Limits> limits() async => Limits.fromJson(await _get('/v1/me/limits'));
 
+  /// Plafond d'envoi par jour choisi par le client ([minor] null : celui du niveau). Une hausse attend 24 h.
+  Future<Limits> setDailyLimit(int? minor, String pin) async =>
+      Limits.fromJson(await _put('/v1/me/limits/daily', {'dailyOutMinor': minor, 'pin': pin}));
+
+  /// Annule la hausse en attente : le plafond actuel reste.
+  Future<Limits> cancelDailyLimitRaise() async => Limits.fromJson(await _delete('/v1/me/limits/daily/pending'));
+
   /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
   Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async =>
       HistoryPage.fromJson(await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}));
@@ -226,6 +334,14 @@ class ApiClient {
   );
 
   Future<Topup> topup(String id) async => Topup.fromJson(await _get('/v1/topups/$id'));
+
+  /// Nom du destinataire (prénom et initiale) avant de confirmer : évite d'envoyer au mauvais numéro.
+  Future<Recipient> lookupRecipient(String phone) async =>
+      Recipient.fromJson(await _get('/v1/transfers/recipient', {'phone': phone}));
+
+  /// Derniers clients à qui l'argent a été envoyé.
+  Future<List<Recipient>> recentRecipients() async =>
+      (await _get('/v1/transfers/recent') as List).map((j) => Recipient.fromJson(j)).toList();
 
   Future<FeeQuote> transferFee(int amountMinor) async =>
       FeeQuote.fromJson(await _get('/v1/transfers/fee', {'amountMinor': '$amountMinor'}));

@@ -7,7 +7,9 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
+import 'complaint_screens.dart';
 import 'request_screens.dart';
+import 'scheduled_screens.dart';
 import 'security_screen.dart';
 
 IconData _icon(AppNotification n) => switch (n.kind) {
@@ -15,7 +17,10 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'TRANSFER_RECEIVED' => Icons.south_west_rounded,
   'TRANSFER_SENT' => Icons.north_east_rounded,
   'WITHDRAWAL_PAID' => Icons.south_east_rounded,
-  'WITHDRAWAL_REFUNDED' => Icons.undo_rounded,
+  'WITHDRAWAL_REFUNDED' || 'AIRTIME_REFUNDED' || 'BILL_REFUNDED' => Icons.undo_rounded,
+  'BILL_PAID' => Icons.receipt_rounded,
+  'COMPLAINT_RECEIVED' || 'COMPLAINT_ANSWERED' => Icons.support_agent_rounded,
+  'SCHEDULED_TRANSFER_FAILED' => Icons.event_busy_rounded,
   'KYC_APPROVED' || 'KYC_REJECTED' => Icons.verified_user_outlined,
   'PIN_CHANGED' => Icons.lock_outline_rounded,
   'NEW_DEVICE' => Icons.phonelink_lock_rounded,
@@ -55,18 +60,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
   static const _requestKinds = {'MONEY_REQUEST', 'MONEY_REQUEST_DECLINED'};
   static const _securityKinds = {'PIN_CHANGED', 'NEW_DEVICE'};
 
-  void _open(AppNotification n) {
+  static const _complaintKinds = {'COMPLAINT_RECEIVED', 'COMPLAINT_ANSWERED'};
+
+  Widget? _target(AppNotification n) {
     final tx = n.transactionId;
-    final Widget? screen = _requestKinds.contains(n.kind)
+    return _requestKinds.contains(n.kind)
         ? MoneyRequestsScreen(app: widget.app)
         : _securityKinds.contains(n.kind)
         ? SecurityScreen(app: widget.app)
+        : _complaintKinds.contains(n.kind)
+        ? ComplaintsScreen(app: widget.app)
+        : n.kind == 'SCHEDULED_TRANSFER_FAILED'
+        ? ScheduledTransfersScreen(app: widget.app)
         : tx == null
         ? null
         : ReceiptScreen(app: widget.app, id: tx);
-    if (screen == null) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
+
+  void _open(Widget screen) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +101,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
                 for (final n in box.items)
                   InkWell(
                     key: ValueKey('notification-${n.id}'),
-                    onTap: n.transactionId == null && !_requestKinds.contains(n.kind) ? null : () => _open(n),
+                    onTap: switch (_target(n)) {
+                      final screen? => () => _open(screen),
+                      null => null,
+                    },
                     borderRadius: BorderRadius.circular(14),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),

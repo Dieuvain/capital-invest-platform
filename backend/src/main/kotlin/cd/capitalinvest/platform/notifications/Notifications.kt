@@ -37,6 +37,8 @@ import java.text.Normalizer
 import java.time.Clock
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /** Publié par le grand livre quand une nouvelle opération est écrite (pas lors d'un rejeu). */
@@ -53,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING
 }
 
 data class NotificationView(
@@ -221,6 +223,38 @@ class NotificationService(
         null,
     )
 
+    /** Le client a bloqué son compte. Le SMS sert de preuve si quelqu'un d'autre l'a fait avec son PIN. */
+    fun accountBlocked(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "blocked:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.ACCOUNT_BLOCKED, "Compte bloqué",
+            "Votre compte est bloqué à votre demande : plus personne ne peut se connecter ni envoyer votre argent. Pour le débloquer, présentez-vous en agence avec votre pièce d'identité.",
+            "Capital Invest: votre compte est bloque a votre demande. Pour le debloquer, presentez-vous en agence avec votre piece d'identite.",
+        ),
+        null,
+    )
+
+    /** Hausse du plafond demandée : le SMS laisse 24 h au vrai titulaire pour réagir si ce n'est pas lui. */
+    fun dailyLimitRaisePending(customerId: UUID, dailyOutMinor: Long, hours: Long, at: OffsetDateTime) = queue(
+        customerId, "limit-raise:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.DAILY_LIMIT_RAISE_PENDING, "Hausse du plafond demandée",
+            "Votre plafond d'envoi passera à ${money(dailyOutMinor)} par jour dans $hours heures. Si ce n'est pas vous, annulez la hausse dans Sécurité ou bloquez votre compte.",
+            "Capital Invest: votre plafond d'envoi passera a ${ascii(money(dailyOutMinor))} par jour dans $hours h. Si ce n'est pas vous, bloquez votre compte.",
+        ),
+        null,
+    )
+
+    fun accountUnblocked(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "unblocked:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.ACCOUNT_UNBLOCKED, "Compte débloqué",
+            "Votre compte est débloqué. Si votre téléphone a été volé, changez votre PIN dans Sécurité dès votre connexion.",
+            "Capital Invest: votre compte est debloque. Si votre telephone a ete vole, changez votre PIN des votre connexion.",
+        ),
+        null,
+    )
+
     /** Connexion depuis un téléphone jamais vu sur ce compte : souvent le premier signe d'un vol de PIN. */
     fun newDevice(customerId: UUID, deviceName: String?, at: OffsetDateTime) {
         val phone = deviceName?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
@@ -230,6 +264,64 @@ class NotificationService(
                 NotificationKind.NEW_DEVICE, "Nouvelle connexion",
                 "Votre compte vient d'être ouvert sur un autre téléphone$phone. Si ce n'est pas vous, changez votre PIN dans Sécurité et appelez le service client.",
                 "Capital Invest: connexion a votre compte sur un nouveau telephone${ascii(phone).take(40)}. Si ce n'est pas vous, appelez vite le service client.",
+            ),
+            null,
+        )
+    }
+
+    /** Facture payée. Pour un compteur prépayé, le SMS porte le code à taper : le client l'a même sans l'app. */
+    fun billPaid(customerId: UUID, paymentId: UUID, transactionId: UUID, biller: String, reference: String, amountMinor: Long, token: String?) {
+        queue(
+            customerId, "bill:$paymentId",
+            Draft(
+                NotificationKind.BILL_PAID, "Facture payée",
+                "${money(amountMinor)} payés à $biller pour le $reference." +
+                    (token?.let { " Code à taper sur le compteur : $it." } ?: ""),
+                token?.let { "Capital Invest: ${ascii(biller)} compteur $reference, ${money(amountMinor)}. Code: $it" }
+                    ?: "Capital Invest: ${money(amountMinor)} payes a ${ascii(biller)} pour le $reference.",
+            ),
+            transactionId,
+        )
+    }
+
+    /** Accusé de réception : le numéro et la date de réponse promise. */
+    fun complaintReceived(customerId: UUID, complaintId: UUID, reference: String, dueDate: LocalDate, transactionId: UUID?) {
+        val due = dueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        queue(
+            customerId, "complaint:$complaintId:received",
+            Draft(
+                NotificationKind.COMPLAINT_RECEIVED, "Réclamation reçue",
+                "Votre réclamation $reference est enregistrée. Nous vous répondons au plus tard le $due.",
+                "Capital Invest: reclamation $reference recue. Reponse au plus tard le $due.",
+            ),
+            transactionId,
+        )
+    }
+
+    fun complaintAnswered(customerId: UUID, complaintId: UUID, reference: String, transactionId: UUID?) {
+        queue(
+            customerId, "complaint:$complaintId:answered",
+            Draft(
+                NotificationKind.COMPLAINT_ANSWERED, "Réponse à votre réclamation",
+                "Le service client a répondu à votre réclamation $reference. Ouvrez « Mes réclamations » pour la lire.",
+                "Capital Invest: reponse a votre reclamation $reference. Lisez-la dans l'app, menu Plus > Mes reclamations.",
+            ),
+            transactionId,
+        )
+    }
+
+    /** Échéance d'un envoi programmé qui n'est pas partie : le client peut recharger et envoyer lui-même. */
+    fun scheduledTransferFailed(
+        customerId: UUID, scheduleId: UUID, occurrence: LocalDate, recipientName: String, amountMinor: Long, reason: String, paused: Boolean,
+    ) {
+        val then = if (paused) " L'envoi programmé est mis en pause après 3 échecs : reprenez-le dans « Envois programmés »." else " Le prochain partira à la date prévue."
+        queue(
+            customerId, "scheduled:$scheduleId:$occurrence",
+            Draft(
+                NotificationKind.SCHEDULED_TRANSFER_FAILED, "Envoi programmé non effectué",
+                "L'envoi de ${money(amountMinor)} à $recipientName n'est pas parti : $reason.$then",
+                "Capital Invest: envoi programme de ${money(amountMinor)} a ${ascii(recipientName).take(24)} non effectue: ${ascii(reason)}." +
+                    if (paused) " Envoi mis en pause." else "",
             ),
             null,
         )
@@ -281,6 +373,22 @@ class NotificationService(
             HistoryKind.WITHDRAWAL -> null
             // Le client vient de le faire lui-même dans l'app, et l'argent ne quitte pas son compte.
             HistoryKind.SAVINGS_DEPOSIT, HistoryKind.SAVINGS_WITHDRAWAL -> null
+            // Le client voit le résultat de l'achat dans l'app ; seul un remboursement arrive après coup.
+            HistoryKind.AIRTIME -> null
+            // Le paiement est notifié quand le facturier confirme (billPaid), avec le code du compteur.
+            HistoryKind.BILL_PAYMENT -> null
+            HistoryKind.BILL_REFUND -> Draft(
+                NotificationKind.BILL_REFUNDED, "Facture non payée",
+                "Votre paiement ${i.counterpartyName ?: ""} n'a pas abouti" + (i.failureMessage?.let { " : $it" } ?: "") +
+                    ". ${money(i.amountMinor)} sont revenus sur votre compte.",
+                "Capital Invest: paiement ${ascii(i.counterpartyName ?: "")} non abouti. ${money(i.amountMinor)} rendus. $solde. $ref",
+            )
+            HistoryKind.AIRTIME_REFUND -> Draft(
+                NotificationKind.AIRTIME_REFUNDED, "Crédit non envoyé",
+                "Le crédit pour ${i.msisdn ?: "ce numéro"} n'a pas pu être envoyé" + (i.failureMessage?.let { " : $it" } ?: "") +
+                    ". ${money(i.amountMinor)} sont revenus sur votre compte.",
+                "Capital Invest: credit non envoye a ${i.msisdn ?: ""}. ${money(i.amountMinor)} rendus. $solde. $ref",
+            )
         }
     }
 
