@@ -69,7 +69,7 @@ class MobileMoneyApiTest : ApiTest() {
         mvc.get("/v1/backoffice/topups/review") { header("Authorization", "Bearer $compliance") }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].reason") { value("Montant reçu chez l'opérateur : 4000 USD, attendu 5000 USD") }
+            jsonPath("$[0].reason") { value("Montant reçu chez l'opérateur : 40,00 \$, attendu 50,00 \$") }
             jsonPath("$[0].customerPhone") { value("+243970000202") }
         }
         val kyc = agent("kyc@capitalinvest.cd", AgentRole.KYC_AGENT)

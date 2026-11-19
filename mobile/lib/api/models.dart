@@ -94,16 +94,19 @@ enum Operator {
 }
 
 class Topup {
-  Topup({required this.id, required this.status, required this.amountMinor});
+  Topup({required this.id, required this.status, required this.amountMinor, this.failureCode});
 
   final String id;
 
-  /// PENDING, CONFIRMED ou FAILED.
+  /// PENDING, CONFIRMED, FAILED, ou REVIEW (paiement en vérification par l'équipe).
   final String status;
   final int amountMinor;
 
+  /// Motif d'un refus, tel que l'opérateur le donne (INSUFFICIENT_BALANCE…).
+  final String? failureCode;
+
   factory Topup.fromJson(Map<String, dynamic> j) =>
-      Topup(id: j['id'], status: j['status'], amountMinor: j['amountMinor']);
+      Topup(id: j['id'], status: j['status'], amountMinor: j['amountMinor'], failureCode: j['failureCode']);
 }
 
 class TransferResult {

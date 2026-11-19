@@ -89,7 +89,8 @@ export interface ReconciliationItem {
   ourStatus: string
   providerStatus: string
   ourAmountMinor: number
-  providerAmountMinor: number | null
+  /** Absent quand l'opérateur n'a pas donné de montant. */
+  providerAmountMinor?: number | null
   operator: Operator
   provider: string
   customerName: string

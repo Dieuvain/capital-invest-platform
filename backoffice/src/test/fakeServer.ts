@@ -25,7 +25,7 @@ export class FakeServer {
   review: ReviewTopup[] = [
     {
       id: 't-review', operator: 'MPESA', provider: 'PAWAPAY', amountMinor: 5000, currency: 'USD',
-      reason: "Montant reçu chez l'opérateur : 4000 USD, attendu 5000 USD", customerName: 'Amani Kabeya',
+      reason: "Montant reçu chez l'opérateur : 40,00 $, attendu 50,00 $", customerName: 'Amani Kabeya',
       customerPhone: '+243970000001', checks: 3, createdAt: '2026-11-18T08:00:00Z',
     },
   ]
@@ -41,7 +41,7 @@ export class FakeServer {
     },
     {
       id: 'i-2', businessDate: '2026-11-17', topupId: 't-10', kind: 'STILL_PENDING', ourStatus: 'PENDING',
-      providerStatus: 'PENDING', ourAmountMinor: 700, providerAmountMinor: null, operator: 'ORANGE', provider: 'PAWAPAY',
+      providerStatus: 'PENDING', ourAmountMinor: 700, operator: 'ORANGE', provider: 'PAWAPAY',
       customerName: 'Josué Kalala', customerPhone: '+243970000004', topupCreatedAt: '2026-11-17T22:40:00Z',
       resolvedAt: null, resolvedByName: null, resolution: null,
     },

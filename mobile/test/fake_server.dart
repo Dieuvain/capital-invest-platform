@@ -29,6 +29,8 @@ class FakeServer {
       'style': 'GREEN',
     },
   ];
+  /// Réponse de l'opérateur à la recharge en cours.
+  Map<String, dynamic> topupOutcome = {'status': 'CONFIRMED'};
   List<(int, String, int, String)> entries = [(1, 'CREDIT', 5000, '2026-11-18T10:00:00Z')];
 
   static const token = 'jeton-test';
@@ -110,7 +112,7 @@ class FakeServer {
       case ('POST', '/v1/topups'):
         return _json({'id': 'top-1', 'status': 'PENDING', 'amountMinor': body()['amountMinor']}, 202);
       case ('GET', '/v1/topups/top-1'):
-        return _json({'id': 'top-1', 'status': 'CONFIRMED', 'amountMinor': 2500});
+        return _json({'id': 'top-1', 'amountMinor': 2500, ...topupOutcome});
       case ('GET', '/v1/promotions'):
         return _json(promotions);
       case ('GET', '/v1/me/kyc'):

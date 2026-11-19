@@ -223,9 +223,10 @@ describe('rapprochement', () => {
     // Seul un paiement encaissé et non crédité peut être crédité depuis l'écran.
     const pendingRow = within(items).getByText('Josué Kalala').closest('tr')!
     expect(within(pendingRow).queryByRole('button', { name: 'Créditer' })).toBeNull()
+    expect(within(pendingRow).queryByText(/reçu/)).toBeNull()
 
     const review = screen.getByRole('region', { name: 'Recharges à vérifier' })
-    expect(within(review).getByText("Montant reçu chez l'opérateur : 4000 USD, attendu 5000 USD")).toBeInTheDocument()
+    expect(within(review).getByText("Montant reçu chez l'opérateur : 40,00 $, attendu 50,00 $")).toBeInTheDocument()
     expect(within(review).getByText('50,00 $')).toBeInTheDocument()
     expect(within(review).getByText('M-Pesa · pawaPay')).toBeInTheDocument()
   })

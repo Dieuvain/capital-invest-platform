@@ -110,11 +110,13 @@ class _TopupScreenState extends State<TopupScreen> with ApiAction {
         'Recharge reçue',
         '${formatUsd(t.amountMinor)} ajoutés à votre solde.',
       ),
-      'FAILED' => (
-        Icons.cancel,
-        Brand.danger,
-        'Recharge refusée',
-        'L\'opérateur a refusé le paiement. Rien n\'a été débité.',
+      'FAILED' => (Icons.cancel, Brand.danger, 'Recharge refusée', topupFailureText(t.failureCode, op.label)),
+      'REVIEW' => (
+        Icons.manage_search,
+        Brand.ochre,
+        'Recharge en vérification',
+        'Nous vérifions ce paiement avec ${op.label}. Si l\'argent a quitté votre compte, il arrivera sur votre '
+            'solde après vérification, en général sous 24 heures. Vous n\'avez rien à refaire.',
       ),
       _ => (
         Icons.hourglass_top,
@@ -149,6 +151,20 @@ class _TopupScreenState extends State<TopupScreen> with ApiAction {
     );
   }
 }
+
+/// Explication d'un refus, en mots simples. Le message brut de l'opérateur n'est jamais montré.
+String topupFailureText(String? code, String operator) => switch (code) {
+  'INSUFFICIENT_BALANCE' => 'Solde $operator insuffisant. Rien n\'a été débité.',
+  'PAYMENT_NOT_APPROVED' =>
+    'Le paiement n\'a pas été validé sur votre téléphone, ou le délai est dépassé. Rien n\'a été débité.',
+  'PAYER_NOT_FOUND' || 'INVALID_PHONE_NUMBER' =>
+    'Ce numéro n\'a pas de compte $operator. Choisissez l\'opérateur de votre numéro.',
+  'PAYER_LIMIT_REACHED' || 'AMOUNT_OUT_OF_BOUNDS' =>
+    'Ce montant dépasse les plafonds de votre compte $operator. Essayez un montant plus petit.',
+  'PROVIDER_TEMPORARILY_UNAVAILABLE' => '$operator est momentanément indisponible. Réessayez dans quelques minutes.',
+  'NOT_RECEIVED' => 'La demande n\'est pas arrivée chez $operator. Rien n\'a été débité, vous pouvez réessayer.',
+  _ => 'L\'opérateur a refusé le paiement. Rien n\'a été débité.',
+};
 
 /// Envoi à un autre client : saisie, vérification avec les frais, puis confirmation par PIN.
 class TransferScreen extends StatefulWidget {

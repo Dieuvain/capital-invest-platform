@@ -55,6 +55,9 @@ const dateOnly = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' })
 
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso))
 export const formatDate = (iso: string) => dateOnly.format(new Date(`${iso}T12:00:00`))
+const dateShort = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' })
+/** « 19 nov. », pour les chiffres clés. */
+export const formatShortDate = (iso: string) => dateShort.format(new Date(`${iso}T12:00:00`))
 
 /** Âge en années révolues à une date donnée. */
 export function ageOn(birthDate: string, today = new Date()): number {

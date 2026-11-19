@@ -240,7 +240,7 @@ class TopupService(
                 } else {
                     topups.markReview(
                         topupId,
-                        "Montant reçu chez l'opérateur : ${result.amountMinor} ${result.currency}, attendu ${topup.amountMinor} ${topup.currency}",
+                        "Montant reçu chez l'opérateur : ${money(result.amountMinor, result.currency)}, attendu ${money(topup.amountMinor, topup.currency.name)}",
                         now,
                     )
                 }
@@ -326,6 +326,10 @@ class TopupService(
 
     fun get(id: UUID): Topup = topups.findById(id) ?: throw NotFoundException("TOPUP_NOT_FOUND", "Recharge introuvable")
 }
+
+/** 4000, USD → « 40,00 $ » ; autre devise → « 40,00 CDF ». */
+private fun money(minor: Long, currency: String): String =
+    java.math.BigDecimal.valueOf(minor, 2).toPlainString().replace('.', ',') + if (currency == "USD") " $" else " $currency"
 
 /** Libellé court d'un statut lu chez le prestataire, pour le back-office et le rapprochement. */
 fun label(result: CheckResult): String = when (result) {

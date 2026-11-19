@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Api, ReconciliationItem, ResolveAction, ReviewTopup } from '../api'
-import { formatDate, formatDateTime, formatUsd, kindLabel, operatorLabel, providerLabel } from '../format'
+import { formatDate, formatDateTime, formatShortDate, formatUsd, kindLabel, operatorLabel, providerLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
 /** Décision en cours : sur une recharge à vérifier, ou sur un écart du rapprochement. */
@@ -122,7 +122,7 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
         <div className="recon-stats">
           <div className="card stat">
             <span className="lbl">Dernier rapprochement</span>
-            <span className="val">{last ? formatDate(last.businessDate) : '—'}</span>
+            <span className="val">{last ? formatShortDate(last.businessDate) : '—'}</span>
             <span className="sub">{last?.finishedAt ? `terminé le ${formatDateTime(last.finishedAt)}` : 'pas encore lancé'}</span>
           </div>
           <div className="card stat">
@@ -254,7 +254,7 @@ function ItemRows({ i, onAction, children }: { i: ReconciliationItem; onAction: 
         <td>
           <div className="mono" style={{ fontWeight: 600 }}>
             {formatUsd(i.ourAmountMinor)}
-            {i.providerAmountMinor !== null && i.providerAmountMinor !== i.ourAmountMinor && (
+            {i.providerAmountMinor != null && i.providerAmountMinor !== i.ourAmountMinor && (
               <span className="muted"> · reçu {formatUsd(i.providerAmountMinor)}</span>
             )}
           </div>
