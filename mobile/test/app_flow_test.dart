@@ -524,6 +524,56 @@ void main() {
     expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));
   });
 
+  testWidgets('téléphone volé : bloquer son compte depuis Sécurité, PIN redemandé, retour à l\'accueil', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('block-account')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('présentez-vous en agence'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '1111');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('Numéro ou PIN incorrect.'), findsOneWidget);
+    expect(server.blocked, isFalse);
+
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.blocked, isTrue);
+    expect(find.text('Compte bloqué'), findsOneWidget);
+    expect(app.signedIn, isFalse);
+    await tester.tap(find.text('Compris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Se connecter'), findsOneWidget);
+    // La connexion explique comment débloquer.
+    await login(tester);
+    expect(find.textContaining('Compte bloqué à votre demande'), findsOneWidget);
+  });
+
+  testWidgets('téléphone volé : bloquer depuis le téléphone d\'un proche, sans se connecter', (tester) async {
+    await start(tester);
+    await tester.tap(find.text('Téléphone perdu ou volé ?'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du compte à bloquer')), '970000001');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+    await tester.tap(find.byKey(const Key('block-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.blocked, isTrue);
+    final req = server.requests.lastWhere((r) => r.url.path == '/v1/auth/block');
+    expect(req.body, contains('+243970000001'));
+    expect(find.text('Compte bloqué'), findsOneWidget);
+    // Le retour ramène à l'écran de connexion, pas au formulaire de blocage.
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Se connecter'), findsOneWidget);
+  });
+
   testWidgets('relevé de compte : choisir le mois, lire le résumé, partager le PDF', (tester) async {
     final shared = <(int, String, String)>[];
     app.shareFile = (bytes, name, type) async => shared.add((bytes.length, name, type));

@@ -347,6 +347,24 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('idNumber')), 'CE 1234 5678');
       await tester.pump();
       await shot('5-niveau-2$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      // Téléphone perdu ou volé : en dernier, puisque le blocage ferme la session.
+      await tester.tap(find.byTooltip('Profil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sécurité et PIN'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('block-account')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+      await tester.pump();
+      await shot('15-bloquer-compte$suffix');
+      await tester.tap(find.byKey(const Key('block-confirm')));
+      await tester.pumpAndSettle();
+      await shot('15b-compte-bloque$suffix');
     });
   }
 }

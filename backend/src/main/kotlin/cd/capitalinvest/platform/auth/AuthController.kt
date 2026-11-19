@@ -40,6 +40,11 @@ data class LoginRequest(
     @field:Size(max = 80) val deviceName: String? = null,
 )
 
+data class BlockRequest(
+    @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
+    val pin: String,
+)
+
 data class PinResetRequest(
     @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
     @field:Pattern(regexp = "^[0-9]{6}$", message = "code à 6 chiffres") val code: String,
@@ -71,6 +76,11 @@ class AuthController(private val otp: OtpService, private val auth: AuthService)
 
     @PostMapping("/pin-reset")
     fun resetPin(@Valid @RequestBody b: PinResetRequest): SessionTokens = auth.resetPin(b.phone, b.code, b.newPin, b.deviceId, b.deviceName)
+
+    /** Téléphone perdu ou volé : bloquer son compte depuis un autre téléphone, sans s'y connecter. */
+    @PostMapping("/block")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun block(@Valid @RequestBody b: BlockRequest) = auth.blockWithPhone(b.phone, b.pin)
 
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -337,6 +337,8 @@ data class CustomerSummary(
     val balanceMinor: Long,
     /** Épargne du client, en plus du solde du portefeuille. */
     val savingsMinor: Long = 0,
+    /** Bloqué par le client lui-même (téléphone perdu ou volé) : à débloquer après vérification de sa pièce d'identité. */
+    val blockedByCustomerAt: java.time.OffsetDateTime? = null,
 )
 
 @RestController
@@ -398,6 +400,6 @@ class BackofficeCustomerController(
         val wallet = ledger.findCustomerWallet(c.id, Currency.USD)
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
-        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings)
+        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt)
     }
 }

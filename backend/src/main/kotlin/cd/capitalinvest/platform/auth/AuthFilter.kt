@@ -18,7 +18,7 @@ const val CUSTOMER_ID_ATTRIBUTE = "authenticatedCustomerId"
 @Component
 class AuthFilter(private val auth: AuthService, private val json: ObjectMapper) : OncePerRequestFilter() {
 
-    private val publicPrefixes = listOf("/v1/auth/otp", "/v1/auth/register", "/v1/auth/login", "/v1/auth/pin-reset", "/v1/simulators/", "/v1/webhooks/")
+    private val publicPrefixes = listOf("/v1/auth/otp", "/v1/auth/register", "/v1/auth/login", "/v1/auth/pin-reset", "/v1/auth/block", "/v1/simulators/", "/v1/webhooks/")
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI

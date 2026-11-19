@@ -159,6 +159,8 @@ export interface CustomerSummary {
   balanceMinor: number
   /** Épargne du client, en plus du solde du portefeuille. */
   savingsMinor?: number
+  /** Bloqué par le client lui-même (téléphone perdu ou volé) : débloquer après avoir vu sa pièce d'identité. */
+  blockedByCustomerAt?: string | null
 }
 
 export type HistoryKind =

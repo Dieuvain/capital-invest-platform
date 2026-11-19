@@ -1,4 +1,4 @@
-import type { Agent, BackofficeComplaint, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, BackofficeComplaint, CustomerSummary, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -44,7 +44,7 @@ export class FakeServer {
     },
   ]
   reports: SuspicionReport[] = []
-  customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
+  customer: CustomerSummary = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
   history: HistoryItem[] = [
     item('w1', 'WITHDRAWAL', -1015, 15, { status: 'PENDING', operator: 'AIRTEL', msisdn: '+243970000001' }),
     item('s1', 'TRANSFER_SENT', -2020, 20, { counterpartyName: 'Béni Mukendi', counterpartyPhone: '+243970000402', note: 'Loyer' }),
@@ -268,6 +268,7 @@ export class FakeServer {
       if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
       if (path.endsWith('/status') && method === 'POST') {
         this.customer.status = body.status
+        if (body.status === 'ACTIVE') this.customer.blockedByCustomerAt = null
         return json({ customerId: this.customer.id, status: body.status })
       }
       if (path === '/v1/backoffice/customers') {

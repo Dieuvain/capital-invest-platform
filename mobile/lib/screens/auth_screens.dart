@@ -5,6 +5,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'block_screens.dart';
 
 /// Premier écran : se connecter avec son PIN, ou ouvrir un compte.
 class WelcomeScreen extends StatefulWidget {
@@ -74,6 +75,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
             onPressed: () =>
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignupScreen(app: widget.app))),
             child: const Text('Ouvrir un compte'),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Brand.danger),
+            onPressed: () =>
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => BlockAccountScreen(app: widget.app))),
+            icon: const Icon(Icons.lock_outline_rounded, size: 18),
+            label: const Text('Téléphone perdu ou volé ?'),
           ),
         ],
       ),

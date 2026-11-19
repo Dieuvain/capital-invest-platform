@@ -6,6 +6,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'block_screens.dart';
 
 /// Sécurité du compte : changer son PIN, voir où le compte a été ouvert, déconnecter les autres téléphones.
 class SecurityScreen extends StatefulWidget {
@@ -119,6 +120,25 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
             label: const Text('Déconnecter les autres téléphones'),
           ),
         ],
+        const SizedBox(height: 24),
+        const Text('Téléphone perdu ou volé', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(
+          'Bloquez votre compte : plus rien ne part. Vous pouvez aussi le faire depuis le téléphone d\'un proche, sur l\'écran de connexion.',
+          style: TextStyle(color: context.pal.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          key: const Key('block-account'),
+          style: OutlinedButton.styleFrom(foregroundColor: Brand.danger, side: const BorderSide(color: Brand.danger)),
+          onPressed: busy
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => BlockAccountScreen(app: widget.app, signedIn: true)),
+                ),
+          icon: const Icon(Icons.lock_rounded),
+          label: const Text('Bloquer mon compte'),
+        ),
       ],
     );
   }
