@@ -188,3 +188,12 @@ export const historyStatus: Record<HistoryItem['status'], { label: string; cls: 
 }
 
 export const formatSigned = (minor: number) => `${minor > 0 ? '+' : ''}${formatUsd(minor)}`
+
+const weekdays = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+
+/** « Chaque mois, le 5 », « Chaque vendredi ». */
+export function scheduleLabel(frequency: 'WEEKLY' | 'MONTHLY', day: number): string {
+  if (frequency === 'WEEKLY') return `Chaque ${weekdays[day - 1]}`
+  if (day === 31) return 'Chaque mois, le dernier jour'
+  return `Chaque mois, le ${day === 1 ? '1er' : day}`
+}

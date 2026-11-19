@@ -792,3 +792,60 @@ class Complaint {
     createdAt: DateTime.parse(j['createdAt']),
   );
 }
+
+/// Envoi répété chaque semaine ou chaque mois, confirmé une fois par le PIN.
+class ScheduledTransfer {
+  ScheduledTransfer({
+    required this.id,
+    required this.recipientName,
+    required this.recipientPhone,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.note,
+    required this.frequency,
+    required this.day,
+    required this.status,
+    required this.nextRunAt,
+    required this.lastRunAt,
+    required this.lastResult,
+    required this.lastFailure,
+  });
+
+  final String id;
+  final String recipientName;
+  final String recipientPhone;
+  final int amountMinor;
+  final int feeMinor;
+  final String? note;
+
+  /// WEEKLY ou MONTHLY.
+  final String frequency;
+
+  /// Jour de la semaine (1 = lundi) ou du mois.
+  final int day;
+
+  /// ACTIVE ou PAUSED.
+  final String status;
+  final DateTime? nextRunAt;
+  final DateTime? lastRunAt;
+  final String? lastResult;
+  final String? lastFailure;
+
+  bool get active => status == 'ACTIVE';
+
+  factory ScheduledTransfer.fromJson(Map<String, dynamic> j) => ScheduledTransfer(
+    id: j['id'],
+    recipientName: j['recipientName'],
+    recipientPhone: j['recipientPhone'],
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'],
+    note: j['note'],
+    frequency: j['frequency'],
+    day: j['day'],
+    status: j['status'],
+    nextRunAt: j['nextRunAt'] == null ? null : DateTime.parse(j['nextRunAt']),
+    lastRunAt: j['lastRunAt'] == null ? null : DateTime.parse(j['lastRunAt']),
+    lastResult: j['lastResult'],
+    lastFailure: j['lastFailure'],
+  );
+}

@@ -291,6 +291,20 @@ Un client demande un montant à un autre client (menu « Demander de l'argent »
 - Contre le harcèlement : 10 demandes par client en 24 h, et 3 demandes en attente au plus vers un même client (`capital-invest.money-requests`).
 - API : `POST /v1/money-requests` (`payerPhone`, `amountMinor`, `note`, en-tête `Idempotency-Key`), `GET /v1/money-requests` (`toPay`, `recent`), `POST /v1/money-requests/{id}/pay` (`pin`), `/decline`, `/cancel`.
 
+## Envois programmés
+
+Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.
+
+| Envois programmés | Vérifier et confirmer |
+|---|---|
+| ![](docs/captures-app/14-envois-programmes.png) | ![](docs/captures-app/14b-programmer-envoi.png) |
+
+- L'envoi part à 8 h, heure de Lubumbashi (`capital-invest.scheduled-transfers.run-at`). Le 31 devient le dernier jour d'un mois plus court.
+- Chaque échéance est un envoi ordinaire : frais, plafond par opération, plafond journalier, et pause de 24 h après un changement de PIN. Sa clé d'idempotence (`scheduled:<id>:<date>`) garantit qu'une même échéance ne part jamais deux fois, même traitée par deux serveurs.
+- Si l'envoi ne peut pas partir (solde insuffisant, plafond…), le client est prévenu par SMS et dans l'app avec la raison, et l'échéance suivante reste prévue. Après 3 échecs d'affilée, l'envoi se met en pause (`pause-after-failures`). Une reprise ne rattrape pas les échéances manquées.
+- Le client peut mettre en pause, reprendre ou supprimer à tout moment ; au plus 10 envois programmés. La fiche client du back-office montre ses envois programmés et ses réclamations, pour répondre à « de l'argent part tout seul de mon compte ».
+- API : `POST /v1/me/scheduled-transfers` (`{"toPhone", "amountMinor", "frequency": "WEEKLY" | "MONTHLY", "day", "note"?, "pin"}`), `GET /v1/me/scheduled-transfers`, `POST /v1/me/scheduled-transfers/{id}/pause` et `/resume`, `DELETE /v1/me/scheduled-transfers/{id}`. Back-office : `GET /v1/backoffice/customers/{id}/scheduled-transfers`.
+
 ## Réclamations
 
 Depuis le reçu d'une opération, le client touche **Signaler un problème**, choisit ce qui ne va pas (argent non arrivé, mauvais montant ou frais, opération qu'il n'a pas faite, autre) et explique en quelques mots. Il reçoit aussitôt un numéro (REC-AAAAMMJJ-XXXXXX) et la date de réponse promise, dans l'app et par SMS. **Plus** → **Mes réclamations** montre celles en attente et les réponses.

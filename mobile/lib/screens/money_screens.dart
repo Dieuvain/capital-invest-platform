@@ -9,6 +9,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'scheduled_screens.dart';
 
 /// Recharge par mobile money : le client valide ensuite sur son téléphone, l'app attend la confirmation.
 class TopupScreen extends StatefulWidget {
@@ -430,6 +431,21 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
           ),
           const SizedBox(height: 24),
           FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => NewScheduledTransferScreen(
+                  app: widget.app,
+                  toPhone: toPhone,
+                  amountMinor: done!.amountMinor,
+                  note: note.text.trim(),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.event_repeat_rounded),
+            label: const Text('Répéter cet envoi chaque mois'),
+          ),
         ],
       );
     }

@@ -59,6 +59,13 @@ void main() {
         FakeServer.historyItem('d1e2f3', 'WITHDRAWAL', -40600, fee: 600, at: '2026-11-16T18:30:00Z',
             operator: 'AIRTEL', msisdn: '+243970000001'),
       ];
+    server.scheduled = [
+      FakeServer.scheduledTransfer('st-1', 'Béni Mukendi', 15000, 'MONTHLY', 5, note: 'Loyer', lastResult: 'SENT'),
+      FakeServer.scheduledTransfer('st-2', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant')
+        ..['nextRunAt'] = '2026-11-20T06:00:00Z'
+        ..['lastRunAt'] = '2026-11-13T06:00:00Z',
+      FakeServer.scheduledTransfer('st-3', 'Josué Kalala', 1000, 'MONTHLY', 31, status: 'PAUSED', note: 'Frais scolaires'),
+    ];
     app = AppState(
       ApiClient(baseUrl: 'http://test', httpClient: server.client),
       deviceId: 'test',
@@ -277,6 +284,33 @@ void main() {
       await tester.pumpAndSettle();
       await shot('13b-reclamation-envoyee$suffix');
       await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Accueil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Envois programmés'));
+      await tester.pumpAndSettle();
+      await shot('14-envois-programmes$suffix');
+      await tester.ensureVisible(find.text('Programmer un envoi'));
+      await tester.tap(find.text('Programmer un envoi'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '0970000402');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+      await tester.enterText(find.byKey(const ValueKey('scheduled-note')), 'Argent pour maman');
+      await tester.tap(find.text('Chaque semaine'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('weekday-5')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continuer'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.pump();
+      await shot('14b-programmer-envoi$suffix');
+      await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();

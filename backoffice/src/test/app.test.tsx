@@ -225,6 +225,19 @@ describe('promotions', () => {
 })
 
 describe('clients', () => {
+  it('la fiche client montre ses envois programmés et ses réclamations', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const scheduled = await screen.findByRole('region', { name: 'Envois programmés' })
+    expect(within(scheduled).getByText('Chaque mois, le 5')).toBeInTheDocument()
+    expect(within(scheduled).getByText('+243970000402')).toBeInTheDocument()
+    expect(within(scheduled).getByText('Dernier échec : Solde insuffisant')).toBeInTheDocument()
+    const complaints = await screen.findByRole('region', { name: 'Réclamations' })
+    expect(within(complaints).getByText('REC-20261119-9C41D0')).toBeInTheDocument()
+    expect(within(complaints).queryByText('REC-20261110-1A2B3C')).toBeNull()
+  })
+
   it('la conformité retrouve un client, filtre ses opérations et ouvre un reçu', async () => {
     const user = await signIn('conformite@capitalinvest.cd', 'Clients')
     await user.type(screen.getByLabelText('Numéro du client'), '+243 970 000 999')

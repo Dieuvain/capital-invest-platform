@@ -55,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED
 }
 
 data class NotificationView(
@@ -275,6 +275,23 @@ class NotificationService(
                 "Capital Invest: reponse a votre reclamation $reference. Lisez-la dans l'app, menu Plus > Mes reclamations.",
             ),
             transactionId,
+        )
+    }
+
+    /** Échéance d'un envoi programmé qui n'est pas partie : le client peut recharger et envoyer lui-même. */
+    fun scheduledTransferFailed(
+        customerId: UUID, scheduleId: UUID, occurrence: LocalDate, recipientName: String, amountMinor: Long, reason: String, paused: Boolean,
+    ) {
+        val then = if (paused) " L'envoi programmé est mis en pause après 3 échecs : reprenez-le dans « Envois programmés »." else " Le prochain partira à la date prévue."
+        queue(
+            customerId, "scheduled:$scheduleId:$occurrence",
+            Draft(
+                NotificationKind.SCHEDULED_TRANSFER_FAILED, "Envoi programmé non effectué",
+                "L'envoi de ${money(amountMinor)} à $recipientName n'est pas parti : $reason.$then",
+                "Capital Invest: envoi programme de ${money(amountMinor)} a ${ascii(recipientName).take(24)} non effectue: ${ascii(reason)}." +
+                    if (paused) " Envoi mis en pause." else "",
+            ),
+            null,
         )
     }
 

@@ -9,6 +9,7 @@ import '../ui/widgets.dart';
 import 'history_screens.dart';
 import 'complaint_screens.dart';
 import 'request_screens.dart';
+import 'scheduled_screens.dart';
 import 'security_screen.dart';
 
 IconData _icon(AppNotification n) => switch (n.kind) {
@@ -19,6 +20,7 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'WITHDRAWAL_REFUNDED' || 'AIRTIME_REFUNDED' || 'BILL_REFUNDED' => Icons.undo_rounded,
   'BILL_PAID' => Icons.receipt_rounded,
   'COMPLAINT_RECEIVED' || 'COMPLAINT_ANSWERED' => Icons.support_agent_rounded,
+  'SCHEDULED_TRANSFER_FAILED' => Icons.event_busy_rounded,
   'KYC_APPROVED' || 'KYC_REJECTED' => Icons.verified_user_outlined,
   'PIN_CHANGED' => Icons.lock_outline_rounded,
   'NEW_DEVICE' => Icons.phonelink_lock_rounded,
@@ -68,6 +70,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
         ? SecurityScreen(app: widget.app)
         : _complaintKinds.contains(n.kind)
         ? ComplaintsScreen(app: widget.app)
+        : n.kind == 'SCHEDULED_TRANSFER_FAILED'
+        ? ScheduledTransfersScreen(app: widget.app)
         : tx == null
         ? null
         : ReceiptScreen(app: widget.app, id: tx);
