@@ -43,8 +43,8 @@ describe('connexion', () => {
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Agents', "Journal d'audit"]],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -211,5 +211,67 @@ describe('agents', () => {
     await signIn('admin@capitalinvest.cd', 'Agents')
     const row = (await screen.findByText('admin@capitalinvest.cd')).closest('tr')!
     expect(within(row).queryByRole('button')).toBeNull()
+  })
+})
+
+describe('rapprochement', () => {
+  it("la conformité voit les écarts et les recharges à vérifier, avec ce qu'il faut faire", async () => {
+    await signIn('conformite@capitalinvest.cd', 'Rapprochement')
+    const items = await screen.findByRole('region', { name: 'Écarts à traiter' })
+    expect(await within(items).findByText('Encaissé, non crédité')).toBeInTheDocument()
+    expect(within(items).getByText('Toujours en attente')).toBeInTheDocument()
+    // Seul un paiement encaissé et non crédité peut être crédité depuis l'écran.
+    const pendingRow = within(items).getByText('Josué Kalala').closest('tr')!
+    expect(within(pendingRow).queryByRole('button', { name: 'Créditer' })).toBeNull()
+
+    const review = screen.getByRole('region', { name: 'Recharges à vérifier' })
+    expect(within(review).getByText("Montant reçu chez l'opérateur : 4000 USD, attendu 5000 USD")).toBeInTheDocument()
+    expect(within(review).getByText('50,00 $')).toBeInTheDocument()
+    expect(within(review).getByText('M-Pesa · pawaPay')).toBeInTheDocument()
+  })
+
+  it('créditer une recharge à vérifier demande un motif, envoyé au serveur', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Rapprochement')
+    const review = await screen.findByRole('region', { name: 'Recharges à vérifier' })
+    await user.click(await within(review).findByRole('button', { name: 'Créditer' }))
+    const confirm = within(review).getByRole('button', { name: 'Créditer le client' })
+    expect(confirm).toBeDisabled()
+    await user.type(within(review).getByRole('textbox'), 'Le client a envoyé 40 $, confirmé par M-Pesa')
+    await user.click(confirm)
+    expect(await screen.findByRole('status')).toHaveTextContent('Amani Kabeya a été crédité')
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/topups/t-review/resolve')?.body).toEqual({
+      action: 'CREDIT',
+      note: 'Le client a envoyé 40 $, confirmé par M-Pesa',
+    })
+    expect(await within(review).findByText('Aucune recharge à vérifier.')).toBeInTheDocument()
+  })
+
+  it("clore un écart l'enlève de la liste", async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
+    const items = await screen.findByRole('region', { name: 'Écarts à traiter' })
+    const row = (await within(items).findByText('Josué Kalala')).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Clore' }))
+    await user.type(within(items).getByRole('textbox'), 'Remboursé par Orange')
+    await user.click(within(items).getByRole('button', { name: 'Clore le dossier' }))
+    await waitFor(() => expect(within(items).queryByText('Josué Kalala')).toBeNull())
+    expect(server.items.find((i) => i.id === 'i-2')).toMatchObject({ resolvedByName: 'Grace Admin', resolution: 'Remboursé par Orange' })
+  })
+
+  it('lancer le rapprochement d\'une journée affiche le résultat', async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
+    const day = await screen.findByLabelText('Journée à rapprocher')
+    await user.clear(day)
+    await user.type(day, '2026-11-18')
+    await user.click(screen.getByRole('button', { name: /Lancer/ }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Rapprochement du 18 novembre 2026 : tout correspond')
+    expect(server.requests.find((r) => r.method === 'POST' && r.path === '/v1/backoffice/reconciliation/runs')?.body).toEqual({
+      businessDate: '2026-11-18',
+    })
+  })
+
+  it("un agent KYC n'a pas accès au rapprochement", async () => {
+    await signIn('kyc@capitalinvest.cd')
+    window.location.hash = '/rapprochement'
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Écarts à traiter' })).toBeNull())
   })
 })

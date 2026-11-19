@@ -18,6 +18,7 @@ const paths: Record<string, string> = {
   up: 'M12 19V5M6 11l6-6 6 6',
   down: 'M12 5v14M6 13l6 6 6-6',
   out: 'M7 17L17 7M9 7h8v8',
+  scale: 'M12 4v16M8 20h8M4 7h16M7 7l-3 7h6zM17 7l-3 7h6z',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
 }
 

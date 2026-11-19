@@ -9,6 +9,7 @@ import { Promotions } from './pages/Promotions'
 import { PromotionEditor } from './pages/PromotionEditor'
 import { Agents } from './pages/Agents'
 import { Audit } from './pages/Audit'
+import { Reconciliation } from './pages/Reconciliation'
 import { Dashboard } from './pages/Dashboard'
 import { ago, buildNotices } from './notifications'
 import type { KycRequest, Promotion } from './api'
@@ -21,6 +22,7 @@ export const sections: { path: string; label: string; icon: string; roles: Role[
   { path: 'accueil', label: 'Tableau de bord', icon: 'home', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN', 'MARKETING'] },
   { path: 'kyc', label: 'Demandes KYC 2', icon: 'id', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN'] },
   { path: 'promotions', label: 'Promotions', icon: 'promo', roles: ['MARKETING', 'ADMIN'] },
+  { path: 'rapprochement', label: 'Rapprochement', icon: 'scale', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'agents', label: 'Agents', icon: 'agents', roles: ['ADMIN'] },
   { path: 'journal', label: "Journal d'audit", icon: 'journal', roles: ['COMPLIANCE', 'ADMIN'], other: true },
 ]
@@ -129,6 +131,9 @@ export function App({ api }: { api: Api }) {
       ) : (
         <Promotions api={api} open={(pid) => go(`promotions/${pid}`)} />
       )
+      break
+    case 'rapprochement':
+      page = <Reconciliation api={api} notify={notify} />
       break
     case 'agents':
       page = <Agents api={api} me={agent} notify={notify} />

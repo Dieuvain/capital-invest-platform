@@ -1,4 +1,4 @@
-import type { AuditEntry, KycRequest, PromoAction, PromoAudience, PromoStyle, Role } from './api'
+import type { AuditEntry, DiscrepancyKind, KycRequest, Operator, PromoAction, PromoAudience, PromoStyle, Role } from './api'
 
 export const roleLabel: Record<Role, string> = {
   KYC_AGENT: 'Agent KYC',
@@ -42,6 +42,11 @@ const auditLabels: Record<string, string> = {
   PROMOTION_CREATED: 'Promotion créée',
   PROMOTION_UPDATED: 'Promotion modifiée',
   PROMOTION_DISABLED: 'Promotion retirée',
+  TOPUP_REVIEW_CREDITED: 'Recharge vérifiée et créditée',
+  TOPUP_REVIEW_CLOSED: 'Recharge vérifiée et close',
+  RECONCILIATION_RUN: 'Rapprochement lancé',
+  RECONCILIATION_CREDIT: 'Écart corrigé : client crédité',
+  RECONCILIATION_CLOSE: 'Écart clos',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 
@@ -84,3 +89,35 @@ export const initials = (name: string) =>
     .slice(0, 2)
     .map((w) => w[0]!.toUpperCase())
     .join('')
+
+export const operatorLabel: Record<Operator, string> = { MPESA: 'M-Pesa', AIRTEL: 'Airtel Money', ORANGE: 'Orange Money' }
+
+export const providerLabel = (p: string) => ({ PAWAPAY: 'pawaPay', SIMULATOR: 'Simulateur' })[p] ?? p
+
+/** Ce que chaque écart veut dire, et ce qu'il faut faire. */
+export const kindLabel: Record<DiscrepancyKind, { title: string; help: string; tone: 'alert' | 'wait' }> = {
+  CONFIRMED_NOT_CREDITED: {
+    title: 'Encaissé, non crédité',
+    help: "L'opérateur a reçu l'argent mais le client n'a rien eu : créditez-le.",
+    tone: 'alert',
+  },
+  CREDITED_NOT_CONFIRMED: {
+    title: 'Crédité, non encaissé',
+    help: "Le client a été crédité alors que l'opérateur n'a rien reçu : à corriger avec la finance.",
+    tone: 'alert',
+  },
+  AMOUNT_MISMATCH: {
+    title: 'Montants différents',
+    help: "Le montant crédité ne correspond pas à celui reçu par l'opérateur.",
+    tone: 'alert',
+  },
+  STILL_PENDING: {
+    title: 'Toujours en attente',
+    help: "Pas encore de réponse définitive de l'opérateur. Relancez le rapprochement plus tard.",
+    tone: 'wait',
+  },
+}
+
+const usd = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** 125075 → « 1 250,75 $ » (espaces insécables normalisés pour l'affichage et les tests). */
+export const formatUsd = (minor: number) => `${usd.format(minor / 100).replace(/\s/g, ' ')} $`
