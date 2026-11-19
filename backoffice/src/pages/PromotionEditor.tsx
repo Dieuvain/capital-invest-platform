@@ -122,7 +122,7 @@ export function PromotionEditor({ api, id, back, onSaved }: {
             </div>
           </div>
           <label className="field">
-            Titre <span className="hint">60 caractères au plus. Lu à voix haute aux malvoyants sur un visuel.</span>
+            Titre <span className="hint">60 caractères au plus, lu par le lecteur d'écran</span>
             <input type="text" required maxLength={60} value={p.title} onChange={(e) => set('title', e.target.value)} />
           </label>
           <label className="field">

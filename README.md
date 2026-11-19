@@ -128,6 +128,13 @@ Le bandeau défilant de l'app affiche les promotions en cours.
 - Back-office, rôles `MARKETING` ou `ADMIN` : `GET /v1/backoffice/promotions`, `POST /v1/backoffice/promotions`, `PUT /v1/backoffice/promotions/{id}`. On retire une promotion avec `"active": false` : rien n'est effacé, et chaque changement est inscrit dans `audit_log`.
 - Trois promotions de départ sont créées par la migration V7 : passage au niveau 2, recharge mobile money, envoi aux proches.
 
+### Visuels des graphistes
+
+- Une promotion peut porter un visuel conçu par un graphiste : JPEG, PNG ou WebP, **1200 x 520 px** conseillé, 2 Mo au plus. Envoi depuis l'écran de la promotion dans le back-office, ou `POST /v1/backoffice/promotions/{id}/image` (multipart, champ `file`). Le type est vérifié sur le contenu du fichier, pas sur son nom. Chaque envoi est inscrit dans `audit_log`.
+- Avec un visuel, seul le titre reste obligatoire (il est lu par le lecteur d'écran) ; le texte et le texte du bouton deviennent facultatifs, et tout le visuel mène à l'action choisie.
+- L'app reçoit `imageUrl` (`/v1/promotions/{id}/image?v=…`) et charge l'image avec le jeton du client. Seul un client qui voit la promotion peut lire son visuel. L'adresse change à chaque nouveau visuel, le téléphone peut donc le garder en cache 7 jours.
+- Sans visuel, ou si le chargement échoue, l'app dessine la carte de secours aux couleurs de la promotion.
+
 ## Recharges mobile money (M-Pesa, Airtel Money, Orange Money)
 
 Chaque opérateur passe par un prestataire, choisi opérateur par opérateur : `PAWAPAY` (agrégateur, un seul contrat pour les trois), `SIMULATOR` en développement, ou plus tard un contrat direct. Passer un opérateur en direct ne demandera qu'un nouveau connecteur (interface `MobileMoneyConnector`) et le changement de sa route.
