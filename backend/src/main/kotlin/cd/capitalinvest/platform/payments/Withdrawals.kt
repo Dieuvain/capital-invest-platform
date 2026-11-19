@@ -54,6 +54,8 @@ data class Withdrawal(
     @JsonIgnore val checks: Int,
     @JsonIgnore val reviewReason: String?,
     @JsonIgnore val merchantId: UUID? = null,
+    /** Agent qui a demandé un reversement marchand ; null pour un retrait client ou un reversement automatique. */
+    @JsonIgnore val requestedBy: UUID? = null,
 )
 
 @Repository
@@ -132,6 +134,7 @@ class WithdrawalRepository(private val jdbc: JdbcClient) {
         checks = rs.getInt("checks"),
         reviewReason = rs.getString("review_reason"),
         merchantId = rs.getObject("merchant_id", UUID::class.java),
+        requestedBy = rs.getObject("requested_by", UUID::class.java),
     )
 }
 
@@ -198,11 +201,11 @@ class WithdrawalService(
 
     /**
      * Reversement de ce que Capital Invest doit à un marchand, vers son compte mobile money.
-     * Demandé par un agent ; sans frais (la commission prélevée sur les paiements les couvre).
+     * Demandé par un agent, ou par la tâche de nuit (agentId null) ; sans frais (la commission prélevée sur les paiements les couvre).
      * L'appelant a vérifié le marchand et son compte de reversement.
      */
     fun initiateMerchantPayout(
-        idempotencyKey: String, merchantId: UUID, walletId: UUID, operator: Operator, msisdn: String, amountMinor: Long, agentId: UUID,
+        idempotencyKey: String, merchantId: UUID, walletId: UUID, operator: Operator, msisdn: String, amountMinor: Long, agentId: UUID?,
     ): Withdrawal {
         if (amountMinor <= 0) throw BusinessException("INVALID_AMOUNT", "Le montant doit être positif")
         val connector = router.forOperator(operator)
@@ -214,6 +217,7 @@ class WithdrawalService(
                 msisdn = msisdn, amountMinor = amountMinor, feeMinor = 0, currency = Currency.USD,
                 status = TopupStatus.PENDING, operatorReference = null, failureCode = null, failureMessage = null, createdAt = now(),
                 provider = connector.name, settlementCode = connector.settlementCode(operator), checks = 0, reviewReason = null,
+                requestedBy = agentId,
             )
             hold(w, walletId, "MERCHANT_PAYOUT", "Reversement marchand vers ${operator.name} +$msisdn", agentId)
             w to true

@@ -217,7 +217,9 @@ Ce que Capital Invest doit au marchand part vers son **compte mobile money de re
 - **Compte de reversement protégé** : c'est ce qu'un fraudeur chercherait à changer. Le premier compte est utilisable tout de suite ; un changement prévient le marchand par SMS sur son numéro habituel et **bloque les reversements 24 h** (`capital-invest.merchants.payout-account-cooldown-hours`). Chaque changement et chaque reversement est au journal d'audit.
 - Reversement minimum : 1,00 $ (`min-payout-minor`).
 - API : `POST /v1/backoffice/merchants/{id}/payout-account` (`operator`, `phone`) et `POST /v1/backoffice/merchants/{id}/payouts` (`requestId`, `amountMinor` facultatif : tout ce qui est dû), réservés aux administrateurs. La fiche marchand liste les derniers reversements et leur état.
-- Pas encore fait : reversement automatique (chaque nuit, par exemple) et reversement vers un compte bancaire.
+- **Reversement automatique chaque nuit** : vers 1 h 30 (heure de Lubumbashi, avant le rapprochement de 2 h), tout ce qui est dû à chaque marchand actif part vers son compte de reversement, s'il atteint 10,00 $ (`auto-payout-min-minor`). Un marchand dont le compte vient de changer, ou qui a déjà un reversement en cours ou à vérifier, attend la nuit suivante. La même nuit ne reverse jamais deux fois (identifiant `auto:<date>`), même si la tâche repasse. Le journal d'audit les note comme actions du système, et la fiche marchand les marque « automatique ».
+- Activé par défaut pour chaque nouveau marchand ; un administrateur le coupe ou le remet depuis la fiche (`POST /v1/backoffice/merchants/{id}/auto-payout`, `enabled`). Toute la tâche se coupe avec `capital-invest.merchants.auto-payout-enabled: false`, l'heure se règle avec `auto-payout-cron`.
+- Pas encore fait : reversement vers un compte bancaire.
 
 ## Règles du grand livre
 

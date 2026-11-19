@@ -20,3 +20,6 @@ capital-invest:
   notifications:
     # Les SMS partent dès la fin de chaque opération ; les tests déclenchent eux-mêmes les relances.
     dispatcher-enabled: false
+  merchants:
+    # Les tests lancent eux-mêmes les reversements automatiques.
+    auto-payout-enabled: false
