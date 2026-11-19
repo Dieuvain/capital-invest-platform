@@ -9,6 +9,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'pending_transfer_screens.dart';
 import 'scheduled_screens.dart';
 
 /// Recharge par mobile money : le client valide ensuite sur son téléphone, l'app attend la confirmation.
@@ -376,6 +377,10 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
   TransferResult? done;
   List<Recipient> recent = const [];
   List<Favorite> favorites = const [];
+  int waiting = 0;
+
+  /// Numéro sans compte, pour proposer l'envoi en attente.
+  String? noAccountPhone;
   Favorite? savedFavorite;
   final nickname = TextEditingController();
   String _key = newIdempotencyKey();
@@ -385,6 +390,39 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
     super.initState();
     _loadRecent();
     _loadFavorites();
+    _loadWaiting();
+    // Un autre numéro : la proposition d'envoi sans compte ne vaut plus.
+    phone.addListener(() {
+      if (noAccountPhone != null && normalizePhone(phone.text) != noAccountPhone) setState(() => noAccountPhone = null);
+    });
+  }
+
+  Future<void> _loadWaiting() async {
+    try {
+      final l = await widget.app.api.pendingTransfers();
+      if (mounted) setState(() => waiting = l.where((t) => t.isPending).length);
+    } on ApiException {
+      // Le raccourci n'apparaît simplement pas.
+    }
+  }
+
+  Future<void> _openWaiting() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PendingTransfersScreen(app: widget.app)));
+    _loadWaiting();
+  }
+
+  /// Le numéro n'a pas de compte : l'argent peut l'attendre, le temps que le proche s'inscrive.
+  Future<void> _sendWithoutAccount() async {
+    final minor = parseUsd(amount.text);
+    if (minor == null) return setState(() => error = 'Entrez un montant, par exemple 25 ou 12,50.');
+    final q = await run(widget.app, () => widget.app.api.transferFee(minor));
+    if (q == null || !mounted) return;
+    final sent = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => InviteTransferScreen(app: widget.app, phone: noAccountPhone!, quote: q, note: note.text.trim()),
+      ),
+    );
+    if (sent == true && mounted) Navigator.of(context).pop();
   }
 
   Future<void> _loadFavorites() async {
@@ -438,7 +476,17 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
       return setState(() => error = 'Votre plafond par opération est de ${formatUsd(l.perTransactionMinor)}.');
     }
     // Le nom d'abord : un mauvais numéro est arrêté avant de calculer quoi que ce soit.
-    final who = await run(widget.app, () => widget.app.api.lookupRecipient(p));
+    var noAccount = false;
+    final who = await run(widget.app, () async {
+      try {
+        return await widget.app.api.lookupRecipient(p);
+      } on ApiException catch (e) {
+        if (e.code != 'RECIPIENT_NOT_FOUND') rethrow;
+        noAccount = true;
+        return null;
+      }
+    });
+    setState(() => noAccountPhone = noAccount ? p : null);
     if (who == null) return;
     final q = await run(widget.app, () => widget.app.api.transferFee(minor));
     if (q == null) return;
@@ -593,6 +641,46 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
       subtitle: 'À un autre client Capital Invest, avec son numéro de téléphone.',
       children: [
         ErrorBanner(error),
+        if (noAccountPhone != null) ...[
+          SoftCard(
+            key: const ValueKey('no-account'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Ce numéro n\'a pas encore de compte', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  'Envoyez quand même : votre proche reçoit un SMS et l\'argent l\'attend 7 jours, le temps d\'ouvrir son compte. '
+                  'Sinon, il vous revient, frais compris.',
+                  style: TextStyle(color: context.pal.muted, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                BusyButton(label: 'Envoyer quand même', busy: busy, onPressed: _sendWithoutAccount),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (waiting > 0) ...[
+          SoftCard(
+            key: const ValueKey('waiting'),
+            onTap: _openWaiting,
+            child: Row(
+              children: [
+                const Icon(Icons.hourglass_top_rounded, color: Brand.ochreDeep),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    waiting == 1 ? '1 envoi attend l\'inscription d\'un proche' : '$waiting envois attendent l\'inscription de proches',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (favorites.isNotEmpty) ...[
           Row(
             children: [

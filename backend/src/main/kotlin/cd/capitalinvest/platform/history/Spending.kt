@@ -76,7 +76,7 @@ class SpendingService(private val statements: StatementService, private val limi
 
     companion object {
         private fun categoryOf(kind: HistoryKind): SpendingCategory? = when (kind) {
-            HistoryKind.TRANSFER_SENT -> SpendingCategory.TRANSFERS
+            HistoryKind.TRANSFER_SENT, HistoryKind.TRANSFER_REFUND -> SpendingCategory.TRANSFERS
             HistoryKind.MERCHANT_PAYMENT -> SpendingCategory.MERCHANTS
             HistoryKind.BILL_PAYMENT, HistoryKind.BILL_REFUND -> SpendingCategory.BILLS
             HistoryKind.AIRTIME, HistoryKind.AIRTIME_REFUND -> SpendingCategory.AIRTIME
@@ -90,10 +90,11 @@ class SpendingService(private val statements: StatementService, private val limi
         private fun byCategory(items: List<HistoryItem>): Map<SpendingCategory, Pair<Long, Int>> {
             val out = mutableMapOf<SpendingCategory, Pair<Long, Int>>()
             for (i in counted(items)) {
-                val fee = i.feeMinor
+                val refund = i.netMinor > 0
+                // Un remboursement rend aussi les frais : ils viennent en déduction des frais payés.
+                val fee = if (refund) -i.feeMinor else i.feeMinor
                 if (fee != 0L) out.merge(SpendingCategory.FEES, fee to 0) { a, b -> (a.first + b.first) to a.second }
                 val c = categoryOf(i.kind) ?: continue
-                val refund = i.netMinor > 0
                 out.merge(c, (-i.netMinor - fee) to (if (refund) 0 else 1)) { a, b -> (a.first + b.first) to (a.second + b.second) }
             }
             return out

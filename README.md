@@ -412,6 +412,20 @@ Après un envoi, le client peut enregistrer le destinataire sous un **surnom** (
 - Un favori dont le compte est suspendu ou fermé n'est plus proposé.
 - API : `GET /v1/me/favorites`, `POST /v1/me/favorites` (`{"phone", "nickname"}`), `DELETE /v1/me/favorites/{id}`.
 
+## Envoyer à un proche sans compte
+
+Beaucoup de proches n'ont pas encore Capital Invest. Quand le numéro tapé n'a pas de compte, l'app ne s'arrête plus sur une erreur : elle propose d'**envoyer quand même**. Le client donne le nom de son proche et confirme avec son PIN. Le proche reçoit un SMS, et l'argent lui est **versé dès qu'il ouvre son compte avec ce numéro**. Sans compte au bout de 7 jours, l'argent revient à l'expéditeur, **frais compris**. L'expéditeur peut aussi annuler avant.
+
+| Numéro sans compte | Nom du proche et PIN | Suivi des envois |
+|---|---|---|
+| ![](docs/captures-app/21-numero-sans-compte.png) | ![](docs/captures-app/21b-envoi-sans-compte.png) | ![](docs/captures-app/21c-envois-en-attente.png) |
+
+- Grand livre : l'argent passe du portefeuille au compte d'attente `PENDING_TRANSFERS_USD`, puis au portefeuille du proche (`TRANSFER_INVITE_CLAIM`) ou retour à l'expéditeur avec les frais (`TRANSFER_INVITE_REFUND`). Rien n'est perdu entre les deux.
+- Plafonds de l'expéditeur comme pour un envoi. Au plus 100 $ par envoi, 3 envois en attente par expéditeur et 500 $ en attente pour un même numéro (`capital-invest.pending-transfers.*`). Un envoi qui dépasserait le solde maximal du nouveau compte (KYC 1) revient à l'expéditeur.
+- Le versement se fait dans la transaction de l'inscription. Le SMS au proche passe par la file des notifications, avec ses relances. L'expéditeur est prévenu quand son proche a reçu l'argent ou quand l'argent lui revient.
+- Historique : « Envoi à Maman Chantal », état « En attente de son inscription », puis terminé ou « Envoi remboursé ». Un compte avec un envoi en attente ne peut pas être fermé.
+- API : `POST /v1/transfers/pending` (`{"toPhone", "recipientName", "amountMinor", "pin", "note"}`, en-tête `Idempotency-Key`), `GET /v1/transfers/pending`, `DELETE /v1/transfers/pending/{id}` (annuler).
+
 ## Envois programmés
 
 Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.

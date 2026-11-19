@@ -130,6 +130,23 @@ class FakeServer {
   /// Clients connus de /v1/transfers/recipient (numéro → prénom et initiale).
   static const recipients = {'+243970000002': 'Josué K.', '+243970000402': 'Béni M.', '+243990000870': 'Patrick I.'};
 
+  /// Envois à des proches sans compte, servis par /v1/transfers/pending.
+  List<Map<String, dynamic>> pendingTransfers = [];
+
+  static Map<String, dynamic> pendingTransfer(String id, String name, String phone, int amount,
+      {String status = 'PENDING', String createdAt = '2026-11-18T09:00:00Z', String expiresAt = '2026-11-25T09:00:00Z', String? settledAt}) => {
+        'id': id,
+        'recipientName': name,
+        'phone': phone,
+        'amountMinor': amount,
+        'feeMinor': ((amount * 100 + 5000) ~/ 10000).clamp(10, 500),
+        'note': null,
+        'status': status,
+        'createdAt': createdAt,
+        'expiresAt': expiresAt,
+        'settledAt': settledAt,
+      };
+
   /// Favoris servis par /v1/me/favorites.
   List<Map<String, dynamic>> favorites = [];
   int _favoriteSeq = 0;
@@ -333,6 +350,17 @@ class FakeServer {
       return _json(s, 201);
     }
     if (path == '/v1/me/scheduled-transfers') return _json(scheduled);
+    final pt = RegExp(r'^/v1/transfers/pending/([^/]+)$').firstMatch(path);
+    if (pt != null && req.method == 'DELETE') {
+      final i = pendingTransfers.indexWhere((t) => t['id'] == pt.group(1));
+      if (i < 0) return _error(404, 'PENDING_TRANSFER_NOT_FOUND', 'Envoi introuvable');
+      final t = pendingTransfers[i];
+      if (t['status'] != 'PENDING') return _error(422, 'PENDING_TRANSFER_SETTLED', 'Déjà réglé');
+      balance += (t['amountMinor'] as int) + (t['feeMinor'] as int);
+      final updated = {...t, 'status': 'CANCELLED', 'settledAt': '2026-11-19T10:00:00Z'};
+      pendingTransfers = [...pendingTransfers]..[i] = updated;
+      return _json(updated);
+    }
     final fav = RegExp(r'^/v1/me/favorites/([^/]+)$').firstMatch(path);
     if (fav != null && req.method == 'DELETE') {
       final before = favorites.length;
@@ -557,6 +585,18 @@ class FakeServer {
         final name = recipients[p];
         if (name == null) return _error(404, 'RECIPIENT_NOT_FOUND', 'Aucun client');
         return _json({'phone': p, 'displayName': name});
+      case ('GET', '/v1/transfers/pending'):
+        return _json(pendingTransfers);
+      case ('POST', '/v1/transfers/pending'):
+        final b = body();
+        if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        final a = b['amountMinor'] as int;
+        if (a > 10000) return _error(422, 'PENDING_TRANSFER_MAX', 'Au plus 100,00 \$ pour un proche sans compte');
+        final t = pendingTransfer('pt-${pendingTransfers.length + 1}', b['recipientName'], b['toPhone'], a);
+        if (a + (t['feeMinor'] as int) > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+        balance -= a + (t['feeMinor'] as int);
+        pendingTransfers = [t, ...pendingTransfers];
+        return _json(t, 201);
       case ('GET', '/v1/me/favorites'):
         return _json(favorites);
       case ('POST', '/v1/me/favorites'):

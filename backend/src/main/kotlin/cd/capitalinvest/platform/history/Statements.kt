@@ -291,6 +291,7 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.TRANSFER_RECEIVED -> "Reçu de ${i.counterpartyName ?: "un client"}"
             HistoryKind.WITHDRAWAL -> "Retrait vers ${op ?: "mobile money"}"
             HistoryKind.WITHDRAWAL_REFUND -> "Retrait remboursé"
+            HistoryKind.TRANSFER_REFUND -> "Envoi non réclamé par ${i.counterpartyName ?: "le proche"}, remboursé"
             HistoryKind.MERCHANT_PAYMENT -> "Paiement à ${i.counterpartyName ?: "un marchand"}"
             HistoryKind.AIRTIME -> "Crédit ${networkLabel(i.network)}"
             HistoryKind.AIRTIME_REFUND -> "Crédit non envoyé, remboursé"

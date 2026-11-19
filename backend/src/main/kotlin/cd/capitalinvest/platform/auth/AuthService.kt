@@ -9,6 +9,7 @@ import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.customers.CustomerService
 import cd.capitalinvest.platform.customers.CustomerView
 import cd.capitalinvest.platform.customers.Language
+import cd.capitalinvest.platform.payments.PendingTransferService
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
@@ -48,6 +49,7 @@ class AuthService(
     private val clock: Clock,
     private val notifications: NotificationService,
     private val audit: AuditLog,
+    private val pendingTransfers: PendingTransferService,
 ) {
     private val encoder = BCryptPasswordEncoder(12)
     private val random = SecureRandom()
@@ -61,6 +63,8 @@ class AuthService(
         otp.verify(phone, OtpPurpose.REGISTER, code)
         val view = customerService.open(phone, fullName, language)
         customers.setPinHash(view.customer.id, encoder.encode(pin))
+        // Un proche lui a peut-être envoyé de l'argent avant qu'il ait un compte.
+        pendingTransfers.claimFor(view.customer)
         return openSession(view, deviceId, deviceName)
     }
 

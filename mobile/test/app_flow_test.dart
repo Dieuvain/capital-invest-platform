@@ -231,11 +231,13 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
-    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsOneWidget);
+    // Numéro sans compte : arrêté avant les frais, avec la proposition d'envoyer quand même.
+    expect(find.byKey(const ValueKey('no-account')), findsOneWidget);
     expect(server.requests.where((r) => r.url.path == '/v1/transfers/fee'), isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('no-account')), findsNothing);
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
 
@@ -303,6 +305,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Favoris'), findsNothing);
     expect(find.byKey(const ValueKey('recent-+243970000402')), findsOneWidget);
+  });
+
+  testWidgets('numéro sans compte : envoi en attente avec nom et PIN, puis annulé', (tester) async {
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Envoyer');
+    expect(find.byKey(const ValueKey('waiting')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '20');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    // Pas d'erreur sèche : on propose d'envoyer quand même.
+    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsNothing);
+    expect(find.byKey(const ValueKey('no-account')), findsOneWidget);
+
+    // Un autre numéro : la proposition disparaît.
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000998');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('no-account')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Envoyer quand même'));
+    await tester.pumpAndSettle();
+    expect(find.text('Envoyer sans compte'), findsOneWidget);
+    expect(find.text('20,20\u00a0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 20,00\u00a0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Donnez le nom de votre proche : il vous aide à suivre l\'envoi.'), findsOneWidget);
+    expect(server.pendingTransfers, isEmpty);
+
+    await tester.enterText(find.byKey(const ValueKey('invite-name')), 'Maman Chantal');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 20,00\u00a0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('20,00\u00a0\$ en attente'), findsOneWidget);
+    expect(server.pendingTransfers.single['phone'], '+243970000999');
+    expect(server.pendingTransfers.single['recipientName'], 'Maman Chantal');
+    expect(server.balance, 5000 - 2020);
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
+    await tester.tap(find.byKey(const ValueKey('waiting')));
+    await tester.pumpAndSettle();
+    expect(find.text('Envois en attente'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cancel-pending-pt-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Annuler l\'envoi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Annulé, remboursé'), findsOneWidget);
+    expect(server.balance, 5000);
   });
 
   testWidgets('demande reçue : bandeau sur l\'accueil, frais montrés, avertissement, PIN, puis payée', (tester) async {

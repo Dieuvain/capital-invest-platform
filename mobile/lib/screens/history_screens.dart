@@ -15,6 +15,7 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'TRANSFER_RECEIVED' => 'Reçu de ${i.counterpartyName ?? 'un client'}',
   'WITHDRAWAL' => 'Retrait vers ${i.operatorLabel ?? 'mobile money'}',
   'WITHDRAWAL_REFUND' => 'Retrait remboursé',
+  'TRANSFER_REFUND' => 'Envoi à ${i.counterpartyName ?? 'un proche'} remboursé',
   'MERCHANT_PAYMENT' => 'Paiement à ${i.counterpartyName ?? 'un marchand'}',
   'AIRTIME' => 'Crédit ${i.network?.label ?? 'téléphone'}',
   'AIRTIME_REFUND' => 'Crédit non envoyé, remboursé',
@@ -27,6 +28,7 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
 
 /// État à afficher, quand l'opération n'est pas simplement terminée.
 String? historyStatus(HistoryItem i) => switch (i.status) {
+  'PENDING' when i.kind == 'TRANSFER_SENT' => 'En attente de son inscription',
   'PENDING' => 'En cours',
   'REVIEW' => 'En vérification',
   'FAILED' => 'Refusé, remboursé',
@@ -41,7 +43,7 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'WITHDRAWAL_REFUND' => Icons.undo_rounded,
   'MERCHANT_PAYMENT' => Icons.storefront_rounded,
   'AIRTIME' => Icons.phone_android_rounded,
-  'AIRTIME_REFUND' || 'BILL_REFUND' => Icons.undo_rounded,
+  'AIRTIME_REFUND' || 'BILL_REFUND' || 'TRANSFER_REFUND' => Icons.undo_rounded,
   'BILL_PAYMENT' => Icons.receipt_rounded,
   'SAVINGS_DEPOSIT' || 'SAVINGS_WITHDRAWAL' => Icons.savings_outlined,
   _ => Icons.tune_rounded,
@@ -65,7 +67,7 @@ String receiptText(Receipt r) {
     if (i.billReference != null) 'Compteur ou abonné : ${i.billReference}',
     if (i.token != null) 'Code du compteur : ${i.token}',
     'Montant : ${formatUsd(i.amountMinor)}',
-    if (i.feeMinor != 0) '${i.kind == 'WITHDRAWAL_REFUND' ? 'Frais rendus' : 'Frais'} : ${formatUsd(i.feeMinor)}',
+    if (i.feeMinor != 0) '${i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais'} : ${formatUsd(i.feeMinor)}',
     if (i.feeMinor != 0) '${i.isIn ? 'Total crédité' : 'Total débité'} : ${formatUsd(i.netMinor.abs())}',
     if (i.note != null) 'Message : ${i.note}',
     if (historyStatus(i) != null) 'État : ${historyStatus(i)}',
@@ -288,7 +290,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
       if (i.billReference != null) ('Compteur ou abonné', i.billReference!),
       if (i.token != null) ('Code du compteur', i.token!),
       ('Montant', formatUsd(i.amountMinor)),
-      if (i.feeMinor != 0) (i.kind == 'WITHDRAWAL_REFUND' ? 'Frais rendus' : 'Frais', formatUsd(i.feeMinor)),
+      if (i.feeMinor != 0) (i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais', formatUsd(i.feeMinor)),
       if (i.feeMinor != 0) (i.isIn ? 'Total crédité' : 'Total débité', formatUsd(i.netMinor.abs())),
       if (i.note != null) ('Message', i.note!),
       ?(status == null ? null : ('État', status)),

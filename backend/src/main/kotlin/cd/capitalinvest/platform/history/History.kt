@@ -36,12 +36,12 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
-    TRANSFER(listOf("TRANSFER")),
+    TRANSFER(listOf("TRANSFER", "TRANSFER_INVITE", "TRANSFER_INVITE_CLAIM", "TRANSFER_INVITE_REFUND")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
     PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND", "BILL_PAYMENT", "BILL_REFUND")),
     SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
@@ -187,7 +187,9 @@ class HistoryService(
                COALESCE(w.failure_message, ap.failure_message, bp.failure_message) AS failure_message,
                COALESCE(w.hold_transaction_id, ap.hold_transaction_id, bp.hold_transaction_id) AS hold_transaction_id,
                bp.biller, bp.reference AS bill_reference, bp.token AS bill_token, bp.status AS bill_status,
-               ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status
+               ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status,
+               pt.status AS invite_status, pt.recipient_name AS invite_name, pt.phone AS invite_phone,
+               ps.full_name AS invite_sender_name, ps.phone AS invite_sender_phone
         FROM tx
         LEFT JOIN LATERAL (
             SELECT c.full_name, c.phone
@@ -209,6 +211,10 @@ class HistoryService(
         -- Par la clé aussi : la notification du remboursement est écrite avant que l'achat soit lié au remboursement.
         LEFT JOIN bill_payment bp ON bp.hold_transaction_id = tx.id OR tx.idempotency_key = 'bill-refund:' || bp.id
         LEFT JOIN airtime_purchase ap ON ap.hold_transaction_id = tx.id OR tx.idempotency_key = 'airtime-refund:' || ap.id
+        -- Envoi à un proche sans compte : la clé porte l'identifiant de l'envoi (invite:, invite-claim:, invite-refund:).
+        LEFT JOIN pending_transfer pt ON pt.id = CASE WHEN tx.type IN ('TRANSFER_INVITE', 'TRANSFER_INVITE_CLAIM', 'TRANSFER_INVITE_REFUND')
+                                                    THEN CAST(split_part(tx.idempotency_key, ':', 2) AS uuid) END
+        LEFT JOIN customer ps ON ps.id = pt.sender_id
         ORDER BY tx.created_at DESC, tx.id DESC
     """
 
@@ -222,6 +228,9 @@ class HistoryService(
         val kind = when (type) {
             "TOPUP" -> HistoryKind.TOPUP
             "TRANSFER" -> if (net < 0) HistoryKind.TRANSFER_SENT else HistoryKind.TRANSFER_RECEIVED
+            "TRANSFER_INVITE" -> HistoryKind.TRANSFER_SENT
+            "TRANSFER_INVITE_CLAIM" -> HistoryKind.TRANSFER_RECEIVED
+            "TRANSFER_INVITE_REFUND" -> HistoryKind.TRANSFER_REFUND
             "WITHDRAWAL" -> HistoryKind.WITHDRAWAL
             "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND" -> HistoryKind.WITHDRAWAL_REFUND
             "MERCHANT_PAYMENT" -> HistoryKind.MERCHANT_PAYMENT
@@ -237,12 +246,12 @@ class HistoryService(
         // Un paiement marchand n'a pas de frais pour le client : la commission est payée par le marchand.
         val shownFee = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.WITHDRAWAL -> fee
-            HistoryKind.WITHDRAWAL_REFUND -> -fee // frais rendus
+            HistoryKind.WITHDRAWAL_REFUND, HistoryKind.TRANSFER_REFUND -> -fee // frais rendus
             else -> 0
         }
         val amount = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.WITHDRAWAL -> -net - shownFee
-            HistoryKind.WITHDRAWAL_REFUND -> net - shownFee
+            HistoryKind.WITHDRAWAL_REFUND, HistoryKind.TRANSFER_REFUND -> net - shownFee
             else -> kotlin.math.abs(net)
         }
         val status = if (kind == HistoryKind.WITHDRAWAL && isHold) {
@@ -259,10 +268,14 @@ class HistoryService(
                 "FAILED" -> HistoryStatus.FAILED
                 else -> HistoryStatus.COMPLETED
             }
+        } else if (type == "TRANSFER_INVITE" && rs.getString("invite_status") == "PENDING") {
+            HistoryStatus.PENDING // le proche n'a pas encore ouvert son compte
         } else {
             HistoryStatus.COMPLETED
         }
-        val otherPhone = rs.getString("other_phone")
+        // Envoi à un proche sans compte : l'expéditeur voit le nom qu'il a donné, le proche voit l'expéditeur.
+        val invitePhone = if (type == "TRANSFER_INVITE_CLAIM") rs.getString("invite_sender_phone") else rs.getString("invite_phone")
+        val otherPhone = rs.getString("other_phone") ?: invitePhone
         return HistoryItem(
             id = id,
             receiptNumber = receiptNumber(id, createdAt),
@@ -274,6 +287,7 @@ class HistoryService(
             currency = Currency.valueOf(rs.getString("currency")),
             createdAt = createdAt,
             counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name")
+                ?: (if (type == "TRANSFER_INVITE_CLAIM") rs.getString("invite_sender_name") else rs.getString("invite_name"))
                 ?: rs.getString("biller")?.let { Biller.valueOf(it).label },
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
             operator = rs.getString("topup_operator") ?: rs.getString("withdrawal_operator"),
@@ -282,7 +296,7 @@ class HistoryService(
             billReference = rs.getString("bill_reference"),
             token = rs.getString("bill_token")?.let { BillService.formatToken(it) },
             merchantCode = rs.getString("merchant_code"),
-            note = if (type == "TRANSFER" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
+            note = if (type == "TRANSFER" || type == "TRANSFER_INVITE" || type == "TRANSFER_INVITE_CLAIM" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
             failureMessage = if (status == HistoryStatus.FAILED || kind == HistoryKind.AIRTIME_REFUND || kind == HistoryKind.BILL_REFUND) rs.getString("failure_message") else null,
         )
     }
