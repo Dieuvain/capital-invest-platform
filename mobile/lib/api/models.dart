@@ -288,3 +288,48 @@ class Receipt {
   factory Receipt.fromJson(Map<String, dynamic> j) =>
       Receipt(item: HistoryItem.fromJson(j['item']), holderName: j['holderName'], holderPhone: j['holderPhone']);
 }
+
+/// Notification reçue par le client (aussi envoyée par SMS).
+class AppNotification {
+  AppNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.body,
+    required this.read,
+    required this.createdAt,
+    this.transactionId,
+  });
+
+  final String id;
+
+  /// TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED…
+  final String kind;
+  final String title;
+  final String body;
+  final bool read;
+  final DateTime createdAt;
+
+  /// Opération liée, dont on peut ouvrir le reçu.
+  final String? transactionId;
+
+  factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
+    id: j['id'],
+    kind: j['kind'],
+    title: j['title'],
+    body: j['body'],
+    read: j['read'] ?? false,
+    createdAt: DateTime.parse(j['createdAt']),
+    transactionId: j['transactionId'],
+  );
+}
+
+class NotificationInbox {
+  NotificationInbox(this.items, this.unread);
+
+  final List<AppNotification> items;
+  final int unread;
+
+  factory NotificationInbox.fromJson(Map<String, dynamic> j) =>
+      NotificationInbox((j['items'] as List).map((e) => AppNotification.fromJson(e)).toList(), j['unread'] ?? 0);
+}

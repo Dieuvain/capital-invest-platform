@@ -41,6 +41,9 @@ class FakeServer {
   /// Réponse de l'opérateur au retrait en cours.
   Map<String, dynamic> withdrawalOutcome = {'status': 'CONFIRMED'};
   int _withdrawn = 0;
+  /// Notifications servies par /v1/me/notifications ; « read » passe à vrai à la lecture.
+  List<Map<String, dynamic>> notifications = [];
+
   /// Historique servi par /v1/me/history, du plus récent au plus ancien.
   List<Map<String, dynamic>> history = [historyItem('h-1', 'TOPUP', 5000, at: '2026-11-18T10:00:00Z', operator: 'MPESA')];
 
@@ -108,6 +111,15 @@ class FakeServer {
       final item = history.where((h) => h['id'] == receipt.group(1)).firstOrNull;
       if (item == null) return _error(404, 'OPERATION_NOT_FOUND', 'Opération introuvable');
       return _json({'item': item, 'holderName': 'Amani Kabeya', 'holderPhone': '+243970000001', 'issuedAt': '2026-11-19T10:00:00Z'});
+    }
+    if (path == '/v1/me/notifications') {
+      return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
+    }
+    if (path == '/v1/me/notifications/read') {
+      for (final n in notifications) {
+        n['read'] = true;
+      }
+      return http.Response('', 204);
     }
     switch ((req.method, path)) {
       case ('POST', '/v1/auth/login'):

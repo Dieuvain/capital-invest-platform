@@ -25,6 +25,20 @@ void main() {
   setUp(() {
     server = FakeServer()
       ..balance = 123750
+      ..notifications = [
+        {
+          'id': 'n3', 'kind': 'TRANSFER_RECEIVED', 'title': 'Argent reçu', 'transactionId': 'd4e5f6', 'read': false,
+          'body': 'Patrick Ilunga vous a envoyé 45,00 \$. Nouveau solde : 1 237,50 \$.', 'createdAt': '2026-11-18T12:10:00Z',
+        },
+        {
+          'id': 'n2', 'kind': 'TOPUP', 'title': 'Recharge reçue', 'transactionId': 'a7b8c9', 'read': true,
+          'body': '1 000,00 \$ ajoutés depuis M-Pesa. Nouveau solde : 1 432,50 \$.', 'createdAt': '2026-11-17T09:05:00Z',
+        },
+        {
+          'id': 'n1', 'kind': 'WITHDRAWAL_PAID', 'title': 'Retrait versé', 'transactionId': 'd1e2f3', 'read': true,
+          'body': '400,00 \$ sont arrivés sur votre numéro Airtel Money +243970000001.', 'createdAt': '2026-11-16T18:31:00Z',
+        },
+      ]
       ..history = [
         FakeServer.historyItem('a1b2c3', 'TRANSFER_SENT', -20200, fee: 200, at: '2026-11-18T16:42:00Z',
             name: 'Grâce Mbuyi', phone: '+243 81• ••• 214', note: 'Frais scolaires'),
@@ -83,6 +97,12 @@ void main() {
       await tester.pumpAndSettle();
       await shot('2a-accueil-promotions$suffix');
       await tester.drag(find.byType(ListView).first, const Offset(0, 420));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Notifications, 1 non lues'));
+      await tester.pumpAndSettle();
+      await shot('2f-notifications$suffix');
+      await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
       await nav(tester, 'Historique');

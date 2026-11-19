@@ -142,6 +142,11 @@ class ApiClient {
 
   Future<Receipt> receipt(String id) async => Receipt.fromJson(await _get('/v1/me/history/$id'));
 
+  Future<NotificationInbox> notifications() async => NotificationInbox.fromJson(await _get('/v1/me/notifications'));
+
+  /// Marque toutes les notifications comme lues.
+  Future<void> markNotificationsRead() => _post('/v1/me/notifications/read', const <String, dynamic>{});
+
 
   // ---- Argent --------------------------------------------------------------------------------
 
