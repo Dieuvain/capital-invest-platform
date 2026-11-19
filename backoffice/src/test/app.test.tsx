@@ -180,6 +180,40 @@ describe('promotions', () => {
     expect(server.promotions).toHaveLength(1)
   })
 
+  it('le graphiste fournit le visuel : aperçu tout de suite, envoi à la publication, sans texte ni bouton', async () => {
+    const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
+    await user.click(await screen.findByRole('button', { name: /Nouvelle promotion/ }))
+    await user.type(screen.getByLabelText(/^Titre/), 'Recharge offerte')
+    await user.selectOptions(screen.getByLabelText('Au toucher'), 'TOPUP')
+    const visuel = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'noel.png', { type: 'image/png' })
+    await user.upload(screen.getByLabelText('Visuel'), visuel)
+
+    expect(screen.getByRole('img', { name: 'Recharge offerte' })).toHaveAttribute('src', 'blob:photo')
+    expect(screen.getByText(/noel.png · envoyé à l'enregistrement/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Publier' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Promotion publiée')
+    expect(server.requests.find((r) => r.method === 'POST' && r.path === '/v1/backoffice/promotions')?.body)
+      .toMatchObject({ title: 'Recharge offerte', body: null, ctaLabel: null, action: 'TOPUP' })
+    expect(server.images.get('p-2')).toBe(visuel)
+    // De retour dans la liste, la promotion s'affiche avec son visuel.
+    expect(await screen.findByRole('img', { name: 'Recharge offerte' })).toBeInTheDocument()
+  })
+
+  it('un fichier qui n\'est pas une image, ou trop lourd, est refusé avant l\'envoi', async () => {
+    const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
+    await user.click(await screen.findByRole('button', { name: /Nouvelle promotion/ }))
+    const input = screen.getByLabelText('Visuel')
+    await userEvent.setup({ applyAccept: false }).upload(input, new File(['%PDF'], 'brief.pdf', { type: 'application/pdf' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Visuel JPEG, PNG ou WebP attendu')
+    await user.upload(input, new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'lourd.jpg', { type: 'image/jpeg' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('2 Mo au plus')
+    // Sans visuel ni texte, la carte de secours serait vide.
+    await user.type(screen.getByLabelText(/^Titre/), 'Titre seul')
+    await user.click(screen.getByRole('button', { name: 'Publier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ajoutez un visuel, ou écrivez un texte')
+    expect(server.promotions).toHaveLength(1)
+  })
+
   it('retirer une promotion la garde dans la liste', async () => {
     const user = await signIn('marketing@capitalinvest.cd', 'Promotions')
     await user.click(await screen.findByText('Passez au niveau 2'))

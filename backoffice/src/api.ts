@@ -38,7 +38,8 @@ export type PromoAudience = 'ALL' | 'KYC1' | 'KYC2'
 
 export interface PromotionInput {
   title: string
-  body: string
+  /** Facultatif : sert seulement à la carte de secours, tant qu'aucun visuel n'est envoyé. */
+  body: string | null
   ctaLabel: string | null
   action: PromoAction | null
   style: PromoStyle
@@ -53,7 +54,13 @@ export interface Promotion extends PromotionInput {
   id: string
   startsAt: string
   live: boolean
+  imageType: string | null
+  imageUpdatedAt: string | null
 }
+
+/** Visuel conseillé : 1200 x 520 px (le format du bandeau de l'app), 2 Mo au plus. */
+export const PROMO_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+export const PROMO_IMAGE_MAX_BYTES = 2 * 1024 * 1024
 
 export interface AuditEntry {
   id: string
@@ -138,15 +145,17 @@ export class Api {
 
   private async send(method: string, path: string, body?: unknown): Promise<Response> {
     let res: Response
+    // Un formulaire (envoi de fichier) part tel quel : le navigateur pose lui-même son Content-Type.
+    const form = body instanceof FormData
     try {
       res = await this.fetcher(this.base + path, {
         method,
         headers: {
           Accept: 'application/json',
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : form ? body : JSON.stringify(body),
       })
     } catch {
       throw new ApiError(0, 'NETWORK', 'Serveur injoignable. Vérifiez la connexion et réessayez.')
@@ -203,6 +212,14 @@ export class Api {
   promotions = () => this.json<Promotion[]>('GET', '/v1/backoffice/promotions')
   createPromotion = (p: PromotionInput) => this.json<Promotion>('POST', '/v1/backoffice/promotions', p)
   updatePromotion = (id: string, p: PromotionInput) => this.json<Promotion>('PUT', `/v1/backoffice/promotions/${id}`, p)
+  uploadPromotionImage = (id: string, file: Blob) => {
+    const form = new FormData()
+    form.append('file', file)
+    return this.json<Promotion>('POST', `/v1/backoffice/promotions/${id}/image`, form)
+  }
+  async promotionImage(id: string): Promise<Blob> {
+    return (await this.send('GET', `/v1/backoffice/promotions/${id}/image`)).blob()
+  }
 
   // ---- Agents et journal ----
   agents = () => this.json<Agent[]>('GET', '/v1/backoffice/agents')

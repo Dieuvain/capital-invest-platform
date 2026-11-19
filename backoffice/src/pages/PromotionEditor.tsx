@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Api, PromoAction, PromoAudience, PromoStyle, PromotionInput } from '../api'
+import { PROMO_IMAGE_MAX_BYTES, PROMO_IMAGE_TYPES, type Api, type Promotion, type PromoAction, type PromoAudience, type PromoStyle, type PromotionInput } from '../api'
 import { actionLabel, audienceLabel, fromLocalInput, styleLabel, toLocalInput } from '../format'
 import { ErrorBanner, PageHead } from '../ui'
-import { PromoCard } from './Promotions'
+import { PromoCard, usePromoImage } from './Promotions'
 
 const empty: PromotionInput = {
   title: '',
@@ -24,6 +24,12 @@ export function PromotionEditor({ api, id, back, onSaved }: {
   onSaved: (message: string) => void
 }) {
   const [p, setP] = useState<PromotionInput>(empty)
+  const [saved, setSaved] = useState<Promotion | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [fileUrl, setFileUrl] = useState<string | null>(null)
+  const savedImage = usePromoImage(api, saved)
+  const image = fileUrl ?? savedImage
+  const hasImage = image !== null
   const [loaded, setLoaded] = useState(id === null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +39,10 @@ export function PromotionEditor({ api, id, back, onSaved }: {
     api.promotions().then(
       (all) => {
         const found = all.find((x) => x.id === id)
-        if (found) setP(found)
+        if (found) {
+          setP(found)
+          setSaved(found)
+        }
         else setError('Promotion introuvable')
         setLoaded(true)
       },
@@ -41,15 +50,43 @@ export function PromotionEditor({ api, id, back, onSaved }: {
     )
   }, [api, id])
 
+  useEffect(() => {
+    if (!file) return
+    const u = URL.createObjectURL(file)
+    setFileUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [file])
+
+  function pick(f: File | undefined) {
+    setError(null)
+    if (!f) return
+    if (!PROMO_IMAGE_TYPES.includes(f.type)) return setError('Visuel JPEG, PNG ou WebP attendu.')
+    if (f.size > PROMO_IMAGE_MAX_BYTES) return setError('Visuel de 2 Mo au plus attendu. Demandez une version plus légère au graphiste.')
+    setFile(f)
+  }
+
   const set = <K extends keyof PromotionInput>(k: K, v: PromotionInput[K]) => setP((x) => ({ ...x, [k]: v }))
 
   async function save(next: PromotionInput, message: string) {
     setBusy(true)
     setError(null)
     try {
-      const body = { ...next, ctaLabel: next.action ? next.ctaLabel?.trim() || null : null }
-      if (body.action && !body.ctaLabel) throw new Error('Indiquez le texte du bouton, ou choisissez « Aucune action ».')
-      await (id ? api.updatePromotion(id, body) : api.createPromotion(body))
+      const body = {
+        ...next,
+        body: next.body?.trim() || null,
+        ctaLabel: next.action ? next.ctaLabel?.trim() || null : null,
+      }
+      // Sans visuel, l'app dessine une carte de secours : elle a besoin d'un texte et, s'il y a une action, d'un bouton.
+      if (!hasImage && !body.body) throw new Error('Ajoutez un visuel, ou écrivez un texte pour la carte de secours.')
+      if (!hasImage && body.action && !body.ctaLabel) throw new Error('Indiquez le texte du bouton, ou choisissez « Aucune action ».')
+      const result = await (id ? api.updatePromotion(id, body) : api.createPromotion(body))
+      if (file) {
+        try {
+          await api.uploadPromotionImage(result.id, file)
+        } catch (e) {
+          throw new Error(`Promotion enregistrée, mais le visuel n'a pas été envoyé : ${(e as Error).message}`)
+        }
+      }
       onSaved(message)
     } catch (e) {
       setError((e as Error).message)
@@ -71,13 +108,26 @@ export function PromotionEditor({ api, id, back, onSaved }: {
       <form className="editor" onSubmit={submit}>
         <div className="card pad stack">
           <ErrorBanner error={error} />
+          <div className="field">
+            Visuel <span className="hint">JPEG, PNG ou WebP, 1200 x 520 px, 2 Mo au plus</span>
+            <div className="row">
+              <label className="btn ghost file">
+                {hasImage ? 'Remplacer le visuel' : 'Choisir le visuel'}
+                <input type="file" accept={PROMO_IMAGE_TYPES.join(',')} aria-label="Visuel"
+                  onChange={(e) => pick(e.target.files?.[0])} />
+              </label>
+              <span className="muted small">
+                {file ? `${file.name} · envoyé à l'enregistrement` : hasImage ? 'Visuel en ligne' : 'Aucun visuel : la carte de secours est montrée'}
+              </span>
+            </div>
+          </div>
           <label className="field">
-            Titre <span className="hint">60 caractères au plus, court et direct</span>
+            Titre <span className="hint">60 caractères au plus. Lu à voix haute aux malvoyants sur un visuel.</span>
             <input type="text" required maxLength={60} value={p.title} onChange={(e) => set('title', e.target.value)} />
           </label>
           <label className="field">
-            Texte <span className="hint">140 caractères au plus, deux lignes dans l'app</span>
-            <textarea required maxLength={140} value={p.body} onChange={(e) => set('body', e.target.value)} />
+            Texte <span className="hint">{hasImage ? 'facultatif avec un visuel' : "140 caractères au plus, deux lignes dans l'app"}</span>
+            <textarea maxLength={140} value={p.body ?? ''} onChange={(e) => set('body', e.target.value)} />
           </label>
           <div className="grid-2">
             <label className="field">
@@ -90,7 +140,7 @@ export function PromotionEditor({ api, id, back, onSaved }: {
               </select>
             </label>
             <label className="field">
-              Texte du bouton <span className="hint">30 caractères au plus</span>
+              Texte du bouton <span className="hint">{hasImage ? 'facultatif : tout le visuel mène à l\'action' : '30 caractères au plus'}</span>
               <input type="text" maxLength={30} disabled={!p.action} value={p.ctaLabel ?? ''}
                 placeholder={p.action ? 'Ex. : Recharger' : ''} onChange={(e) => set('ctaLabel', e.target.value)} />
             </label>
@@ -146,7 +196,7 @@ export function PromotionEditor({ api, id, back, onSaved }: {
         </div>
         <aside>
           <div className="small muted" style={{ fontWeight: 600 }}>Aperçu dans l'app</div>
-          <div className="phone"><PromoCard p={p} /></div>
+          <div className="phone"><PromoCard p={p} image={image} /></div>
           <p className="muted small" style={{ margin: 0 }}>
             Rien n'est effacé : une promotion retirée reste dans la liste et dans le journal d'audit.
           </p>
