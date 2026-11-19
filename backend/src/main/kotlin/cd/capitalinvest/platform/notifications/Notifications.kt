@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
 }
 
 data class NotificationView(
@@ -134,6 +134,40 @@ class NotificationService(
                 "Capital Invest: $amount envoyes sur votre ${ascii(operatorLabel(operator.name))} +$msisdn.",
             ),
             transactionId,
+        )
+    }
+
+    /** Reversement d'un marchand versé, ou refusé par l'opérateur (l'argent est alors revenu sur son compte). */
+    fun merchantPayout(withdrawalId: UUID, merchantId: UUID, operator: Operator, msisdn: String, amountMinor: Long, paid: Boolean, transactionId: UUID) {
+        val op = operatorLabel(operator.name)
+        val draft = if (paid) {
+            Draft(
+                NotificationKind.MERCHANT_PAYOUT_PAID, "Reversement versé",
+                "${money(amountMinor)} versés sur votre $op +$msisdn.",
+                "Capital Invest: reversement de ${money(amountMinor)} verse sur votre ${ascii(op)} +$msisdn.",
+            )
+        } else {
+            Draft(
+                NotificationKind.MERCHANT_PAYOUT_FAILED, "Reversement non versé",
+                "$op n'a pas pu verser ${money(amountMinor)} sur +$msisdn. L'argent reste sur votre compte Capital Invest.",
+                "Capital Invest: $op n'a pas pu verser ${money(amountMinor)} sur +$msisdn. L'argent reste sur votre compte. Appelez-nous.",
+            )
+        }
+        queueForMerchant(merchantId, "merchant-payout:${if (paid) "paid" else "failed"}:$withdrawalId", draft, transactionId)
+    }
+
+    /** Le compte de reversement a changé : le marchand est prévenu sur son numéro habituel. */
+    fun merchantPayoutAccountChanged(merchantId: UUID, operator: Operator, msisdn: String) {
+        val op = operatorLabel(operator.name)
+        // Chaque changement est un événement à part, même deux dans la même seconde.
+        queueForMerchant(
+            merchantId, "merchant-payout-account:$merchantId:${UUID.randomUUID()}",
+            Draft(
+                NotificationKind.MERCHANT_PAYOUT_ACCOUNT_CHANGED, "Compte de reversement changé",
+                "Vos reversements iront désormais sur $op +$msisdn.",
+                "Capital Invest: vos reversements iront desormais sur ${ascii(op)} +$msisdn. Pas vous? Appelez-nous vite.",
+            ),
+            null,
         )
     }
 

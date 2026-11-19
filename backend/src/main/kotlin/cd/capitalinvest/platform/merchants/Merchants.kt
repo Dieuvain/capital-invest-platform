@@ -23,6 +23,13 @@ import cd.capitalinvest.platform.ledger.LedgerService
 import cd.capitalinvest.platform.ledger.PostingLine
 import cd.capitalinvest.platform.ledger.PostingRequest
 import cd.capitalinvest.platform.limits.LimitsService
+import cd.capitalinvest.platform.notifications.NotificationService
+import cd.capitalinvest.platform.notifications.NotificationService.Companion.money
+import cd.capitalinvest.platform.payments.Operator
+import cd.capitalinvest.platform.payments.TopupStatus
+import cd.capitalinvest.platform.payments.Withdrawal
+import cd.capitalinvest.platform.payments.WithdrawalRepository
+import cd.capitalinvest.platform.payments.WithdrawalService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -55,6 +62,10 @@ import java.util.UUID
 data class MerchantProperties(
     /** Commission proposée à la création d'un marchand, en points de base (100 = 1 %). PROVISOIRE. */
     val defaultCommissionBps: Int = 100,
+    /** Après un changement du compte de reversement, les reversements attendent ce délai (vol de compte). */
+    val payoutAccountCooldownHours: Long = 24,
+    /** Plus petit reversement, en centimes. */
+    val minPayoutMinor: Long = 100,
 )
 
 enum class MerchantStatus { ACTIVE, SUSPENDED }
@@ -70,6 +81,10 @@ data class Merchant(
     val status: MerchantStatus,
     val walletAccountId: UUID,
     val createdAt: OffsetDateTime,
+    val payoutOperator: Operator? = null,
+    /** Numéro mobile money des reversements, au format international sans « + ». */
+    val payoutMsisdn: String? = null,
+    val payoutAccountChangedAt: OffsetDateTime? = null,
 )
 
 /** Ce que l'app montre avant de payer : de quoi reconnaître le commerce, rien de plus. */
@@ -101,6 +116,24 @@ data class MerchantView(
     /** Contenu du QR à imprimer pour la caisse. */
     val qrPayload: String,
     val createdAt: OffsetDateTime,
+    /** Compte mobile money qui reçoit les reversements ; null tant qu'il n'est pas renseigné. */
+    val payoutOperator: Operator?,
+    val payoutPhone: String?,
+    /** Reversements suspendus jusqu'à cette heure, après un changement du compte. */
+    val payoutBlockedUntil: OffsetDateTime?,
+)
+
+/** Un reversement au marchand, avec son état chez l'opérateur. */
+data class MerchantPayoutLine(
+    val id: UUID,
+    val amountMinor: Long,
+    val operator: Operator,
+    val phone: String,
+    /** PENDING : en cours ; CONFIRMED : versé ; FAILED : refusé, l'argent est revenu ; REVIEW : à vérifier. */
+    val status: TopupStatus,
+    val failureMessage: String?,
+    val reviewReason: String?,
+    val createdAt: OffsetDateTime,
 )
 
 data class MerchantPaymentLine(
@@ -113,7 +146,7 @@ data class MerchantPaymentLine(
     val createdAt: OffsetDateTime,
 )
 
-data class MerchantDetail(val merchant: MerchantView, val payments: List<MerchantPaymentLine>)
+data class MerchantDetail(val merchant: MerchantView, val payments: List<MerchantPaymentLine>, val payouts: List<MerchantPayoutLine>)
 
 /**
  * Paiement chez un marchand : le client scanne le QR en caisse (ou tape le code à 6 caractères),
@@ -131,6 +164,9 @@ class MerchantService(
     private val props: MerchantProperties,
     private val audit: AuditLog,
     private val clock: Clock,
+    private val withdrawals: WithdrawalService,
+    private val withdrawalRepository: WithdrawalRepository,
+    private val notifications: NotificationService,
 ) {
     private val random = SecureRandom()
     private val feesAccountId by lazy {
@@ -206,8 +242,17 @@ class MerchantService(
     // --- Back-office ---
 
     @Transactional
-    fun create(agentId: UUID, name: String, category: String?, city: String?, phone: String, commissionBps: Int?): MerchantView {
+    fun create(
+        agentId: UUID, name: String, category: String?, city: String?, phone: String, commissionBps: Int?,
+        payoutOperator: Operator? = null, payoutPhone: String? = null,
+    ): MerchantView {
         val normalized = normalizeDrcPhone(phone) ?: throw BusinessException("INVALID_PHONE", "Numéro du marchand invalide (+243…)")
+        if ((payoutOperator == null) != (payoutPhone.isNullOrBlank())) {
+            throw BusinessException("INVALID_PAYOUT_ACCOUNT", "Indiquez l'opérateur et le numéro du compte de reversement, ou aucun des deux")
+        }
+        val payoutMsisdn = payoutPhone?.takeIf { it.isNotBlank() }?.let {
+            normalizeDrcPhone(it)?.removePrefix("+") ?: throw BusinessException("INVALID_PAYOUT_ACCOUNT", "Numéro de reversement invalide (+243…)")
+        }
         val bps = commissionBps ?: props.defaultCommissionBps
         if (bps !in 0..1000) throw BusinessException("INVALID_COMMISSION", "La commission doit être entre 0 et 10 %")
         val wallet = LedgerAccount(
@@ -220,11 +265,13 @@ class MerchantService(
         val now = now()
         val code = generateSequence { newCode() }.first { findByCode(it) == null }
         jdbc.sql(
-            """INSERT INTO merchant (id, code, name, category, city, phone, commission_bps, status, wallet_account_id, created_by, created_at, updated_at)
-               VALUES (:id, :code, :name, :cat, :city, :phone, :bps, 'ACTIVE', :wallet, :by, :now, :now)""",
+            """INSERT INTO merchant (id, code, name, category, city, phone, commission_bps, status, wallet_account_id, created_by,
+                                    payout_operator, payout_msisdn, created_at, updated_at)
+               VALUES (:id, :code, :name, :cat, :city, :phone, :bps, 'ACTIVE', :wallet, :by, :pop, :pmsisdn, :now, :now)""",
         ).param("id", id).param("code", code).param("name", name.trim()).param("cat", category?.trim()?.ifEmpty { null })
             .param("city", city?.trim()?.ifEmpty { null }).param("phone", normalized).param("bps", bps)
-            .param("wallet", wallet.id).param("by", agentId).param("now", now).update()
+            .param("wallet", wallet.id).param("by", agentId).param("pop", payoutOperator?.name).param("pmsisdn", payoutMsisdn)
+            .param("now", now).update()
         audit.record(ActorType.AGENT, agentId, "MERCHANT_CREATED", "MERCHANT", id, "$code ${name.trim()}, commission $bps pb")
         return view(get(id))
     }
@@ -243,6 +290,67 @@ class MerchantService(
         return view(get(id))
     }
 
+    /**
+     * Change le compte qui reçoit les reversements. C'est la cible d'un fraudeur : le marchand est prévenu
+     * par SMS sur son numéro habituel, et aucun reversement ne part pendant le délai de sécurité.
+     */
+    @Transactional
+    fun setPayoutAccount(agentId: UUID, id: UUID, operator: Operator, phone: String): MerchantView {
+        val m = get(id)
+        val msisdn = normalizeDrcPhone(phone)?.removePrefix("+")
+            ?: throw BusinessException("INVALID_PAYOUT_ACCOUNT", "Numéro de reversement invalide (+243…)")
+        if (m.payoutOperator == operator && m.payoutMsisdn == msisdn) return view(m)
+        val now = now()
+        // Premier compte renseigné : pas de délai, rien n'a encore été versé ailleurs.
+        val changedAt = if (m.payoutMsisdn == null) null else now
+        jdbc.sql("UPDATE merchant SET payout_operator = :op, payout_msisdn = :msisdn, payout_account_changed_at = :at, updated_at = :now WHERE id = :id")
+            .param("op", operator.name).param("msisdn", msisdn).param("at", changedAt).param("now", now).param("id", id).update()
+        audit.record(
+            ActorType.AGENT, agentId, "MERCHANT_PAYOUT_ACCOUNT_CHANGED", "MERCHANT", id,
+            "${m.payoutOperator?.name ?: "aucun"} ${m.payoutMsisdn?.let { "+$it" } ?: ""} → ${operator.name} +$msisdn".replace("  ", " "),
+        )
+        notifications.merchantPayoutAccountChanged(id, operator, msisdn)
+        return view(get(id))
+    }
+
+    /**
+     * Reverse au marchand ce que Capital Invest lui doit (tout, ou le montant donné), vers son compte de reversement.
+     * Le même identifiant de demande rejoué ne reverse jamais deux fois.
+     */
+    fun payout(agentId: UUID, id: UUID, amountMinor: Long?, requestId: String): MerchantPayoutLine {
+        val m = get(id)
+        val operator = m.payoutOperator
+        val msisdn = m.payoutMsisdn
+        if (operator == null || msisdn == null) {
+            throw BusinessException("PAYOUT_ACCOUNT_MISSING", "Renseignez d'abord le compte de reversement du marchand")
+        }
+        payoutBlockedUntil(m)?.let {
+            throw BusinessException(
+                "PAYOUT_ACCOUNT_RECENTLY_CHANGED",
+                "Compte de reversement changé récemment : par sécurité, pas de reversement avant ${props.payoutAccountCooldownHours} h",
+            )
+        }
+        withdrawalRepository.findByMerchantKey(id, requestId)?.let { return line(it) }
+        val balance = ledgerRepository.balance(m.walletAccountId)
+        val amount = amountMinor ?: balance
+        if (amount < props.minPayoutMinor) {
+            throw BusinessException("PAYOUT_TOO_SMALL", "Reversement de ${money(props.minPayoutMinor)} au moins")
+        }
+        if (amount > balance) throw BusinessException("INSUFFICIENT_FUNDS", "Le marchand n'a que ${money(balance)} à reverser")
+        val w = withdrawals.initiateMerchantPayout(requestId, m.id, m.walletAccountId, operator, msisdn, amount, agentId)
+        audit.record(ActorType.AGENT, agentId, "MERCHANT_PAYOUT_REQUESTED", "MERCHANT", id, "${money(amount)} vers ${operator.name} +$msisdn")
+        return line(w)
+    }
+
+    private fun payoutBlockedUntil(m: Merchant): OffsetDateTime? {
+        val until = m.payoutAccountChangedAt?.plusHours(props.payoutAccountCooldownHours) ?: return null
+        return if (now().isBefore(until)) until else null
+    }
+
+    private fun line(w: Withdrawal) = MerchantPayoutLine(
+        w.id, w.amountMinor, w.operator, "+${w.msisdn}", w.status, w.failureMessage, w.reviewReason, w.createdAt,
+    )
+
     fun list(): List<MerchantView> =
         jdbc.sql("SELECT * FROM merchant ORDER BY name, code").query(::map).list().map(::view)
 
@@ -260,12 +368,13 @@ class MerchantService(
                 rs.getLong("amount_minor"), rs.getLong("commission_minor"), at,
             )
         }.list()
-        return MerchantDetail(view(m), payments)
+        return MerchantDetail(view(m), payments, withdrawalRepository.forMerchant(id, 20).map(::line))
     }
 
     fun view(m: Merchant) = MerchantView(
         m.id, m.code, m.name, m.category, m.city, m.phone, m.commissionBps, m.status,
         ledgerRepository.balance(m.walletAccountId), qrPayload(m.code), m.createdAt,
+        m.payoutOperator, m.payoutMsisdn?.let { "+$it" }, payoutBlockedUntil(m),
     )
 
     private fun newCode(): String = (1..6).map { CODE_ALPHABET[random.nextInt(CODE_ALPHABET.length)] }.joinToString("")
@@ -281,6 +390,9 @@ class MerchantService(
         status = MerchantStatus.valueOf(rs.getString("status")),
         walletAccountId = rs.getObject("wallet_account_id", UUID::class.java),
         createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
+        payoutOperator = rs.getString("payout_operator")?.let(Operator::valueOf),
+        payoutMsisdn = rs.getString("payout_msisdn"),
+        payoutAccountChangedAt = rs.getObject("payout_account_changed_at", OffsetDateTime::class.java),
     )
 
     companion object {
@@ -331,6 +443,18 @@ data class CreateMerchantRequest(
     @field:Size(max = 60) val city: String? = null,
     @field:NotBlank val phone: String,
     @field:Min(0) @field:Max(1000) val commissionBps: Int? = null,
+    /** Compte mobile money qui reçoit les reversements (facultatif à la création). */
+    val payoutOperator: Operator? = null,
+    val payoutPhone: String? = null,
+)
+
+data class PayoutAccountRequest(val operator: Operator, @field:NotBlank val phone: String)
+
+data class PayoutRequest(
+    /** Montant en centimes ; absent : tout ce qui est dû. */
+    @field:Positive val amountMinor: Long? = null,
+    /** Identifiant unique de la demande, généré par l'écran : un double clic ne reverse pas deux fois. */
+    @field:NotBlank @field:Size(max = 100) val requestId: String,
 )
 
 data class MerchantStatusRequest(val status: MerchantStatus, @field:Size(max = 300) val reason: String? = null)
@@ -360,13 +484,26 @@ class BackofficeMerchantController(private val merchants: MerchantService) {
     @ResponseStatus(HttpStatus.CREATED)
     fun create(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @Valid @RequestBody b: CreateMerchantRequest): MerchantView {
         requireAdmin(me)
-        return merchants.create(me.id, b.name, b.category, b.city, b.phone, b.commissionBps)
+        return merchants.create(me.id, b.name, b.category, b.city, b.phone, b.commissionBps, b.payoutOperator, b.payoutPhone)
     }
 
     @GetMapping("/{id}")
     fun detail(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID): MerchantDetail {
         requireRead(me)
         return merchants.detail(id)
+    }
+
+    @PostMapping("/{id}/payout-account")
+    fun payoutAccount(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @Valid @RequestBody b: PayoutAccountRequest): MerchantView {
+        requireAdmin(me)
+        return merchants.setPayoutAccount(me.id, id, b.operator, b.phone)
+    }
+
+    @PostMapping("/{id}/payouts")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun payout(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @Valid @RequestBody b: PayoutRequest): MerchantPayoutLine {
+        requireAdmin(me)
+        return merchants.payout(me.id, id, b.amountMinor, b.requestId)
     }
 
     @PostMapping("/{id}/status")

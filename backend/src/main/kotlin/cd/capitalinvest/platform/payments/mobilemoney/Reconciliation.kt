@@ -236,12 +236,15 @@ class ReconciliationService(
             """SELECT i.*, r.business_date,
                       COALESCE(t.operator, w.operator) AS operator, COALESCE(t.provider, w.provider) AS provider,
                       COALESCE(t.created_at, w.created_at) AS topup_created_at,
-                      c.full_name, c.phone, a.full_name AS agent_name
+                      COALESCE(c.full_name, 'Marchand ' || m.name) AS full_name, COALESCE(c.phone, m.phone) AS phone,
+                      a.full_name AS agent_name
                FROM reconciliation_item i
                JOIN reconciliation_run r ON r.id = i.run_id
                LEFT JOIN topup t ON t.id = i.topup_id
                LEFT JOIN withdrawal w ON w.id = i.withdrawal_id
-               JOIN customer c ON c.id = COALESCE(t.customer_id, w.customer_id)
+               LEFT JOIN customer c ON c.id = COALESCE(t.customer_id, w.customer_id)
+               -- Un reversement de marchand passe par les mêmes contrôles qu'un retrait client.
+               LEFT JOIN merchant m ON m.id = w.merchant_id
                LEFT JOIN backoffice_agent a ON a.id = i.resolved_by
                ${if (open) "WHERE i.resolved_at IS NULL" else ""}
                ORDER BY i.resolved_at DESC NULLS FIRST, r.business_date DESC, i.created_at
@@ -275,8 +278,9 @@ class ReconciliationService(
                FROM topup t JOIN customer c ON c.id = t.customer_id WHERE t.status = 'REVIEW'
                UNION ALL
                SELECT 'WITHDRAWAL', w.id, w.operator, w.provider, w.amount_minor, w.currency, w.review_reason, w.checks,
-                      w.created_at, c.full_name, c.phone
-               FROM withdrawal w JOIN customer c ON c.id = w.customer_id WHERE w.status = 'REVIEW'
+                      w.created_at, COALESCE(c.full_name, 'Marchand ' || m.name), COALESCE(c.phone, m.phone)
+               FROM withdrawal w LEFT JOIN customer c ON c.id = w.customer_id LEFT JOIN merchant m ON m.id = w.merchant_id
+               WHERE w.status = 'REVIEW'
                ORDER BY created_at""",
         ).query { rs, _ ->
             ReviewTopup(
