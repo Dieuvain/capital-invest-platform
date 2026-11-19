@@ -197,6 +197,20 @@ Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l
 - API : `GET /v1/me/statements` (mois disponibles), `GET /v1/me/statements/{AAAA-MM}`, `GET /v1/me/statements/{AAAA-MM}/pdf`.
 - PDF produit par OpenPDF (LGPL/MPL). Exemple : `docs/captures-app/9b-releve-octobre.pdf`.
 
+## Paiement de factures
+
+Menu **Plus** → **Payer une facture** : électricité (SNEL, compteurs prépayés), eau (REGIDESO), télévision (Canal+, DStv). Le client tape son numéro de compteur ou d'abonné, l'app affiche le **nom du titulaire** chez le facturier (et le montant dû pour une facture) avant tout paiement, puis il paie avec son PIN. Pour un compteur prépayé, il reçoit le **code à taper sur le compteur** à l'écran et par SMS. Les comptes déjà payés sont proposés en un geste.
+
+| Facturiers | Compteur vérifié | Code du compteur |
+|---|---|---|
+| ![](docs/captures-app/12-factures.png) | ![](docs/captures-app/12b-facture-snel.png) | ![](docs/captures-app/12c-code-compteur.png) |
+
+- Sans frais pour le client, de 1 $ à 500 $ par paiement (`capital-invest.bills`), dans le plafond par opération et le plafond journalier d'envoi.
+- Même schéma que le crédit téléphone : le montant passe du portefeuille au compte `BILLERS_USD` sous verrou, le facturier est payé hors transaction, un refus rembourse aussitôt le client (avec notification), un doute laisse le paiement « en cours » sans remboursement.
+- Le code du compteur part aussi par SMS : le client l'a même si l'app se ferme ou si le téléphone s'éteint. Il reste dans le reçu.
+- API : `GET /v1/bills/billers`, `POST /v1/bills/lookup` (`{"biller", "reference"}`), `POST /v1/bills` (`{"biller", "reference", "amountMinor", "pin"}`, en-tête `Idempotency-Key`), `GET /v1/bills/recent`, `GET /v1/bills/{id}`.
+- **Pas encore branché** : l'agrégateur de factures réel (interface `BillConnector`). Le simulateur ne connaît pas les références qui finissent par 0000 et refuse le paiement de celles qui finissent par 9999. Les facturiers proposés et les formats de référence sont à confirmer avec l'agrégateur retenu.
+
 ## Crédit téléphone (unités)
 
 Menu **Plus** → **Acheter du crédit téléphone** : des unités pour son numéro ou celui d'un proche, sur Vodacom, Airtel, Orange et Africell. Le réseau est deviné d'après le préfixe (le client peut le changer pour un numéro porté), les derniers numéros rechargés sont proposés en un geste, et l'achat se confirme par le PIN.

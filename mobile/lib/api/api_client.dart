@@ -206,6 +206,33 @@ class ApiClient {
   Future<List<RecentAirtimeNumber>> recentAirtimeNumbers() async =>
       (await _get('/v1/airtime/recent') as List).map((j) => RecentAirtimeNumber.fromJson(j)).toList();
 
+  // ---- Factures ----------------------------------------------------------------------------------
+
+  Future<List<Biller>> billers() async =>
+      (await _get('/v1/bills/billers') as List).map((j) => Biller.fromJson(j)).toList();
+
+  /// Nom du titulaire chez le facturier (et montant dû pour une facture), avant de payer.
+  Future<BillAccount> lookupBill(String biller, String reference) async =>
+      BillAccount.fromJson(await _post('/v1/bills/lookup', {'biller': biller, 'reference': reference}));
+
+  Future<BillPayment> payBill({
+    required String biller,
+    required String reference,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+  }) async => BillPayment.fromJson(
+    await _post('/v1/bills', {
+      'biller': biller,
+      'reference': reference,
+      'amountMinor': amountMinor,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<List<RecentBill>> recentBills() async =>
+      (await _get('/v1/bills/recent') as List).map((j) => RecentBill.fromJson(j)).toList();
+
   // ---- Épargne ---------------------------------------------------------------------------------
 
   Future<Savings> savings() async => Savings.fromJson(await _get('/v1/me/savings'));

@@ -58,6 +58,16 @@ class FakeServer {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
 
+  /// Comptes servis par /v1/bills/recent.
+  List<Map<String, dynamic>> recentBills = [];
+
+  static const billers = [
+    {'code': 'SNEL_PREPAID', 'label': 'SNEL prépayé', 'category': 'Électricité', 'kind': 'PREPAID', 'referenceLabel': 'Numéro de compteur'},
+    {'code': 'REGIDESO', 'label': 'REGIDESO', 'category': 'Eau', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro d\'abonné'},
+    {'code': 'CANAL_PLUS', 'label': 'Canal+', 'category': 'Télévision', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro d\'abonné'},
+    {'code': 'DSTV', 'label': 'DStv', 'category': 'Télévision', 'kind': 'POSTPAID', 'referenceLabel': 'Numéro de smartcard'},
+  ];
+
   /// Numéros proposés par /v1/airtime/recent.
   List<Map<String, dynamic>> airtimeRecent = [
     {'phone': '+243812345678', 'network': 'VODACOM'},
@@ -223,6 +233,32 @@ class FakeServer {
         'toPay': moneyRequests.where(toPay).toList().reversed.toList(),
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
+    }
+    if (path == '/v1/bills/billers') return _json(billers);
+    if (path == '/v1/bills/recent') return _json(recentBills);
+    if (path == '/v1/bills/lookup') {
+      final b = body();
+      final ref = (b['reference'] as String).replaceAll(RegExp(r'[^0-9]'), '');
+      if (ref.endsWith('0000')) return _error(404, 'BILL_ACCOUNT_NOT_FOUND', 'Inconnu');
+      return _json({
+        'biller': b['biller'], 'reference': ref, 'holderName': 'KABEYA AMANI',
+        'amountDueMinor': b['biller'] == 'SNEL_PREPAID' ? null : 1850,
+      });
+    }
+    if (path == '/v1/bills' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final a = b['amountMinor'] as int;
+      if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+      balance -= a;
+      final label = billers.firstWhere((x) => x['code'] == b['biller'])['label'];
+      history.insert(0, historyItem('bp-1', 'BILL_PAYMENT', -a, at: '2026-11-19T10:40:00Z', name: label));
+      return _json({
+        'id': 'bp-1', 'biller': b['biller'], 'billerName': label, 'reference': b['reference'],
+        'holderName': 'KABEYA AMANI', 'amountMinor': a, 'currency': 'USD', 'status': 'PAID',
+        'token': b['biller'] == 'SNEL_PREPAID' ? '4821 0937 5512 8064 3379' : null,
+        'failureMessage': null, 'transactionId': 'bp-1', 'createdAt': '2026-11-19T10:40:00Z',
+      }, 201);
     }
     if (path == '/v1/airtime/recent') return _json(airtimeRecent);
     if (path == '/v1/airtime' && req.method == 'POST') {

@@ -127,7 +127,7 @@ class LimitsService(
                  AND t.id IN (SELECT d.transaction_id FROM ledger_entry d
                               WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
         ).param("w", walletId).param("since", dayStart).query(Long::class.java).single() +
-            withdrawnSince(walletId, dayStart) + paidToMerchantsSince(walletId, dayStart) + airtimeSince(walletId, dayStart)
+            withdrawnSince(walletId, dayStart) + paidToMerchantsSince(walletId, dayStart) + airtimeSince(walletId, dayStart) + billsSince(walletId, dayStart)
     }
 
     /** Paiements chez les marchands du jour : ce que le client a payé (il n'y a pas de frais). */
@@ -142,6 +142,14 @@ class LimitsService(
     private fun airtimeSince(walletId: UUID, since: OffsetDateTime): Long =
         jdbc.sql(
             """SELECT COALESCE(SUM(p.amount_minor), 0) FROM airtime_purchase p
+               JOIN ledger_account a ON a.customer_id = p.customer_id AND a.id = :w
+               WHERE p.created_at >= :since AND p.status <> 'FAILED'""",
+        ).param("w", walletId).param("since", since).query(Long::class.java).single()
+
+    /** Factures payées dans la journée ; un paiement refusé et remboursé ne compte pas. */
+    private fun billsSince(walletId: UUID, since: OffsetDateTime): Long =
+        jdbc.sql(
+            """SELECT COALESCE(SUM(p.amount_minor), 0) FROM bill_payment p
                JOIN ledger_account a ON a.customer_id = p.customer_id AND a.id = :w
                WHERE p.created_at >= :since AND p.status <> 'FAILED'""",
         ).param("w", walletId).param("since", since).query(Long::class.java).single()

@@ -532,6 +532,58 @@ void main() {
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
   });
 
+  testWidgets('facture SNEL : compteur vérifié, montant, PIN, puis code du compteur', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Payer une facture'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('biller-SNEL_PREPAID')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('bill-reference')), '01234560000');
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('inconnu du facturier'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('bill-reference')), '01234567891');
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.text('KABEYA AMANI'), findsOneWidget);
+
+    await tester.tap(find.text('20 \$'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.ensureVisible(find.text('Payer 20,00\u00A0\$'));
+    await tester.tap(find.text('Payer 20,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Facture payée'), findsOneWidget);
+    expect(find.text('4821 0937 5512 8064 3379'), findsOneWidget);
+    expect(server.balance, 3000);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/bills');
+    expect(jsonDecode(sent.body), {'biller': 'SNEL_PREPAID', 'reference': '01234567891', 'amountMinor': 2000, 'pin': '2580'});
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bonjour Amani !'), findsOneWidget);
+  });
+
+  testWidgets('facture REGIDESO déjà payée : le montant dû est proposé', (tester) async {
+    server.recentBills = [
+      {'biller': 'REGIDESO', 'billerName': 'REGIDESO', 'reference': '4471203', 'holderName': 'KABEYA AMANI'},
+    ];
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Payer une facture'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('recent-bill-4471203')));
+    await tester.pumpAndSettle();
+    expect(find.text('Montant dû : 18,50\u00A0\$'), findsOneWidget);
+    expect(find.text('Payer 18,50\u00A0\$'), findsOneWidget);
+  });
+
   testWidgets('crédit téléphone : numéro d\'un proche, réseau deviné, PIN, puis refus remboursé', (tester) async {
     await start(tester);
     await login(tester);
