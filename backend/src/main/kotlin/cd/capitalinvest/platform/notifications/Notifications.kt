@@ -37,6 +37,8 @@ import java.text.Normalizer
 import java.time.Clock
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /** Publié par le grand livre quand une nouvelle opération est écrite (pas lors d'un rejeu). */
@@ -53,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED
 }
 
 data class NotificationView(
@@ -245,6 +247,32 @@ class NotificationService(
                     (token?.let { " Code à taper sur le compteur : $it." } ?: ""),
                 token?.let { "Capital Invest: ${ascii(biller)} compteur $reference, ${money(amountMinor)}. Code: $it" }
                     ?: "Capital Invest: ${money(amountMinor)} payes a ${ascii(biller)} pour le $reference.",
+            ),
+            transactionId,
+        )
+    }
+
+    /** Accusé de réception : le numéro et la date de réponse promise. */
+    fun complaintReceived(customerId: UUID, complaintId: UUID, reference: String, dueDate: LocalDate, transactionId: UUID?) {
+        val due = dueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        queue(
+            customerId, "complaint:$complaintId:received",
+            Draft(
+                NotificationKind.COMPLAINT_RECEIVED, "Réclamation reçue",
+                "Votre réclamation $reference est enregistrée. Nous vous répondons au plus tard le $due.",
+                "Capital Invest: reclamation $reference recue. Reponse au plus tard le $due.",
+            ),
+            transactionId,
+        )
+    }
+
+    fun complaintAnswered(customerId: UUID, complaintId: UUID, reference: String, transactionId: UUID?) {
+        queue(
+            customerId, "complaint:$complaintId:answered",
+            Draft(
+                NotificationKind.COMPLAINT_ANSWERED, "Réponse à votre réclamation",
+                "Le service client a répondu à votre réclamation $reference. Ouvrez « Mes réclamations » pour la lire.",
+                "Capital Invest: reponse a votre reclamation $reference. Lisez-la dans l'app, menu Plus > Mes reclamations.",
             ),
             transactionId,
         )

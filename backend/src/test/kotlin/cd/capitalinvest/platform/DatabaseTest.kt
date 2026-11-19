@@ -34,7 +34,7 @@ abstract class DatabaseTest {
     @BeforeEach
     fun cleanDatabase() {
         testClock.reset()
-        jdbc.sql("TRUNCATE notification, session, otp_challenge, mobile_money_event, reconciliation_item, reconciliation_run, withdrawal, topup, ledger_entry, ledger_transaction, kyc_request, kyc_document, agent_session, backoffice_agent, audit_log, promotion, merchant_payment, merchant, suspicion_report, monitoring_alert, money_request, savings_goal, airtime_purchase, bill_payment").update()
+        jdbc.sql("TRUNCATE notification, session, otp_challenge, mobile_money_event, reconciliation_item, reconciliation_run, withdrawal, topup, ledger_entry, ledger_transaction, kyc_request, kyc_document, agent_session, backoffice_agent, audit_log, promotion, merchant_payment, merchant, suspicion_report, monitoring_alert, money_request, savings_goal, airtime_purchase, bill_payment, complaint").update()
         jdbc.sql("DELETE FROM ledger_account WHERE customer_id IS NOT NULL OR type = 'MERCHANT_WALLET'").update()
         jdbc.sql("DELETE FROM customer").update()
     }

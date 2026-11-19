@@ -5,6 +5,7 @@ import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
+import 'package:capital_invest/screens/complaint_screens.dart';
 import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
 import 'package:capital_invest/screens/money_screens.dart';
@@ -530,6 +531,51 @@ void main() {
     await tester.tap(find.text('Télécharger le relevé (PDF)'));
     await tester.pumpAndSettle();
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
+  });
+
+  testWidgets('réclamation depuis le reçu : motif, message, numéro et date de réponse, puis suivi', (tester) async {
+    server.history = [FakeServer.historyItem('s1', 'TRANSFER_SENT', -2020, fee: 20, name: 'Béni Mukendi', phone: '+243 97• ••• 402')];
+    server.complaints = [
+      {
+        'id': 'cp-0', 'reference': 'REC-20261112-A1B2C3', 'category': 'OTHER', 'categoryLabel': 'Autre problème',
+        'message': 'Je ne reçois plus les SMS', 'status': 'ANSWERED', 'operation': null, 'dueAt': '2026-11-19T10:00:00Z',
+        'answer': 'Votre numéro était bloqué chez l\'opérateur, c\'est réglé.', 'outcome': 'FOUNDED',
+        'answeredAt': '2026-11-13T09:00:00Z', 'createdAt': '2026-11-12T10:00:00Z',
+      },
+    ];
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(app: app, id: 's1')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Signaler un problème'));
+    await tester.tap(find.text('Signaler un problème'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Envoyer la réclamation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisissez ce qui ne va pas.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('complaint-category-NOT_ME')));
+    await tester.pumpAndSettle();
+    expect(find.text('Changer mon PIN'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('complaint-category-NOT_RECEIVED')));
+    await tester.pumpAndSettle();
+    expect(find.text('Changer mon PIN'), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('complaint-message')), 'Béni dit ne rien avoir reçu');
+    await tester.ensureVisible(find.text('Envoyer la réclamation'));
+    await tester.tap(find.text('Envoyer la réclamation'));
+    await tester.pumpAndSettle();
+    expect(find.text('REC-20261119-3F9A21'), findsOneWidget);
+    expect(find.textContaining('au plus tard le 26 nov. 2026'), findsOneWidget);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/me/complaints' && r.method == 'POST');
+    expect(jsonDecode(sent.body), {'transactionId': 's1', 'category': 'NOT_RECEIVED', 'message': 'Béni dit ne rien avoir reçu'});
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => ComplaintsScreen(app: app)));
+    await tester.pumpAndSettle();
+    expect(find.text('En attente'), findsOneWidget);
+    expect(find.textContaining('Envoi à Béni Mukendi'), findsOneWidget);
+    expect(find.text('Réglée en votre faveur'), findsOneWidget);
+    expect(find.text('Votre numéro était bloqué chez l\'opérateur, c\'est réglé.'), findsOneWidget);
   });
 
   testWidgets('facture SNEL : compteur vérifié, montant, PIN, puis code du compteur', (tester) async {

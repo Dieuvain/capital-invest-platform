@@ -13,6 +13,8 @@ String messageFor(Object error) {
     'PHONE_ALREADY_REGISTERED' => 'Ce numéro a déjà un compte. Connectez-vous.',
     'STATEMENT_UNAVAILABLE' => 'Pas de relevé pour ce mois : le compte n\'était pas encore ouvert.',
     'BILL_ACCOUNT_NOT_FOUND' => 'Ce numéro est inconnu du facturier. Vérifiez-le sur votre facture ou votre compteur.',
+    'COMPLAINT_ALREADY_OPEN' => 'Une réclamation est déjà en cours pour cette opération. Voyez « Mes réclamations ».',
+    'COMPLAINT_LIMIT' => 'Vous avez déjà 5 réclamations en attente. Le service client y répond d\'abord.',
     'BILL_AMOUNT' => 'Le paiement va de 1 \$ à 500 \$.',
     'NETWORK_REQUIRED' => 'Choisissez le réseau de ce numéro.',
     'AIRTIME_AMOUNT' => 'Le crédit va de 0,50 \$ à 50 \$ par achat.',

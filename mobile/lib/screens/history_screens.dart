@@ -6,6 +6,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'complaint_screens.dart';
 
 /// Titre d'une opération, tel que le client le comprend.
 String historyTitle(HistoryItem i) => switch (i.kind) {
@@ -348,10 +349,13 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
           label: const Text('Partager le reçu'),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Pour toute réclamation, donnez ce numéro de reçu au service client.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: context.pal.muted, fontSize: 13),
+        OutlinedButton.icon(
+          key: const ValueKey('report-problem'),
+          onPressed: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: (_) => NewComplaintScreen(app: widget.app, operation: i))),
+          icon: const Icon(Icons.report_problem_outlined),
+          label: const Text('Signaler un problème'),
         ),
       ],
     );
