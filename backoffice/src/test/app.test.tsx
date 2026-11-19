@@ -548,6 +548,37 @@ describe('rapprochement', () => {
     expect(within(review).getByText('Esther Mbuyi')).toBeInTheDocument()
   })
 
+  it('noter payée une facture SNEL sans réponse demande le code du compteur', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Rapprochement')
+    const region = await screen.findByRole('region', { name: 'Crédit téléphone et factures sans réponse' })
+    const row = (await within(region).findByText('Amani Kabeya')).closest('tr')!
+    expect(within(row).getByText(/SNEL prépayé/)).toBeInTheDocument()
+    await user.click(within(row).getByRole('button', { name: 'Noter payé' }))
+    const confirm = within(region).getByRole('button', { name: 'Noter la facture payée' })
+    await user.type(within(region).getByRole('textbox', { name: /Comment l'avez-vous vérifié/ }), 'Confirmé par l’agrégateur')
+    expect(confirm).toBeDisabled()
+    await user.type(within(region).getByRole('textbox', { name: /Code du compteur/ }), '1234 5678 9012 3456 7890')
+    await user.click(confirm)
+    await waitFor(() => expect(within(region).queryByText('Amani Kabeya')).toBeNull())
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/bills/b-review/resolve')?.body).toEqual({
+      action: 'DONE', note: 'Confirmé par l’agrégateur', token: '1234 5678 9012 3456 7890',
+    })
+  })
+
+  it('un crédit téléphone sans réponse se rembourse sans code', async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
+    const region = await screen.findByRole('region', { name: 'Crédit téléphone et factures sans réponse' })
+    const row = (await within(region).findByText('Esther Mbuyi')).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Rembourser' }))
+    expect(within(region).queryByRole('textbox', { name: /Code du compteur/ })).toBeNull()
+    await user.type(within(region).getByRole('textbox'), 'Échec confirmé par le prestataire')
+    await user.click(within(region).getByRole('button', { name: 'Rembourser le client' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Esther Mbuyi a été remboursé')
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/airtime/a-review/resolve')?.body).toEqual({
+      action: 'REFUND', note: 'Échec confirmé par le prestataire',
+    })
+  })
+
   it('un retrait noté versé mais non payé se rembourse depuis les écarts', async () => {
     const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
     const items = await screen.findByRole('region', { name: 'Écarts à traiter' })

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import type { Api, ReconciliationItem, ReviewTopup } from '../api'
+import type { Api, PendingPurchase, ReconciliationItem, ReviewTopup } from '../api'
 import { formatDate, formatDateTime, formatShortDate, formatUsd, kindLabel, operatorLabel, providerLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
@@ -12,8 +12,10 @@ interface Choice {
   placeholder: string
   confirm: string
   done: string
-  send: (note: string) => Promise<unknown>
-  reload: 'review' | 'items'
+  /** Demande aussi le code du compteur (facture SNEL prépayée). */
+  token?: boolean
+  send: (note: string, token: string) => Promise<unknown>
+  reload: 'review' | 'items' | 'purchases'
 }
 
 type Pending = { key: string; choice: Choice }
@@ -30,12 +32,14 @@ function yesterday(now = new Date()): string {
 export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) => void }) {
   const review = useLoad(() => api.reviewTopups(), [])
   const items = useLoad(() => api.reconciliationItems(true), [])
+  const purchases = useLoad(() => api.pendingPurchases(), [])
   const runs = useLoad(() => api.reconciliationRuns(14), [])
   const [date, setDate] = useState(yesterday)
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [note, setNote] = useState('')
+  const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [decisionError, setDecisionError] = useState<string | null>(null)
 
@@ -64,6 +68,7 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
   function open(p: Pending) {
     setPending(p)
     setNote('')
+    setToken('')
     setDecisionError(null)
   }
 
@@ -73,8 +78,8 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
     setBusy(true)
     setDecisionError(null)
     try {
-      await pending.choice.send(note.trim())
-      ;(pending.choice.reload === 'review' ? review : items).reload()
+      await pending.choice.send(note.trim(), token.trim())
+      ;({ review, items, purchases })[pending.choice.reload].reload()
       notify(pending.choice.done)
       setPending(null)
     } catch (err) {
@@ -90,15 +95,22 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
         <td colSpan={5}>
           <form className="decision" onSubmit={decide}>
             <ErrorBanner error={decisionError} />
+            {pending.choice.token && (
+              <label className="field">
+                Code du compteur donné par l'agrégateur (20 chiffres)
+                <input type="text" inputMode="numeric" required autoFocus value={token} onChange={(e) => setToken(e.target.value)}
+                  placeholder="1234 5678 9012 3456 7890" className="mono" />
+              </label>
+            )}
             <label className="field">
               {pending.choice.prompt}
-              <input type="text" required maxLength={300} autoFocus value={note} onChange={(e) => setNote(e.target.value)}
+              <input type="text" required maxLength={300} autoFocus={!pending.choice.token} value={note} onChange={(e) => setNote(e.target.value)}
                 placeholder={pending.choice.placeholder} />
             </label>
             <div className="row">
               <span className="spacer" />
               <button type="button" className="btn ghost small" onClick={() => setPending(null)} disabled={busy}>Annuler</button>
-              <button className={`btn small ${pending.choice.positive ? 'success' : ''}`} disabled={busy || !note.trim()}>
+              <button className={`btn small ${pending.choice.positive ? 'success' : ''}`} disabled={busy || !note.trim() || (!!pending.choice.token && token.replace(/\D/g, '').length !== 20)}>
                 {pending.choice.confirm}
               </button>
             </div>
@@ -136,6 +148,23 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
             send: (n) => api.resolveWithdrawal(t.id, 'REFUND', n),
           },
         ]
+
+  const purchaseChoices = (p: PendingPurchase): Choice[] => [
+    {
+      label: p.type === 'AIRTIME' ? 'Noter envoyé' : 'Noter payé', positive: true, reload: 'purchases', token: p.needsToken,
+      confirm: p.type === 'AIRTIME' ? 'Noter le crédit envoyé' : 'Noter la facture payée',
+      prompt: "Comment l'avez-vous vérifié ? Le client garde la dépense.",
+      placeholder: p.type === 'AIRTIME' ? 'Ex. : unités confirmées par le prestataire' : 'Ex. : paiement confirmé par l’agrégateur',
+      done: p.type === 'AIRTIME' ? 'Crédit noté envoyé' : 'Facture notée payée, le client reçoit le code',
+      send: (n, t) => api.resolvePurchase(p, 'DONE', n, p.needsToken ? t : undefined),
+    },
+    {
+      label: 'Rembourser', positive: false, reload: 'purchases', confirm: 'Rembourser le client',
+      prompt: "Pourquoi rembourser ? Le prestataire doit confirmer l'échec : si les unités ou le paiement sont passés, l'argent serait perdu.",
+      placeholder: 'Ex. : échec confirmé par le prestataire', done: `${p.customerName} a été remboursé`,
+      send: (n) => api.resolvePurchase(p, 'REFUND', n),
+    },
+  ]
 
   const itemChoices = (i: ReconciliationItem): Choice[] => [
     ...(i.kind === 'CONFIRMED_NOT_CREDITED' || i.kind === 'MARKED_PAID_NOT_PAID'
@@ -213,6 +242,31 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
                   <Row key={t.id} choices={reviewChoices(t)} onPick={(choice) => open({ key: `r-${t.id}`, choice })}
                     cells={<ReviewCells t={t} />}>
                     {decision(`r-${t.id}`)}
+                  </Row>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <section className="card table-wrap" aria-labelledby="t-purchases">
+          <div className="card-head">
+            <h3 id="t-purchases">Crédit téléphone et factures sans réponse</h3>
+            <p className="muted small">Relancés chaque minute chez le prestataire, puis à trancher après 24 h. Le client voit « en cours », puis « en vérification ».</p>
+          </div>
+          <ErrorBanner error={purchases.error} />
+          {purchases.data && purchases.data.length === 0 ? (
+            <div className="empty">Aucun achat en attente.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Client</th><th>Achat</th><th>Où en est-on</th><th>Depuis</th><th /></tr>
+              </thead>
+              <tbody>
+                {purchases.data?.map((p) => (
+                  <Row key={p.id} choices={purchaseChoices(p)} onPick={(choice) => open({ key: `p-${p.id}`, choice })}
+                    cells={<PurchaseCells p={p} />}>
+                    {decision(`p-${p.id}`)}
                   </Row>
                 ))}
               </tbody>
@@ -330,6 +384,31 @@ function ReviewCells({ t }: { t: ReviewTopup }) {
       <Operation type={t.type} amount={t.amountMinor} operator={t.operator} provider={t.provider} />
       <td className="small">{t.reason ?? '—'}</td>
       <td className="small mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt)}</td>
+    </>
+  )
+}
+
+function PurchaseCells({ p }: { p: PendingPurchase }) {
+  return (
+    <>
+      <Who name={p.customerName} phone={p.customerPhone} />
+      <td>
+        <div className="mono" style={{ fontWeight: 600 }}>
+          <span className={`badge ${p.type === 'AIRTIME' ? 'off' : 'wait'}`} style={{ marginRight: 8 }}>
+            {p.type === 'AIRTIME' ? 'Crédit' : 'Facture'}
+          </span>
+          {formatUsd(p.amountMinor)}
+        </div>
+        <div className="muted small" style={{ marginTop: 4 }}>
+          {p.label} · <span className="mono">{p.target}</span>{p.holderName ? ` · ${p.holderName}` : ''} · {providerLabel(p.provider)}
+        </div>
+      </td>
+      <td className="small">
+        {p.status === 'REVIEW'
+          ? <><span className="badge alert">À trancher</span><div className="muted" style={{ marginTop: 4 }}>{p.reason}</div></>
+          : <><span className="badge wait">Relances en cours</span><div className="muted" style={{ marginTop: 4 }}>{p.checks} relance{p.checks > 1 ? 's' : ''} sans réponse</div></>}
+      </td>
+      <td className="small mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(p.createdAt)}</td>
     </>
   )
 }

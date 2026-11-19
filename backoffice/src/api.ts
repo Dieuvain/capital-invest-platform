@@ -325,6 +325,27 @@ export interface ReviewTopup {
   createdAt: string
 }
 
+/** Crédit téléphone ou facture sans réponse sûre du prestataire. */
+export interface PendingPurchase {
+  type: 'AIRTIME' | 'BILL'
+  id: string
+  customerName: string
+  customerPhone: string
+  /** « Crédit Vodacom », « SNEL prépayé »… */
+  label: string
+  /** Numéro rechargé, ou n° de compteur ou d'abonné. */
+  target: string
+  holderName: string | null
+  /** Compteur prépayé : « payé » demande le code du compteur. */
+  needsToken: boolean
+  amountMinor: number
+  provider: string
+  status: 'PENDING' | 'REVIEW'
+  reason: string | null
+  checks: number
+  createdAt: string
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -478,6 +499,10 @@ export class Api {
     this.json<unknown>('POST', `/v1/backoffice/topups/${id}/resolve`, { action, note })
   resolveWithdrawal = (id: string, action: WithdrawalDecision, note: string) =>
     this.json<unknown>('POST', `/v1/backoffice/withdrawals/${id}/resolve`, { action, note })
+  pendingPurchases = () => this.json<PendingPurchase[]>('GET', '/v1/backoffice/purchases/review')
+  resolvePurchase = (p: Pick<PendingPurchase, 'type' | 'id'>, action: 'DONE' | 'REFUND', note: string, token?: string) =>
+    this.json<unknown>('POST', `/v1/backoffice/${p.type === 'AIRTIME' ? 'airtime' : 'bills'}/${p.id}/resolve`,
+      token ? { action, note, token } : { action, note })
   reconciliationRuns = (limit = 14) => this.json<ReconciliationRun[]>('GET', `/v1/backoffice/reconciliation/runs?limit=${limit}`)
   runReconciliation = (businessDate?: string) =>
     this.json<ReconciliationRun>('POST', '/v1/backoffice/reconciliation/runs', businessDate ? { businessDate } : {})

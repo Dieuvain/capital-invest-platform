@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.security.MessageDigest
 import java.sql.ResultSet
 import java.time.Clock
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -55,12 +56,18 @@ data class BillerView(val code: Biller, val label: String, val category: String,
 data class BillsProperties(
     val minAmountMinor: Long = 100,
     val maxAmountMinor: Long = 50_000,
+    /** Relance d'un paiement sans réponse : d'abord après ce délai, puis de plus en plus espacée. */
+    val firstCheckAfter: Duration = Duration.ofMinutes(1),
+    /** Sans réponse sûre passé ce délai, un agent tranche : on ne rembourse jamais sur un doute. */
+    val reviewAfter: Duration = Duration.ofHours(24),
+    val pollerEnabled: Boolean = true,
 )
 
 /** Compte chez le facturier : le titulaire, et ce qu'il doit pour une facture. */
 data class BillAccount(val biller: Biller, val reference: String, val holderName: String, val amountDueMinor: Long?)
 
-enum class BillStatus { PENDING, PAID, FAILED }
+/** REVIEW : toujours sans réponse sûre après 24 h, un agent tranche. */
+enum class BillStatus { PENDING, PAID, FAILED, REVIEW }
 
 data class BillPayment(
     val id: UUID,
@@ -90,11 +97,15 @@ interface BillConnector {
     val name: String
     fun lookup(biller: Biller, reference: String): BillAccount?
     fun pay(paymentId: UUID, biller: Biller, reference: String, amountMinor: Long): BillResult
+
+    /** Statut d'un paiement resté sans réponse sûre, relu chez l'agrégateur. */
+    fun check(paymentId: UUID, biller: Biller, reference: String, amountMinor: Long): BillResult
 }
 
 /**
  * Simulateur, en attendant le contrat avec un agrégateur.
  * Une référence qui finit par 0000 n'existe pas ; par 9999, le facturier refuse le paiement.
+ * Par 5555 : pas de réponse au paiement, confirmé à la relance. Par 6666 : jamais de réponse.
  */
 @Component
 class SimulatorBillConnector : BillConnector {
@@ -111,7 +122,11 @@ class SimulatorBillConnector : BillConnector {
         return BillAccount(biller, reference, names[(h[0].toInt() and 0xff) % names.size], due)
     }
 
-    override fun pay(paymentId: UUID, biller: Biller, reference: String, amountMinor: Long): BillResult {
+    override fun pay(paymentId: UUID, biller: Biller, reference: String, amountMinor: Long): BillResult =
+        if (reference.endsWith("5555") || reference.endsWith("6666")) BillResult.Unknown else check(paymentId, biller, reference, amountMinor)
+
+    override fun check(paymentId: UUID, biller: Biller, reference: String, amountMinor: Long): BillResult {
+        if (reference.endsWith("6666")) return BillResult.Unknown
         if (reference.endsWith("9999")) return BillResult.Failed("${biller.label} n'accepte pas de paiement pour ce compte")
         val token = if (biller.kind == BillKind.PREPAID) {
             hash(paymentId.toString()).take(10).joinToString("") { "%02d".format((it.toInt() and 0xff) % 100) }
@@ -194,11 +209,11 @@ class BillService(
             val now = now()
             jdbc.sql(
                 """INSERT INTO bill_payment (id, customer_id, idempotency_key, biller, reference, holder_name, amount_minor, status,
-                                             provider, hold_transaction_id, created_at, updated_at)
-                   VALUES (:id, :c, :key, :biller, :ref, :holder, :amount, 'PENDING', :provider, :hold, :now, :now)""",
+                                             provider, hold_transaction_id, next_check_at, created_at, updated_at)
+                   VALUES (:id, :c, :key, :biller, :ref, :holder, :amount, 'PENDING', :provider, :hold, :next, :now, :now)""",
             ).param("id", id).param("c", customerId).param("key", idempotencyKey).param("biller", biller.name).param("ref", ref)
                 .param("holder", account.holderName).param("amount", amountMinor).param("provider", connector.name)
-                .param("hold", posting.transaction.id).param("now", now).update()
+                .param("hold", posting.transaction.id).param("next", now.plus(props.firstCheckAfter)).param("now", now).update()
             get(id) to true
         }!!
         if (!created) return payment
@@ -208,13 +223,13 @@ class BillService(
         return tx.execute { finish(customerId, payment.id, result) }!!
     }
 
-    private fun finish(customerId: UUID, id: UUID, result: BillResult): BillPayment {
+    private fun finish(customerId: UUID, id: UUID, result: BillResult, byAgent: Boolean = false): BillPayment {
         val p = jdbc.sql("SELECT * FROM bill_payment WHERE id = :id FOR UPDATE").param("id", id).query(::map).single()
-        if (p.status != BillStatus.PENDING) return p
+        if (p.status != BillStatus.PENDING && !(byAgent && p.status == BillStatus.REVIEW)) return p
         val now = now()
         when (result) {
             is BillResult.Paid -> {
-                jdbc.sql("UPDATE bill_payment SET status = 'PAID', provider_reference = :ref, token = :token, updated_at = :now WHERE id = :id")
+                jdbc.sql("UPDATE bill_payment SET status = 'PAID', provider_reference = :ref, token = :token, next_check_at = NULL, updated_at = :now WHERE id = :id")
                     .param("ref", result.reference).param("token", result.token).param("now", now).param("id", id).update()
                 // Le code du compteur doit survivre à l'app fermée ou au téléphone éteint : il part aussi par SMS.
                 val paid = get(id)
@@ -234,12 +249,60 @@ class BillService(
                         ),
                     ),
                 )
-                jdbc.sql("UPDATE bill_payment SET status = 'FAILED', refund_transaction_id = :tx, updated_at = :now WHERE id = :id")
+                jdbc.sql("UPDATE bill_payment SET status = 'FAILED', refund_transaction_id = :tx, next_check_at = NULL, updated_at = :now WHERE id = :id")
                     .param("tx", refund.transaction.id).param("now", now).param("id", id).update()
             }
             BillResult.Unknown -> Unit
         }
         return get(id)
+    }
+
+    /** Relance les paiements sans réponse dont l'heure est venue. Appelé chaque minute. */
+    fun checkDue(limit: Int = 50) {
+        val ids = jdbc.sql("SELECT id FROM bill_payment WHERE status = 'PENDING' AND next_check_at <= :now ORDER BY next_check_at LIMIT :limit")
+            .param("now", now()).param("limit", limit).query(UUID::class.java).list()
+        for (id in ids) runCatching { checkOne(id) }.onFailure { log.error("Relance de la facture {} : {}", id, it.toString()) }
+    }
+
+    fun checkOne(id: UUID): BillPayment {
+        val p = get(id)
+        if (p.status != BillStatus.PENDING) return p
+        val customerId = customerOf(id)
+        val result = runCatching { connector.check(p.id, p.biller, p.reference, p.amountMinor) }.getOrDefault(BillResult.Unknown)
+        return tx.execute {
+            if (result != BillResult.Unknown) return@execute finish(customerId, id, result)
+            val now = now()
+            val checks = jdbc.sql("SELECT checks FROM bill_payment WHERE id = :id FOR UPDATE").param("id", id).query(Int::class.java).single() + 1
+            if (!p.createdAt.plus(props.reviewAfter).isAfter(now)) {
+                jdbc.sql(
+                    """UPDATE bill_payment SET status = 'REVIEW', checks = :n, next_check_at = NULL, updated_at = :now,
+                              review_reason = :reason WHERE id = :id AND status = 'PENDING'""",
+                ).param("n", checks).param("now", now).param("id", id)
+                    .param("reason", "Pas de réponse sûre de l'agrégateur après ${props.reviewAfter.toHours()} h").update()
+            } else {
+                val wait = props.firstCheckAfter.multipliedBy(1L shl checks.coerceAtMost(6)).coerceAtMost(Duration.ofHours(1))
+                jdbc.sql("UPDATE bill_payment SET checks = :n, next_check_at = :next, updated_at = :now WHERE id = :id AND status = 'PENDING'")
+                    .param("n", checks).param("next", now.plus(wait)).param("now", now).param("id", id).update()
+            }
+            get(id)
+        }!!
+    }
+
+    /**
+     * Décision d'un agent après vérification auprès de l'agrégateur. Pour un compteur prépayé, « payé » exige le code
+     * du compteur obtenu de l'agrégateur : sans lui, le client a payé pour rien.
+     */
+    fun resolve(id: UUID, paid: Boolean, note: String, token: String?): BillPayment {
+        val p = get(id)
+        if (p.status != BillStatus.PENDING && p.status != BillStatus.REVIEW) {
+            throw BusinessException("ALREADY_RESOLVED", "Ce paiement est déjà terminé")
+        }
+        val code = token?.filter { it.isDigit() }?.ifEmpty { null }
+        if (paid && p.biller.kind == BillKind.PREPAID && (code == null || code.length != 20)) {
+            throw BusinessException("TOKEN_REQUIRED", "Saisissez le code du compteur à 20 chiffres donné par l'agrégateur")
+        }
+        val result = if (paid) BillResult.Paid("AGENT: ${note.take(80)}", code) else BillResult.Failed("${p.billerName} n'a pas reçu le paiement")
+        return tx.execute { finish(customerOf(id), id, result, byAgent = true) }!!
     }
 
     fun get(id: UUID): BillPayment =

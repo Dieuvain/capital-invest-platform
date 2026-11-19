@@ -221,7 +221,17 @@ Menu **Plus** → **Acheter du crédit téléphone** : des unités pour son num�
 - Dans le grand livre : le montant passe du portefeuille au compte `AIRTIME_PROVIDER_USD` (crédit prépayé chez le prestataire). Si le prestataire refuse (numéro inactif…), le montant revient aussitôt au client, qui est prévenu. Sans réponse sûre, l'achat reste « en cours » et n'est pas remboursé : les unités sont peut-être parties.
 - Historique, reçu et relevé : « Crédit Vodacom » avec le numéro rechargé ; « Crédit non envoyé, remboursé » pour un refus.
 - API : `POST /v1/airtime` (`{"phone", "network"?, "amountMinor", "pin"}`, en-tête `Idempotency-Key`), `GET /v1/airtime/recent`, `GET /v1/airtime/{id}`.
-- **Pas encore branché** : le prestataire réel. Le simulateur envoie toujours les unités, sauf vers un numéro qui finit par 0000. Il faudra choisir un agrégateur d'unités (contrat, commission reçue sur chaque achat), écrire son connecteur (interface `AirtimeConnector`) et une relance des achats restés en cours, avant la mise en service.
+- **Pas encore branché** : le prestataire réel. Le simulateur envoie toujours les unités, sauf vers un numéro qui finit par 0000. Il faudra choisir un agrégateur d'unités (contrat, commission reçue sur chaque achat), écrire son connecteur (interface `AirtimeConnector`) avant la mise en service.
+
+### Achats restés « en cours »
+
+Quand le prestataire d'unités ou l'agrégateur de factures ne répond pas clairement, l'achat n'est ni perdu ni remboursé à l'aveugle :
+
+- **Relance automatique** (`PurchaseJobs`, chaque minute) : le statut est redemandé au prestataire après 1 min, puis 2, 4, 8… jusqu'à une relance par heure. Une réponse « envoyé » ou « payé » termine l'achat (le code du compteur part par SMS), un refus rembourse le client.
+- **Après 24 h sans réponse**, l'achat passe « en vérification » : le client le voit ainsi dans son historique, et il apparaît dans le back-office (**Rapprochement** → « Crédit téléphone et factures sans réponse »), avec ceux qui attendent depuis plus de 10 minutes.
+- **Décision d'un agent** (conformité ou administrateur), toujours motivée et inscrite au journal d'audit : « Noter envoyé / payé » (pour un compteur prépayé, le code de 20 chiffres donné par l'agrégateur est obligatoire et envoyé au client), ou « Rembourser » quand le prestataire confirme l'échec.
+- Réglages : `capital-invest.airtime.first-check-after`, `review-after` (idem sous `bills`), `capital-invest.purchases.poll-delay-ms`. API : `GET /v1/backoffice/purchases/review`, `POST /v1/backoffice/airtime/{id}/resolve` et `/bills/{id}/resolve` (`{"action": "DONE" | "REFUND", "note", "token"?}`).
+- Simulateur : un numéro qui finit par 5555 (ou une référence en 5555) ne répond pas tout de suite mais aboutit à la relance ; 6666 ne répond jamais et finit en vérification.
 
 ## Épargne
 
