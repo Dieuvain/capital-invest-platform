@@ -292,11 +292,15 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.WITHDRAWAL -> "Retrait vers ${op ?: "mobile money"}"
             HistoryKind.WITHDRAWAL_REFUND -> "Retrait remboursé"
             HistoryKind.MERCHANT_PAYMENT -> "Paiement à ${i.counterpartyName ?: "un marchand"}"
+            HistoryKind.AIRTIME -> "Crédit ${networkLabel(i.network)}"
+            HistoryKind.AIRTIME_REFUND -> "Crédit non envoyé, remboursé"
             HistoryKind.SAVINGS_DEPOSIT -> "Mis de côté (épargne)"
             HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }
+
+    private fun networkLabel(n: String?) = n?.let { cd.capitalinvest.platform.payments.airtime.MobileNetwork.valueOf(it).label } ?: "téléphone"
 
     private fun detail(i: HistoryItem): String? = listOfNotNull(
         i.counterpartyPhone ?: i.msisdn,

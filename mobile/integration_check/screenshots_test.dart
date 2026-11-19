@@ -220,6 +220,24 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      await tester.drag(find.byType(ListView).first, const Offset(0, 800));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Acheter du crédit téléphone'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vodacom 812345678'));
+      await tester.tap(find.text('5 \$'));
+      await tester.pumpAndSettle();
+      await shot('11-credit$suffix');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.ensureVisible(find.text('Acheter 5,00\u00A0\$'));
+      await tester.tap(find.text('Acheter 5,00\u00A0\$'));
+      await tester.pumpAndSettle();
+      await shot('11b-credit-envoye$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Profil'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sécurité et PIN'));

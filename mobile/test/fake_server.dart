@@ -58,6 +58,11 @@ class FakeServer {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
 
+  /// Numéros proposés par /v1/airtime/recent.
+  List<Map<String, dynamic>> airtimeRecent = [
+    {'phone': '+243812345678', 'network': 'VODACOM'},
+  ];
+
   /// Épargne servie par /v1/me/savings.
   int savings = 0;
   Map<String, dynamic>? savingsGoal;
@@ -219,6 +224,24 @@ class FakeServer {
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
     }
+    if (path == '/v1/airtime/recent') return _json(airtimeRecent);
+    if (path == '/v1/airtime' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final a = b['amountMinor'] as int;
+      if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+      final failed = (b['phone'] as String).endsWith('0000');
+      if (!failed) balance -= a;
+      final id = 'at-${history.length + 1}';
+      history.insert(0, historyItem(id, 'AIRTIME', -a, at: '2026-11-19T10:30:00Z', msisdn: b['phone'],
+          status: failed ? 'FAILED' : 'COMPLETED'));
+      return _json({
+        'id': id, 'network': b['network'], 'phone': b['phone'], 'amountMinor': a, 'currency': 'USD',
+        'status': failed ? 'FAILED' : 'DELIVERED',
+        'failureMessage': failed ? 'Ce numéro n\'est pas actif chez Airtel' : null,
+        'transactionId': id, 'createdAt': '2026-11-19T10:30:00Z',
+      }, 201);
+    }
     if (path == '/v1/me/savings') return _json(_savings);
     if (path == '/v1/me/savings/deposits' || path == '/v1/me/savings/withdrawals') {
       final a = body()['amountMinor'] as int;
@@ -313,7 +336,7 @@ class FakeServer {
           'TOPUP' => ['TOPUP'],
           'TRANSFER' => ['TRANSFER_SENT', 'TRANSFER_RECEIVED'],
           'WITHDRAWAL' => ['WITHDRAWAL', 'WITHDRAWAL_REFUND'],
-          'PAYMENT' => ['MERCHANT_PAYMENT'],
+          'PAYMENT' => ['MERCHANT_PAYMENT', 'AIRTIME', 'AIRTIME_REFUND'],
           'SAVINGS' => ['SAVINGS_DEPOSIT', 'SAVINGS_WITHDRAWAL'],
           _ => null,
         };

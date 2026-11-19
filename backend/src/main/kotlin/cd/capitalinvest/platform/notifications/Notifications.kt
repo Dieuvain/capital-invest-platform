@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED
 }
 
 data class NotificationView(
@@ -281,6 +281,14 @@ class NotificationService(
             HistoryKind.WITHDRAWAL -> null
             // Le client vient de le faire lui-même dans l'app, et l'argent ne quitte pas son compte.
             HistoryKind.SAVINGS_DEPOSIT, HistoryKind.SAVINGS_WITHDRAWAL -> null
+            // Le client voit le résultat de l'achat dans l'app ; seul un remboursement arrive après coup.
+            HistoryKind.AIRTIME -> null
+            HistoryKind.AIRTIME_REFUND -> Draft(
+                NotificationKind.AIRTIME_REFUNDED, "Crédit non envoyé",
+                "Le crédit pour ${i.msisdn ?: "ce numéro"} n'a pas pu être envoyé" + (i.failureMessage?.let { " : $it" } ?: "") +
+                    ". ${money(i.amountMinor)} sont revenus sur votre compte.",
+                "Capital Invest: credit non envoye a ${i.msisdn ?: ""}. ${money(i.amountMinor)} rendus. $solde. $ref",
+            )
         }
     }
 

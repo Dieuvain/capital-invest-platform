@@ -185,6 +185,27 @@ class ApiClient {
 
   // ---- Compte --------------------------------------------------------------------------------
 
+  // ---- Crédit téléphone -------------------------------------------------------------------------
+
+  /// Achète du crédit pour [phone] (+243…), confirmé par le PIN. Le réseau est deviné par le serveur s'il manque.
+  Future<AirtimePurchase> buyAirtime({
+    required String phone,
+    required MobileNetwork? network,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+  }) async => AirtimePurchase.fromJson(
+    await _post('/v1/airtime', {
+      'phone': phone,
+      'network': ?network?.apiName,
+      'amountMinor': amountMinor,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<List<RecentAirtimeNumber>> recentAirtimeNumbers() async =>
+      (await _get('/v1/airtime/recent') as List).map((j) => RecentAirtimeNumber.fromJson(j)).toList();
+
   // ---- Épargne ---------------------------------------------------------------------------------
 
   Future<Savings> savings() async => Savings.fromJson(await _get('/v1/me/savings'));

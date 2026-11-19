@@ -351,6 +351,7 @@ class HistoryItem {
     this.operator,
     this.msisdn,
     this.merchantCode,
+    this.network,
     this.note,
     this.failureMessage,
   });
@@ -359,7 +360,7 @@ class HistoryItem {
   final String receiptNumber;
 
   /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
-  /// SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
+  /// AIRTIME, AIRTIME_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -377,6 +378,9 @@ class HistoryItem {
 
   /// Code du commerce payé (paiement marchand).
   final String? merchantCode;
+
+  /// Réseau du numéro rechargé (achat de crédit).
+  final MobileNetwork? network;
   final String? note;
   final String? failureMessage;
 
@@ -399,6 +403,7 @@ class HistoryItem {
     operator: j['operator'],
     msisdn: j['msisdn'],
     merchantCode: j['merchantCode'],
+    network: MobileNetwork.fromApi(j['network']),
     note: j['note'],
     failureMessage: j['failureMessage'],
   );
@@ -585,4 +590,70 @@ class Savings {
     goal: j['goal'] == null ? null : SavingsGoal.fromJson(j['goal']),
     moves: (j['moves'] as List).map((m) => SavingsMove.fromJson(m)).toList(),
   );
+}
+
+/// Réseaux mobiles de la RDC, pour le crédit téléphone.
+enum MobileNetwork {
+  vodacom('VODACOM', 'Vodacom', {'81', '82', '83'}),
+  airtel('AIRTEL', 'Airtel', {'97', '98', '99'}),
+  orange('ORANGE', 'Orange', {'80', '84', '85', '89'}),
+  africell('AFRICELL', 'Africell', {'90', '91'});
+
+  const MobileNetwork(this.apiName, this.label, this.prefixes);
+
+  final String apiName;
+  final String label;
+  final Set<String> prefixes;
+
+  static MobileNetwork? fromApi(String? name) => values.where((n) => n.apiName == name).firstOrNull;
+
+  /// Réseau d'origine d'après le préfixe ; null si inconnu (le client choisit).
+  static MobileNetwork? forPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final local = digits.startsWith('243') ? digits.substring(3) : (digits.startsWith('0') ? digits.substring(1) : digits);
+    if (local.length < 2) return null;
+    return values.where((n) => n.prefixes.contains(local.substring(0, 2))).firstOrNull;
+  }
+}
+
+/// Achat de crédit téléphone : DELIVERED (unités envoyées), FAILED (remboursé) ou PENDING.
+class AirtimePurchase {
+  AirtimePurchase({
+    required this.id,
+    required this.network,
+    required this.phone,
+    required this.amountMinor,
+    required this.status,
+    required this.failureMessage,
+    required this.transactionId,
+  });
+
+  final String id;
+  final MobileNetwork? network;
+  final String phone;
+  final int amountMinor;
+  final String status;
+  final String? failureMessage;
+  final String transactionId;
+
+  factory AirtimePurchase.fromJson(Map<String, dynamic> j) => AirtimePurchase(
+    id: j['id'],
+    network: MobileNetwork.fromApi(j['network']),
+    phone: j['phone'],
+    amountMinor: j['amountMinor'],
+    status: j['status'],
+    failureMessage: j['failureMessage'],
+    transactionId: j['transactionId'],
+  );
+}
+
+/// Numéro déjà rechargé, proposé en un geste.
+class RecentAirtimeNumber {
+  RecentAirtimeNumber(this.phone, this.network);
+
+  final String phone;
+  final MobileNetwork? network;
+
+  factory RecentAirtimeNumber.fromJson(Map<String, dynamic> j) =>
+      RecentAirtimeNumber(j['phone'], MobileNetwork.fromApi(j['network']));
 }
