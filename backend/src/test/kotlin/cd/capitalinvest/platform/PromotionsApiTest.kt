@@ -5,11 +5,15 @@ import cd.capitalinvest.platform.backoffice.AgentService
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
+import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.multipart
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import java.time.Duration
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class PromotionsApiTest : ApiTest() {
 
@@ -124,5 +128,67 @@ class PromotionsApiTest : ApiTest() {
     @Test
     fun `l'app doit être connectée pour lire les promotions`() {
         mvc.get("/v1/promotions").andExpect { status { isUnauthorized() } }
+    }
+
+    private val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(64) { it.toByte() }
+
+    private fun upload(token: String, id: String, bytes: ByteArray, type: String = "image/png") =
+        mvc.multipart("/v1/backoffice/promotions/$id/image") {
+            header("Authorization", "Bearer $token")
+            file(MockMultipartFile("file", "visuel.png", type, bytes))
+        }
+
+    @Test
+    fun `le graphiste envoie un visuel, l'app le recoit avec une adresse qui change a chaque version`() {
+        val token = agent("marketing@capitalinvest.cd", AgentRole.MARKETING)
+        // Sur un visuel, le texte est facultatif et toute l'image mène à l'action, sans texte de bouton.
+        val id = create(token, """{"title":"Recharge offerte","action":"TOPUP"}""")
+            .andExpect { status { isCreated() } }.body()["id"].asText()
+        val alice = register("+243970000804")
+        mvc.get("/v1/promotions") { header("Authorization", "Bearer ${alice.token}") }.andExpect {
+            jsonPath("$[0].imageUrl") { doesNotExist() }
+            jsonPath("$[0].body") { doesNotExist() }
+        }
+
+        upload(token, id, png).andExpect {
+            status { isOk() }
+            jsonPath("$.imageType") { value("image/png") }
+        }
+        val url = mvc.get("/v1/promotions") { header("Authorization", "Bearer ${alice.token}") }.body()[0]["imageUrl"].asText()
+        assertTrue(url.startsWith("/v1/promotions/$id/image?v="), url)
+        val res = mvc.get(url) { header("Authorization", "Bearer ${alice.token}") }.andExpect {
+            status { isOk() }
+            content { contentType("image/png") }
+            header { string("Cache-Control", "max-age=604800, private") }
+        }.andReturn().response
+        assertContentEquals(png, res.contentAsByteArray)
+
+        testClock.advance(Duration.ofSeconds(5))
+        upload(token, id, png).andExpect { status { isOk() } }
+        val next = mvc.get("/v1/promotions") { header("Authorization", "Bearer ${alice.token}") }.body()[0]["imageUrl"].asText()
+        assertTrue(next != url, "un nouveau visuel change l'adresse, le cache du téléphone est contourné")
+
+        mvc.get("/v1/backoffice/promotions/$id/image") { header("Authorization", "Bearer $token") }.andExpect { status { isOk() } }
+        val actions = jdbc.sql("SELECT action FROM audit_log WHERE target_type = 'PROMOTION' ORDER BY created_at").query(String::class.java).list()
+        assertEquals(listOf("PROMOTION_CREATED", "PROMOTION_IMAGE_UPLOADED", "PROMOTION_IMAGE_UPLOADED"), actions)
+    }
+
+    @Test
+    fun `un visuel est verifie sur son contenu, et reste invisible pour qui ne voit pas la promotion`() {
+        val token = agent("admin@capitalinvest.cd", AgentRole.ADMIN)
+        val id = create(token, """{"title":"Clients vérifiés","audience":"KYC2"}""").body()["id"].asText()
+        upload(token, id, "<svg onload=alert(1)>".toByteArray(), type = "image/png").andExpect {
+            status { isUnprocessableEntity() }
+            jsonPath("$.code") { value("PROMOTION_IMAGE_TYPE") }
+        }
+        upload(token, id, png + ByteArray(2 * 1024 * 1024)).andExpect { jsonPath("$.code") { value("PROMOTION_IMAGE_SIZE") } }
+        upload(token, id, png).andExpect { status { isOk() } }
+
+        val alice = register("+243970000805") // niveau 1
+        mvc.get("/v1/promotions/$id/image") { header("Authorization", "Bearer ${alice.token}") }.andExpect { status { isNotFound() } }
+        mvc.get("/v1/promotions/$id/image").andExpect { status { isUnauthorized() } }
+
+        val kyc = agent("kyc@capitalinvest.cd", AgentRole.KYC_AGENT)
+        upload(kyc, id, png).andExpect { status { isForbidden() } }
     }
 }

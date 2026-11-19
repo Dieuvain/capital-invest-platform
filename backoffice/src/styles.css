@@ -276,6 +276,10 @@ textarea { resize: vertical; min-height: 80px; }
 .promo .t { font-size: 19px; font-weight: 800; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .promo .b { font-size: 13.5px; opacity: 0.85; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .promo .cta { margin-top: auto; font-weight: 700; font-size: 14px; }
+.promo.visual { padding: 0; height: auto; aspect-ratio: 1200 / 520; background: var(--line, #ddd); }
+.promo.visual img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.btn.file { position: relative; cursor: pointer; }
+.btn.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .promo-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; }
 .promo-item { padding: 12px; display: flex; flex-direction: column; gap: 12px; cursor: pointer; }
 .promo-item:hover { outline: 1.5px solid var(--ochre); }

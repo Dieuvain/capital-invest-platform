@@ -5,6 +5,7 @@ import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
+import 'package:capital_invest/screens/money_screens.dart';
 import 'package:capital_invest/ui/chrome.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -75,6 +76,35 @@ void main() {
     await tester.tap(find.text('Passez au niveau 2'));
     await tester.pumpAndSettle();
     expect(find.byType(KycScreen), findsOneWidget);
+  });
+
+  testWidgets('une promotion en visuel : l\'image du graphiste, lue par son titre, mène à son action', (tester) async {
+    server.promotions = [
+      {'id': 'p-v', 'title': 'Recharge offerte', 'action': 'TOPUP', 'style': 'OCHRE', 'imageUrl': '/v1/promotions/p-v/image?v=1'},
+      {'id': 'p-x', 'title': 'Visuel cassé', 'body': 'Carte de secours.', 'style': 'INK', 'imageUrl': '/v1/promotions/p-x/image?v=1'},
+    ];
+    server.images['p-v'] = FakeServer.png;
+    await start(tester);
+    await login(tester);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('promo-image-p-v')), findsOneWidget);
+    expect(find.bySemanticsLabel('Recharge offerte'), findsOneWidget);
+    final calls = server.requests.where((r) => r.url.path == '/v1/promotions/p-v/image').toList();
+    expect(calls.single.headers['Authorization'], 'Bearer ${FakeServer.token}');
+
+    // Visuel introuvable : la carte de secours reste, sans erreur.
+    final pages = find.byKey(const ValueKey('promos'));
+    tester.widget<PageView>(pages).controller!.jumpToPage(1);
+    await tester.pumpAndSettle();
+    expect(find.text('Carte de secours.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('promo-image-p-x')), findsNothing);
+
+    tester.widget<PageView>(pages).controller!.jumpToPage(0);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('promo-image-p-v')));
+    await tester.tap(find.byKey(const ValueKey('promo-image-p-v')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TopupScreen), findsOneWidget);
   });
 
   testWidgets('sans promotions, le bandeau disparaît sans erreur', (tester) async {

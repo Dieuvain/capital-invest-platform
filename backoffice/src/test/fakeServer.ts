@@ -18,9 +18,11 @@ export class FakeServer {
     {
       id: 'p-1', title: 'Passez au niveau 2', body: "Envoyez jusqu'à 4 000 $ par opération.", ctaLabel: 'Vérifier mon identité',
       action: 'KYC', style: 'OCHRE', audience: 'KYC1', priority: 30, startsAt: '2026-11-01T00:00:00Z', endsAt: null,
-      active: true, live: true,
+      active: true, live: true, imageType: null, imageUpdatedAt: null,
     },
   ]
+  /** Visuels reçus, par promotion. */
+  images = new Map<string, File>()
   audit: AuditEntry[] = []
   review: ReviewTopup[] = [
     {
@@ -71,7 +73,8 @@ export class FakeServer {
     const method = init?.method ?? 'GET'
     const u = new URL(url, 'http://test')
     const path = u.pathname
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    const form = init?.body instanceof FormData ? init.body : null
+    const body = init?.body && !form ? JSON.parse(String(init.body)) : undefined
     this.requests.push({ method, path, body })
     const json = (data: unknown, status = 200) =>
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
@@ -121,9 +124,23 @@ export class FakeServer {
     if (path.startsWith('/v1/backoffice/promotions')) {
       if (method !== 'GET' && !role('MARKETING', 'ADMIN')) return problem(403, 'MARKETING_ONLY', 'Réservé au marketing')
       if (path === '/v1/backoffice/promotions' && method === 'GET') return json(this.promotions)
+      if ((m = path.match(/^\/v1\/backoffice\/promotions\/([^/]+)\/image$/))) {
+        const p = this.promotions.find((x) => x.id === m![1])!
+        if (method === 'GET') {
+          const f = this.images.get(p.id)
+          return f ? new Response(new Uint8Array([0x89, 0x50]), { headers: { 'Content-Type': f.type } }) : problem(404, 'PROMOTION_IMAGE_NOT_FOUND', 'Pas de visuel pour cette promotion')
+        }
+        const f = form!.get('file') as File
+        this.images.set(p.id, f)
+        Object.assign(p, { imageType: f.type, imageUpdatedAt: '2026-11-19T10:00:00Z' })
+        return json(p)
+      }
       if (body?.ctaLabel && !body.action) return problem(422, 'PROMOTION_INVALID', "Un bouton a besoin d'une action")
       if (method === 'POST') {
-        const p = { ...body, id: `p-${this.promotions.length + 1}`, startsAt: body.startsAt ?? '2026-11-19T00:00:00Z', live: body.active }
+        const p = {
+          ...body, id: `p-${this.promotions.length + 1}`, startsAt: body.startsAt ?? '2026-11-19T00:00:00Z', live: body.active,
+          imageType: null, imageUpdatedAt: null,
+        }
         this.promotions.push(p)
         return json(p, 201)
       }

@@ -29,6 +29,12 @@ class FakeServer {
       'style': 'GREEN',
     },
   ];
+
+  /// Visuels servis par /v1/promotions/{id}/image (un PNG de 1 x 1 pixel).
+  final images = <String, List<int>>{};
+  static final png = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  );
   /// Réponse de l'opérateur à la recharge en cours.
   Map<String, dynamic> topupOutcome = {'status': 'CONFIRMED'};
 
@@ -60,6 +66,12 @@ class FakeServer {
         path.startsWith('/v1/transfers') ||
         path.startsWith('/v1/withdrawals')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
+    }
+    final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);
+    if (image != null) {
+      final bytes = images[image.group(1)];
+      if (bytes == null) return _error(404, 'PROMOTION_IMAGE_NOT_FOUND', 'Pas de visuel');
+      return http.Response.bytes(bytes, 200, headers: {'content-type': 'image/png'});
     }
     switch ((req.method, path)) {
       case ('POST', '/v1/auth/login'):

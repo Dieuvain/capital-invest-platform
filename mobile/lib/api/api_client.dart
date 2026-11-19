@@ -189,6 +189,28 @@ class ApiClient {
   Future<List<Promotion>> promotions() async =>
       ((await _get('/v1/promotions')) as List).map((e) => Promotion.fromJson(e)).toList();
 
+  /// Visuels déjà chargés. L'adresse change à chaque nouveau visuel (?v=…), on peut donc la garder telle quelle.
+  final _images = <String, Uint8List>{};
+
+  /// Charge le visuel d'une promotion, une seule fois par adresse.
+  Future<Uint8List> promotionImage(String url) async {
+    final cached = _images[url];
+    if (cached != null) return cached;
+    final http.Response res;
+    try {
+      res = await _http
+          .get(Uri.parse('$baseUrl$url'), headers: _headers(json: false))
+          .timeout(const Duration(seconds: 30));
+    } on Exception {
+      throw ApiException(0, 'NETWORK', 'Pas de connexion. Vérifiez votre réseau et réessayez.');
+    }
+    if (res.statusCode != 200 || !(res.headers['content-type'] ?? '').startsWith('image/')) {
+      throw ApiException(res.statusCode, 'PROMOTION_IMAGE', 'Visuel indisponible');
+    }
+    if (_images.length >= 10) _images.remove(_images.keys.first);
+    return _images[url] = res.bodyBytes;
+  }
+
   // ---- KYC 2 ---------------------------------------------------------------------------------
 
   Future<KycState> kyc() async => KycState.fromJson(await _get('/v1/me/kyc'));

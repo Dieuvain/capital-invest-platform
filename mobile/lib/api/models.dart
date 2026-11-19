@@ -186,16 +186,24 @@ class Promotion {
   Promotion({
     required this.id,
     required this.title,
-    required this.body,
+    this.body,
     this.ctaLabel,
     this.action,
     this.style = 'OCHRE',
+    this.imageUrl,
   });
 
   final String id;
+
+  /// Toujours présent : c'est ce que lit le lecteur d'écran quand la promotion est un visuel.
   final String title;
-  final String body;
+
+  /// Texte de la carte de secours ; souvent vide quand la promotion a un visuel.
+  final String? body;
   final String? ctaLabel;
+
+  /// Visuel du graphiste (adresse relative, à charger avec le jeton). Null : carte de secours dessinée par l'app.
+  final String? imageUrl;
 
   /// Action au toucher : KYC, TOPUP, TRANSFER, LIMITS, ou null.
   final String? action;
@@ -210,5 +218,6 @@ class Promotion {
     ctaLabel: j['ctaLabel'],
     action: j['action'],
     style: j['style'] ?? 'OCHRE',
+    imageUrl: j['imageUrl'],
   );
 }

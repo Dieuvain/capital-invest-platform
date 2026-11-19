@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -232,7 +234,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               ),
               if (promos.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                PromoCarousel(promos: promos, interval: widget.promoInterval, onTap: _promoAction),
+                PromoCarousel(
+                  promos: promos,
+                  interval: widget.promoInterval,
+                  onTap: _promoAction,
+                  loadImage: widget.app.api.promotionImage,
+                ),
               ],
               const SizedBox(height: 16),
               _MovementsCard(
@@ -380,11 +387,13 @@ class PromoCarousel extends StatefulWidget {
     super.key,
     required this.promos,
     required this.onTap,
+    required this.loadImage,
     this.interval = const Duration(seconds: 5),
   });
 
   final List<Promotion> promos;
   final ValueChanged<Promotion> onTap;
+  final Future<Uint8List> Function(String url) loadImage;
   final Duration interval;
 
   @override
@@ -422,17 +431,24 @@ class _PromoCarouselState extends State<PromoCarousel> {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      SizedBox(
-        height: 148,
-        child: Listener(
-          onPointerDown: (_) => timer?.cancel(),
-          onPointerUp: (_) => _start(),
-          child: PageView.builder(
-            key: const ValueKey('promos'),
-            controller: controller,
-            itemCount: widget.promos.length,
-            onPageChanged: (i) => setState(() => index = i),
-            itemBuilder: (_, i) => _PromoCard(widget.promos[i], onTap: () => widget.onTap(widget.promos[i])),
+      // Le bandeau suit le format des visuels (1200 x 520), sans descendre sous la hauteur de la carte de secours.
+      LayoutBuilder(
+        builder: (context, box) => SizedBox(
+          height: max(148, (box.maxWidth - 4) * 520 / 1200),
+          child: Listener(
+            onPointerDown: (_) => timer?.cancel(),
+            onPointerUp: (_) => _start(),
+            child: PageView.builder(
+              key: const ValueKey('promos'),
+              controller: controller,
+              itemCount: widget.promos.length,
+              onPageChanged: (i) => setState(() => index = i),
+              itemBuilder: (_, i) => _PromoCard(
+                widget.promos[i],
+                onTap: () => widget.onTap(widget.promos[i]),
+                loadImage: widget.loadImage,
+              ),
+            ),
           ),
         ),
       ),
@@ -459,11 +475,77 @@ class _PromoCarouselState extends State<PromoCarousel> {
   );
 }
 
-class _PromoCard extends StatelessWidget {
-  const _PromoCard(this.p, {required this.onTap});
+class _PromoCard extends StatefulWidget {
+  const _PromoCard(this.p, {required this.onTap, required this.loadImage});
 
   final Promotion p;
   final VoidCallback onTap;
+  final Future<Uint8List> Function(String url) loadImage;
+
+  @override
+  State<_PromoCard> createState() => _PromoCardState();
+}
+
+class _PromoCardState extends State<_PromoCard> {
+  Future<Uint8List>? image;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_PromoCard old) {
+    super.didUpdateWidget(old);
+    if (old.p.imageUrl != widget.p.imageUrl) _load();
+  }
+
+  void _load() {
+    final url = widget.p.imageUrl;
+    // Une erreur de chargement laisse simplement la carte de secours.
+    image = url == null ? null : widget.loadImage(url).catchError((_) => Uint8List(0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.p;
+    final onTap = p.action == null ? null : widget.onTap;
+    return FutureBuilder<Uint8List>(
+      future: image,
+      builder: (context, snap) {
+        final bytes = snap.data;
+        if (bytes == null || bytes.isEmpty) return _FallbackPromoCard(p, onTap: onTap);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Semantics(
+            label: p.title,
+            button: onTap != null,
+            image: true,
+            excludeSemantics: true,
+            child: Material(
+              borderRadius: BorderRadius.circular(26),
+              clipBehavior: Clip.antiAlias,
+              child: Ink.image(
+                key: ValueKey('promo-image-${p.id}'),
+                image: MemoryImage(bytes),
+                fit: BoxFit.cover,
+                child: InkWell(onTap: onTap),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Carte dessinée par l'app quand la promotion n'a pas (encore) de visuel, ou pendant son chargement.
+class _FallbackPromoCard extends StatelessWidget {
+  const _FallbackPromoCard(this.p, {required this.onTap});
+
+  final Promotion p;
+  final VoidCallback? onTap;
 
   static const icons = {
     'KYC': Icons.verified_user_rounded,
@@ -488,7 +570,7 @@ class _PromoCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(gradient: bg),
           child: InkWell(
-            onTap: p.action == null ? null : onTap,
+            onTap: onTap,
             child: Stack(
               children: [
                 Positioned(
@@ -524,12 +606,13 @@ class _PromoCard extends StatelessWidget {
                         style: TextStyle(color: fg, fontSize: 19, fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        p.body,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: fg.withValues(alpha: 0.85), fontSize: 13.5, height: 1.3),
-                      ),
+                      if (p.body != null)
+                        Text(
+                          p.body!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: fg.withValues(alpha: 0.85), fontSize: 13.5, height: 1.3),
+                        ),
                       const Spacer(),
                       if (p.ctaLabel != null)
                         Row(
