@@ -218,16 +218,28 @@ void main() {
     expect(find.text('Se connecter'), findsOneWidget);
   });
 
-  testWidgets('envoi : les frais sont montrés avant la confirmation par PIN', (tester) async {
+  testWidgets('envoi : nom du destinataire et frais montrés avant la confirmation par PIN', (tester) async {
+    server.recentRecipients = [
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+    ];
     await start(tester);
     await login(tester);
     await pay(tester, 'Envoyer');
-    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
     await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsOneWidget);
+    expect(server.requests.where((r) => r.url.path == '/v1/transfers/fee'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
 
     expect(find.text('Vérifier l\'envoi'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('recipient-name')), matching: find.text('Josué K.')), findsOneWidget);
     expect(find.text('0,13 \$'), findsOneWidget);
     expect(find.text('12,63 \$'), findsOneWidget);
 

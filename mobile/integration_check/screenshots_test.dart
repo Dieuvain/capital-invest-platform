@@ -59,6 +59,11 @@ void main() {
         FakeServer.historyItem('d1e2f3', 'WITHDRAWAL', -40600, fee: 600, at: '2026-11-16T18:30:00Z',
             operator: 'AIRTEL', msisdn: '+243970000001'),
       ];
+    server.recentRecipients = [
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+      {'phone': '+243990000870', 'displayName': 'Patrick I.'},
+    ];
     server.scheduled = [
       FakeServer.scheduledTransfer('st-1', 'Béni Mukendi', 15000, 'MONTHLY', 5, note: 'Loyer', lastResult: 'SENT'),
       FakeServer.scheduledTransfer('st-2', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant')
@@ -138,8 +143,10 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('quick-Envoyer')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
+      await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
       await tester.enterText(find.byKey(const ValueKey('amount')), '150');
+      await tester.pump();
+      await shot('3a-envoi-recents$suffix');
       await tester.tap(find.text('Continuer'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');

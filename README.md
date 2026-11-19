@@ -291,6 +291,18 @@ Un client demande un montant à un autre client (menu « Demander de l'argent »
 - Contre le harcèlement : 10 demandes par client en 24 h, et 3 demandes en attente au plus vers un même client (`capital-invest.money-requests`).
 - API : `POST /v1/money-requests` (`payerPhone`, `amountMinor`, `note`, en-tête `Idempotency-Key`), `GET /v1/money-requests` (`toPay`, `recent`), `POST /v1/money-requests/{id}/pay` (`pin`), `/decline`, `/cancel`.
 
+## Vérifier le destinataire avant d'envoyer
+
+Un envoi au mauvais numéro ne se rattrape pas. Avant la confirmation par PIN, l'app affiche donc le **prénom et l'initiale** du destinataire (« Josué K. »), assez pour reconnaître un proche sans exposer le nom complet d'un inconnu. Un numéro sans compte est arrêté avant même le calcul des frais. Les derniers destinataires sont proposés en un geste.
+
+| Destinataires récents | Nom vérifié avant le PIN |
+|---|---|
+| ![](docs/captures-app/3a-envoi-recents.png) | ![](docs/captures-app/3-envoi-verification.png) |
+
+- Contre la collecte des noms : 30 numéros vérifiés par heure et par client (`capital-invest.recipients.max-lookups-per-hour`). Les numéros inconnus comptent aussi.
+- Même vérification pour un envoi programmé. Un compte suspendu ou fermé est signalé (« ne peut pas recevoir d'argent pour le moment »).
+- API : `GET /v1/transfers/recipient?phone=…` (`{"phone", "displayName"}`), `GET /v1/transfers/recent` (5 derniers destinataires).
+
 ## Envois programmés
 
 Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.

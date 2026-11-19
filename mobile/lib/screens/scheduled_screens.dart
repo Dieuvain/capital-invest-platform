@@ -175,6 +175,7 @@ class _NewScheduledTransferScreenState extends State<NewScheduledTransferScreen>
   int day = DateTime.now().day.clamp(1, 28);
   FeeQuote? quote;
   String? toPhone;
+  Recipient? recipient;
   ScheduledTransfer? done;
 
   Future<void> _review() async {
@@ -182,10 +183,13 @@ class _NewScheduledTransferScreenState extends State<NewScheduledTransferScreen>
     if (p == null) return setState(() => error = 'Numéro congolais attendu (9 chiffres après +243).');
     final minor = parseUsd(amount.text);
     if (minor == null) return setState(() => error = 'Entrez un montant, par exemple 25 ou 12,50.');
+    final who = await run(widget.app, () => widget.app.api.lookupRecipient(p));
+    if (who == null) return;
     final q = await run(widget.app, () => widget.app.api.transferFee(minor));
     if (q != null) {
       setState(() {
         toPhone = p;
+        recipient = who;
         quote = q;
       });
     }
@@ -245,7 +249,8 @@ class _NewScheduledTransferScreenState extends State<NewScheduledTransferScreen>
           SoftCard(
             child: Column(
               children: [
-                _Line('Destinataire', toPhone!),
+                _Line('Destinataire', recipient!.displayName),
+                _Line('Numéro', toPhone!),
                 _Line('Rythme', scheduleLabel(frequency, day)),
                 _Line('Montant reçu', formatUsd(q.amountMinor)),
                 _Line('Frais à chaque envoi', formatUsd(q.feeMinor)),
