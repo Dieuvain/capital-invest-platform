@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
+import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -24,6 +24,19 @@ export class FakeServer {
   /** Visuels reçus, par promotion. */
   images = new Map<string, File>()
   audit: AuditEntry[] = []
+  alerts: MonitoringAlert[] = [
+    {
+      id: 'al-1', rule: 'FAN_IN', ruleLabel: 'Argent reçu de nombreux clients', detail: '7 expéditeurs différents en 24 h, pour 640,00 $',
+      transactionId: 'tx-al1', status: 'OPEN', createdAt: '2026-11-19T08:40:00Z', customerId: 'c-1', customerName: 'Amani Kabeya',
+      customerPhone: '+243970000001', customerStatus: 'ACTIVE', kycLevel: 1,
+    },
+    {
+      id: 'al-0', rule: 'VELOCITY', ruleLabel: "Rafale d'opérations", detail: "12 sorties d'argent en 60 min, pour 84,00 $",
+      transactionId: 'tx-al0', status: 'DISMISSED', createdAt: '2026-11-17T15:00:00Z', customerId: 'c-2', customerName: 'Béni Mukendi',
+      customerPhone: '+243970000402', customerStatus: 'ACTIVE', kycLevel: 2, resolvedByName: 'Ruth Conformité',
+      resolvedAt: '2026-11-17T16:00:00Z', resolutionNote: 'Commerçant connu, paie ses fournisseurs',
+    },
+  ]
   customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
   history: HistoryItem[] = [
     item('w1', 'WITHDRAWAL', -1015, 15, { status: 'PENDING', operator: 'AIRTEL', msisdn: '+243970000001' }),
@@ -147,8 +160,31 @@ export class FakeServer {
       })
       return json(k)
     }
+    if (path.startsWith('/v1/backoffice/monitoring')) {
+      if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
+      if ((m = path.match(/^\/v1\/backoffice\/monitoring\/alerts\/([^/]+)\/resolve$/))) {
+        const a = this.alerts.find((x) => x.id === m![1])!
+        if (a.status !== 'OPEN') return problem(422, 'ALERT_ALREADY_RESOLVED', 'Cette alerte a déjà été traitée')
+        Object.assign(a, {
+          status: body.action === 'SUSPEND' ? 'ESCALATED' : 'DISMISSED', resolutionNote: body.note,
+          resolvedByName: me.fullName, resolvedAt: '2026-11-19T10:10:00Z',
+        })
+        if (body.action === 'SUSPEND') {
+          this.alerts.filter((x) => x.customerId === a.customerId).forEach((x) => { x.customerStatus = 'SUSPENDED' })
+          if (a.customerId === this.customer.id) this.customer.status = 'SUSPENDED'
+        }
+        return json(a)
+      }
+      const status = u.searchParams.get('status')
+      const cid = u.searchParams.get('customerId')
+      return json(this.alerts.filter((a) => (status === 'ALL' || (status === 'OPEN') === (a.status === 'OPEN')) && (!cid || a.customerId === cid)))
+    }
     if (path.startsWith('/v1/backoffice/customers')) {
       if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
+      if (path.endsWith('/status') && method === 'POST') {
+        this.customer.status = body.status
+        return json({ customerId: this.customer.id, status: body.status })
+      }
       if (path === '/v1/backoffice/customers') {
         const phone = u.searchParams.get('phone')!.replace(/[^+\d]/g, '')
         return phone === this.customer.phone ? json(this.customer) : problem(404, 'CUSTOMER_NOT_FOUND', 'Aucun client avec ce numéro')

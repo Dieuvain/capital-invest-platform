@@ -60,6 +60,16 @@ capital-invest:
     auto-payout-enabled: true
     auto-payout-min-minor: 1000
     auto-payout-cron: "0 30 1 * * *"  # heure de Lubumbashi, avant le rapprochement de 2 h
+  # Surveillance des opérations (anti-blanchiment). Seuils PROVISOIRES : à valider par la conformité.
+  monitoring:
+    enabled: true
+    velocity-count: 10            # sorties d'argent…
+    velocity-window-minutes: 60   # … en une heure
+    structuring-count: 3          # opérations en 24 h à 90 % ou plus du plafond par opération
+    structuring-percent-of-limit: 90
+    fan-in-senders: 5             # expéditeurs différents en 24 h
+    cash-out-percent: 80          # part retirée en 24 h…
+    cash-out-min-minor: 50000     # … de ce qui est entré, à partir de 500,00 $
   # Passage au KYC 2.
   kyc:
     # Clé AES-256 (base64, 32 octets) de chiffrement des pièces d'identité. A fournir en production.

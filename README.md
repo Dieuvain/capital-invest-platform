@@ -221,6 +221,24 @@ Ce que Capital Invest doit au marchand part vers son **compte mobile money de re
 - Activé par défaut pour chaque nouveau marchand ; un administrateur le coupe ou le remet depuis la fiche (`POST /v1/backoffice/merchants/{id}/auto-payout`, `enabled`). Toute la tâche se coupe avec `capital-invest.merchants.auto-payout-enabled: false`, l'heure se règle avec `auto-payout-cron`.
 - Pas encore fait : reversement vers un compte bancaire.
 
+## Surveillance des opérations (anti-blanchiment)
+
+Après chaque mouvement d'argent, le serveur regarde le comportement récent des clients concernés. Une règle franchie ouvre une alerte pour la conformité, dans le menu **Surveillance** du back-office. Rien n'est bloqué automatiquement, et le client n'est jamais prévenu : il ne doit pas savoir qu'il est surveillé.
+
+| Règle | Se déclenche quand… (seuils par défaut) |
+| --- | --- |
+| Rafale d'opérations | 10 sorties d'argent (envois, paiements, retraits) en une heure |
+| Montants juste sous le plafond | 3 opérations en 24 h à 90 % ou plus du plafond par opération du client |
+| Argent reçu de nombreux clients | 5 expéditeurs différents en 24 h (compte collecteur) |
+| Retrait aussitôt l'argent reçu | 80 % ou plus de ce qui est entré en 24 h retiré, à partir de 500,00 $ entrés |
+
+- Une seule alerte ouverte par client et par règle : la suivante attend que la première soit traitée.
+- La conformité (ou un administrateur) ouvre les opérations du client, puis **classe sans suite** ou **suspend le compte**, toujours avec une note. Un compte suspendu perd ses sessions, ne peut plus se connecter ni faire bouger son argent ; il se réactive depuis la fiche client, avec une note aussi. Tout passe au journal d'audit.
+- Le contrôle tourne après la fin de l'opération, dans sa propre transaction : une erreur de surveillance ne bloque jamais l'argent.
+- Seuils PROVISOIRES dans `capital-invest.monitoring` (`application.yml`) : à valider par la conformité, puis à ajuster avec les premiers mois d'activité réelle.
+- API : `GET /v1/backoffice/monitoring/alerts` (`status` : `OPEN`, `CLOSED` ou `ALL` ; `customerId` facultatif), `POST /v1/backoffice/monitoring/alerts/{id}/resolve` (`action` : `DISMISS` ou `SUSPEND`, `note`), `POST /v1/backoffice/customers/{id}/status` (`status` : `ACTIVE` ou `SUSPENDED`, `reason`).
+- Pas encore fait : déclaration de soupçon à la CENAREF depuis le back-office (aujourd'hui, la note garde la trace de la décision) et règles sur les marchands.
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.
