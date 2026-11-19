@@ -255,6 +255,7 @@ class HistoryService(
         } else if (kind == HistoryKind.AIRTIME || kind == HistoryKind.BILL_PAYMENT) {
             when (rs.getString(if (kind == HistoryKind.AIRTIME) "airtime_status" else "bill_status")) {
                 "PENDING" -> HistoryStatus.PENDING
+                "REVIEW" -> HistoryStatus.REVIEW
                 "FAILED" -> HistoryStatus.FAILED
                 else -> HistoryStatus.COMPLETED
             }

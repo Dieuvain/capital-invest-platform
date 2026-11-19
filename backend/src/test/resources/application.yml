@@ -23,3 +23,8 @@ capital-invest:
   merchants:
     # Les tests lancent eux-mêmes les reversements automatiques.
     auto-payout-enabled: false
+  airtime:
+    # Les tests relancent eux-mêmes les achats sans réponse.
+    poller-enabled: false
+  bills:
+    poller-enabled: false

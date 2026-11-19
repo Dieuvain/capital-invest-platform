@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.sql.ResultSet
 import java.time.Clock
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -51,12 +52,18 @@ enum class MobileNetwork(val label: String, val prefixes: Set<String>) {
     }
 }
 
-enum class AirtimeStatus { PENDING, DELIVERED, FAILED }
+/** REVIEW : toujours sans réponse sûre après 24 h, un agent tranche. */
+enum class AirtimeStatus { PENDING, DELIVERED, FAILED, REVIEW }
 
 @ConfigurationProperties("capital-invest.airtime")
 data class AirtimeProperties(
     val minAmountMinor: Long = 50,
     val maxAmountMinor: Long = 5_000,
+    /** Relance d'un achat sans réponse : d'abord après ce délai, puis de plus en plus espacée. */
+    val firstCheckAfter: Duration = Duration.ofMinutes(1),
+    /** Sans réponse sûre passé ce délai, un agent tranche : on ne rembourse jamais sur un doute. */
+    val reviewAfter: Duration = Duration.ofHours(24),
+    val pollerEnabled: Boolean = true,
 )
 
 data class AirtimePurchase(
@@ -85,18 +92,31 @@ sealed interface AirtimeResult {
 interface AirtimeConnector {
     val name: String
     fun send(purchaseId: UUID, network: MobileNetwork, msisdn: String, amountMinor: Long): AirtimeResult
+
+    /** Statut d'un envoi resté sans réponse sûre, relu chez le prestataire. */
+    fun check(purchaseId: UUID, network: MobileNetwork, msisdn: String, amountMinor: Long): AirtimeResult
 }
 
 /**
  * Simulateur, en attendant le contrat avec un agrégateur d'unités.
  * Un numéro qui finit par 0000 est refusé (numéro inactif), ce qui permet d'essayer le remboursement.
+ * Par 5555 : pas de réponse à l'envoi, unités confirmées à la relance. Par 6666 : jamais de réponse.
  */
 @Component
 class SimulatorAirtimeConnector : AirtimeConnector {
     override val name = "SIMULATOR"
 
     override fun send(purchaseId: UUID, network: MobileNetwork, msisdn: String, amountMinor: Long): AirtimeResult =
-        if (msisdn.endsWith("0000")) {
+        if (msisdn.endsWith("5555") || msisdn.endsWith("6666")) {
+            AirtimeResult.Unknown
+        } else {
+            check(purchaseId, network, msisdn, amountMinor)
+        }
+
+    override fun check(purchaseId: UUID, network: MobileNetwork, msisdn: String, amountMinor: Long): AirtimeResult =
+        if (msisdn.endsWith("6666")) {
+            AirtimeResult.Unknown
+        } else if (msisdn.endsWith("0000")) {
             AirtimeResult.Failed("Ce numéro n'est pas actif chez ${network.label}")
         } else {
             AirtimeResult.Delivered("SIM-AT-" + purchaseId.toString().take(8).uppercase())
@@ -161,11 +181,11 @@ class AirtimeService(
             val now = now()
             jdbc.sql(
                 """INSERT INTO airtime_purchase (id, customer_id, idempotency_key, network, msisdn, amount_minor, status, provider,
-                                                 hold_transaction_id, created_at, updated_at)
-                   VALUES (:id, :c, :key, :net, :msisdn, :amount, 'PENDING', :provider, :hold, :now, :now)""",
+                                                 hold_transaction_id, next_check_at, created_at, updated_at)
+                   VALUES (:id, :c, :key, :net, :msisdn, :amount, 'PENDING', :provider, :hold, :next, :now, :now)""",
             ).param("id", id).param("c", customerId).param("key", idempotencyKey).param("net", net.name)
                 .param("msisdn", normalized.removePrefix("+")).param("amount", amountMinor).param("provider", connector.name)
-                .param("hold", posting.transaction.id).param("now", now).update()
+                .param("hold", posting.transaction.id).param("next", now.plus(props.firstCheckAfter)).param("now", now).update()
             get(id) to true
         }!!
         if (!created) return purchase
@@ -175,13 +195,13 @@ class AirtimeService(
         return tx.execute { finish(purchase.id, result) }!!
     }
 
-    private fun finish(id: UUID, result: AirtimeResult): AirtimePurchase {
+    private fun finish(id: UUID, result: AirtimeResult, byAgent: Boolean = false): AirtimePurchase {
         val p = jdbc.sql("SELECT * FROM airtime_purchase WHERE id = :id FOR UPDATE").param("id", id).query(::map).single()
-        if (p.status != AirtimeStatus.PENDING) return p
+        if (p.status != AirtimeStatus.PENDING && !(byAgent && p.status == AirtimeStatus.REVIEW)) return p
         val now = now()
         when (result) {
             is AirtimeResult.Delivered -> jdbc.sql(
-                "UPDATE airtime_purchase SET status = 'DELIVERED', provider_reference = :ref, updated_at = :now WHERE id = :id",
+                "UPDATE airtime_purchase SET status = 'DELIVERED', provider_reference = :ref, next_check_at = NULL, updated_at = :now WHERE id = :id",
             ).param("ref", result.reference).param("now", now).param("id", id).update()
             is AirtimeResult.Failed -> {
                 val wallet = ledgerRepository.findCustomerWallet(customerOf(id), Currency.USD)!!
@@ -200,12 +220,56 @@ class AirtimeService(
                     ),
                 )
                 jdbc.sql(
-                    "UPDATE airtime_purchase SET status = 'FAILED', refund_transaction_id = :tx, updated_at = :now WHERE id = :id",
+                    "UPDATE airtime_purchase SET status = 'FAILED', refund_transaction_id = :tx, next_check_at = NULL, updated_at = :now WHERE id = :id",
                 ).param("tx", refund.transaction.id).param("now", now).param("id", id).update()
             }
             AirtimeResult.Unknown -> Unit
         }
         return get(id)
+    }
+
+    /** Relance les achats sans réponse dont l'heure est venue. Appelé chaque minute. */
+    fun checkDue(limit: Int = 50) {
+        val ids = jdbc.sql("SELECT id FROM airtime_purchase WHERE status = 'PENDING' AND next_check_at <= :now ORDER BY next_check_at LIMIT :limit")
+            .param("now", now()).param("limit", limit).query(UUID::class.java).list()
+        for (id in ids) runCatching { checkOne(id) }.onFailure { log.error("Relance du crédit {} : {}", id, it.toString()) }
+    }
+
+    fun checkOne(id: UUID): AirtimePurchase {
+        val p = get(id)
+        if (p.status != AirtimeStatus.PENDING) return p
+        val result = runCatching { connector.check(p.id, p.network, p.phone.removePrefix("+"), p.amountMinor) }
+            .getOrDefault(AirtimeResult.Unknown)
+        return tx.execute {
+            if (result != AirtimeResult.Unknown) return@execute finish(id, result)
+            val now = now()
+            val checks = jdbc.sql("SELECT checks FROM airtime_purchase WHERE id = :id FOR UPDATE").param("id", id).query(Int::class.java).single() + 1
+            if (!p.createdAt.plus(props.reviewAfter).isAfter(now)) {
+                jdbc.sql(
+                    """UPDATE airtime_purchase SET status = 'REVIEW', checks = :n, next_check_at = NULL, updated_at = :now,
+                              review_reason = :reason WHERE id = :id AND status = 'PENDING'""",
+                ).param("n", checks).param("now", now).param("id", id)
+                    .param("reason", "Pas de réponse sûre du prestataire après ${props.reviewAfter.toHours()} h").update()
+            } else {
+                val wait = props.firstCheckAfter.multipliedBy(1L shl checks.coerceAtMost(6)).coerceAtMost(Duration.ofHours(1))
+                jdbc.sql("UPDATE airtime_purchase SET checks = :n, next_check_at = :next, updated_at = :now WHERE id = :id AND status = 'PENDING'")
+                    .param("n", checks).param("next", now.plus(wait)).param("now", now).param("id", id).update()
+            }
+            get(id)
+        }!!
+    }
+
+    /**
+     * Décision d'un agent sur un achat sans réponse, après vérification auprès du prestataire.
+     * Rembourser des unités en fait parties ferait perdre l'argent à Capital Invest : le motif est obligatoire.
+     */
+    fun resolve(id: UUID, delivered: Boolean, note: String): AirtimePurchase {
+        val p = get(id)
+        if (p.status != AirtimeStatus.PENDING && p.status != AirtimeStatus.REVIEW) {
+            throw BusinessException("ALREADY_RESOLVED", "Cet achat est déjà terminé")
+        }
+        val result = if (delivered) AirtimeResult.Delivered("AGENT: ${note.take(80)}") else AirtimeResult.Failed("Le prestataire n'a pas pu envoyer le crédit")
+        return tx.execute { finish(id, result, byAgent = true) }!!
     }
 
     private fun customerOf(id: UUID): UUID =

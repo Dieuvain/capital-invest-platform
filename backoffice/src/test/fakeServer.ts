@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -60,6 +60,18 @@ export class FakeServer {
       id: 'w-review', type: 'WITHDRAWAL', operator: 'AIRTEL', provider: 'PAWAPAY', amountMinor: 3000, currency: 'USD',
       reason: 'Aucune réponse définitive après 24 h (toujours en cours chez l\'opérateur)', customerName: 'Esther Mbuyi',
       customerPhone: '+243970000005', checks: 12, createdAt: '2026-11-18T09:00:00Z',
+    },
+  ]
+  purchases: PendingPurchase[] = [
+    {
+      type: 'BILL', id: 'b-review', customerName: 'Amani Kabeya', customerPhone: '+243970000001', label: 'SNEL prépayé',
+      target: '01234567890', holderName: 'KABEYA AMANI', needsToken: true, amountMinor: 2000, provider: 'SIMULATOR',
+      status: 'REVIEW', reason: 'Aucune réponse définitive après 24 h', checks: 14, createdAt: '2026-11-18T08:30:00Z',
+    },
+    {
+      type: 'AIRTIME', id: 'a-review', customerName: 'Esther Mbuyi', customerPhone: '+243970000005', label: 'Crédit Vodacom',
+      target: '+243812345678', holderName: null, needsToken: false, amountMinor: 500, provider: 'SIMULATOR',
+      status: 'PENDING', reason: null, checks: 3, createdAt: '2026-11-19T09:00:00Z',
     },
   ]
   runs: ReconciliationRun[] = [
@@ -345,7 +357,16 @@ export class FakeServer {
       if (!a.active) for (const [t, id] of this.sessions) if (id === a.id) this.sessions.delete(t)
       return json(a)
     }
-    if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals)/.test(path)) {
+    if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals|purchases|airtime|bills)/.test(path)) {
+      if (path === '/v1/backoffice/purchases/review') return json(this.purchases)
+      if ((m = path.match(/^\/v1\/backoffice\/(airtime|bills)\/([^/]+)\/resolve$/))) {
+        const p = this.purchases.find((x) => x.id === m![2])!
+        if (body.action === 'DONE' && p.needsToken && !/^\d{20}$/.test(String(body.token ?? '').replace(/\D/g, ''))) {
+          return problem(422, 'TOKEN_REQUIRED', 'Le code du compteur (20 chiffres) est obligatoire')
+        }
+        this.purchases = this.purchases.filter((x) => x.id !== p.id)
+        return json({ id: p.id, status: body.action === 'DONE' ? (p.type === 'AIRTIME' ? 'DELIVERED' : 'PAID') : 'FAILED' })
+      }
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
       if (path === '/v1/backoffice/topups/review') return json(this.review)
       if ((m = path.match(/^\/v1\/backoffice\/topups\/([^/]+)\/resolve$/))) {
