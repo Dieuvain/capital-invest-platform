@@ -5,6 +5,7 @@ import cd.capitalinvest.platform.common.ConflictException
 import cd.capitalinvest.platform.common.Currency
 import cd.capitalinvest.platform.common.NotFoundException
 import cd.capitalinvest.platform.customers.CustomerRepository
+import cd.capitalinvest.platform.notifications.NotificationService
 import cd.capitalinvest.platform.ledger.Direction
 import cd.capitalinvest.platform.ledger.LedgerRepository
 import cd.capitalinvest.platform.ledger.LedgerService
@@ -142,6 +143,7 @@ class WithdrawalService(
     private val properties: MobileMoneyProperties,
     private val tx: TransactionTemplate,
     private val clock: Clock,
+    private val notifications: NotificationService,
 ) {
     companion object {
         const val IN_TRANSIT = "PAYOUTS_IN_TRANSIT_USD"
@@ -284,6 +286,7 @@ class WithdrawalService(
             ),
         )
         withdrawals.finish(w.id, TopupStatus.CONFIRMED, now, transactionId = result.transaction.id, reference = reference)
+        notifications.withdrawalPaid(w.id, w.customerId, w.operator, w.msisdn, paidMinor, result.transaction.id)
     }
 
     /** Échec certain : montant et frais reviennent au client. */

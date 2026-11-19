@@ -1,6 +1,6 @@
 package cd.capitalinvest.platform.kyc
 
-import cd.capitalinvest.platform.auth.SmsGateway
+import cd.capitalinvest.platform.notifications.NotificationService
 import cd.capitalinvest.platform.backoffice.AgentPrincipal
 import cd.capitalinvest.platform.backoffice.AgentRole
 import cd.capitalinvest.platform.backoffice.ForbiddenException
@@ -61,7 +61,7 @@ class KycService(
     private val screening: SanctionsScreening,
     private val customers: CustomerRepository,
     private val audit: AuditLog,
-    private val sms: SmsGateway,
+    private val notifications: NotificationService,
     private val props: KycProperties,
     private val clock: Clock,
 ) {
@@ -187,7 +187,7 @@ class KycService(
         decide(id, agent, KycStatus.APPROVED, null)
         jdbc.sql("UPDATE customer SET kyc_level = 2 WHERE id = :c").param("c", request.customerId).update()
         audit.record(ActorType.AGENT, agent.id, "KYC_APPROVED", "KYC_REQUEST", id)
-        sms.send(request.customerPhone, "Capital Invest : votre compte passe au niveau 2. Vos plafonds sont relevés.")
+        notifications.kycDecided(request.customerId, id, approved = true)
         return find(id)
     }
 
@@ -196,7 +196,7 @@ class KycService(
         val request = lockPending(id)
         decide(id, agent, KycStatus.REJECTED, reason.trim().take(300))
         audit.record(ActorType.AGENT, agent.id, "KYC_REJECTED", "KYC_REQUEST", id, reason)
-        sms.send(request.customerPhone, "Capital Invest : votre demande de niveau 2 n'a pas été acceptée. Ouvrez l'app pour voir pourquoi.")
+        notifications.kycDecided(request.customerId, id, approved = false)
         return find(id)
     }
 
