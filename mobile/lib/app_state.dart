@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'api/api_client.dart';
 import 'api/models.dart';
@@ -12,6 +13,9 @@ class AppState extends ChangeNotifier {
 
   final ApiClient api;
   final String deviceId;
+
+  /// Ouvre le partage du téléphone (WhatsApp, SMS…). Remplacé dans les tests.
+  Future<void> Function(String text, String subject) share = _systemShare;
   Customer? customer;
 
   /// Clair, sombre, ou comme le téléphone (par défaut).
@@ -56,4 +60,8 @@ class AppState extends ChangeNotifier {
     final r = Random.secure();
     return 'app-${List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
   }
+}
+
+Future<void> _systemShare(String text, String subject) async {
+  await SharePlus.instance.share(ShareParams(text: text, subject: subject));
 }

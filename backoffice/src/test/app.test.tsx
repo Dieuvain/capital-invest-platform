@@ -43,8 +43,8 @@ describe('connexion', () => {
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -221,6 +221,37 @@ describe('promotions', () => {
     expect(await screen.findByRole('status')).toHaveTextContent("Promotion retirée de l'app")
     expect(await screen.findByText('Retirée')).toBeInTheDocument()
     expect(server.promotions[0].active).toBe(false)
+  })
+})
+
+describe('clients', () => {
+  it('la conformité retrouve un client, filtre ses opérations et ouvre un reçu', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243 970 000 999')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Aucun client avec ce numéro')
+
+    await user.clear(screen.getByLabelText('Numéro du client'))
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    expect(await screen.findByText('Amani Kabeya')).toBeInTheDocument()
+    expect(screen.getByText('47,50 $')).toBeInTheDocument()
+    expect(await screen.findByText('Envoi à Béni Mukendi')).toBeInTheDocument()
+    expect(screen.getByText('En cours')).toBeInTheDocument()
+    expect(screen.getByText('-20,20 $')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Voir plus' }))
+    expect(await screen.findByText('Recharge M-Pesa')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Voir plus' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Envois' }))
+    await waitFor(() => expect(screen.queryByText('Retrait vers Airtel Money')).not.toBeInTheDocument())
+    await user.click(screen.getByText('Envoi à Béni Mukendi'))
+    const receipt = await screen.findByRole('complementary', { name: 'Reçu' })
+    expect(await within(receipt).findByText('CI-20261118-0000S1')).toBeInTheDocument()
+    expect(within(receipt).getByText('+243970000402')).toBeInTheDocument()
+    expect(within(receipt).getByText('Loyer')).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/clients/c-1')
   })
 })
 

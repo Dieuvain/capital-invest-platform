@@ -1,4 +1,4 @@
-import type { Agent, AuditEntry, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
+import type { Agent, HistoryItem, AuditEntry, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -24,6 +24,12 @@ export class FakeServer {
   /** Visuels reçus, par promotion. */
   images = new Map<string, File>()
   audit: AuditEntry[] = []
+  customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
+  history: HistoryItem[] = [
+    item('w1', 'WITHDRAWAL', -1015, 15, { status: 'PENDING', operator: 'AIRTEL', msisdn: '+243970000001' }),
+    item('s1', 'TRANSFER_SENT', -2020, 20, { counterpartyName: 'Béni Mukendi', counterpartyPhone: '+243970000402', note: 'Loyer' }),
+    item('t1', 'TOPUP', 7785, 0, { operator: 'MPESA' }),
+  ]
   review: ReviewTopup[] = [
     {
       id: 't-review', type: 'TOPUP', operator: 'MPESA', provider: 'PAWAPAY', amountMinor: 5000, currency: 'USD',
@@ -121,6 +127,27 @@ export class FakeServer {
       })
       return json(k)
     }
+    if (path.startsWith('/v1/backoffice/customers')) {
+      if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')
+      if (path === '/v1/backoffice/customers') {
+        const phone = u.searchParams.get('phone')!.replace(/[^+\d]/g, '')
+        return phone === this.customer.phone ? json(this.customer) : problem(404, 'CUSTOMER_NOT_FOUND', 'Aucun client avec ce numéro')
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/customers\/[^/]+\/history\/([^/]+)$/))) {
+        const i = this.history.find((h) => h.id === m![1])
+        return i ? json({ item: i, holderName: this.customer.fullName, holderPhone: this.customer.phone, issuedAt: '2026-11-19T10:00:00Z' })
+          : problem(404, 'OPERATION_NOT_FOUND', 'Opération introuvable')
+      }
+      if (path.endsWith('/history')) {
+        const cat = u.searchParams.get('category')
+        const kinds: Record<string, string[]> = { TOPUP: ['TOPUP'], TRANSFER: ['TRANSFER_SENT', 'TRANSFER_RECEIVED'], WITHDRAWAL: ['WITHDRAWAL', 'WITHDRAWAL_REFUND'] }
+        const all = this.history.filter((h) => !cat || kinds[cat].includes(h.kind))
+        // Deux opérations par page, pour exercer « Voir plus ».
+        const start = Number(u.searchParams.get('cursor') ?? 0)
+        return json({ items: all.slice(start, start + 2), nextCursor: start + 2 < all.length ? String(start + 2) : null })
+      }
+      return json(this.customer)
+    }
     if (path.startsWith('/v1/backoffice/promotions')) {
       if (method !== 'GET' && !role('MARKETING', 'ADMIN')) return problem(403, 'MARKETING_ONLY', 'Réservé au marketing')
       if (path === '/v1/backoffice/promotions' && method === 'GET') return json(this.promotions)
@@ -207,5 +234,12 @@ function request(id: string, name: string, phone: string, screening: 'CLEAR' | '
     birthDate: '1990-05-12', idFrontDoc: `${id}-front`, idBackDoc: `${id}-back`, selfieDoc: `${id}-selfie`,
     screeningResult: screening, screeningDetail: screening === 'HIT' ? 'Liste simulée : Mutombo Fictif Sanction' : null,
     status: 'PENDING', decidedBy: null, decidedAt: null, rejectionReason: null, createdAt,
+  }
+}
+
+function item(id: string, kind: HistoryItem['kind'], net: number, fee: number, extra: Partial<HistoryItem> = {}): HistoryItem {
+  return {
+    id, receiptNumber: `CI-20261118-${id.toUpperCase().padStart(6, '0')}`, kind, status: 'COMPLETED',
+    amountMinor: Math.abs(net) - fee, feeMinor: fee, netMinor: net, currency: 'USD', createdAt: '2026-11-18T10:00:00Z', ...extra,
   }
 }

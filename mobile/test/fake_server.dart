@@ -41,7 +41,37 @@ class FakeServer {
   /// Réponse de l'opérateur au retrait en cours.
   Map<String, dynamic> withdrawalOutcome = {'status': 'CONFIRMED'};
   int _withdrawn = 0;
-  List<(int, String, int, String)> entries = [(1, 'CREDIT', 5000, '2026-11-18T10:00:00Z')];
+  /// Historique servi par /v1/me/history, du plus récent au plus ancien.
+  List<Map<String, dynamic>> history = [historyItem('h-1', 'TOPUP', 5000, at: '2026-11-18T10:00:00Z', operator: 'MPESA')];
+
+  static Map<String, dynamic> historyItem(
+    String id,
+    String kind,
+    int net, {
+    int fee = 0,
+    String at = '2026-11-18T10:00:00Z',
+    String status = 'COMPLETED',
+    String? name,
+    String? phone,
+    String? operator,
+    String? msisdn,
+    String? note,
+  }) => {
+    'id': id,
+    'receiptNumber': 'CI-20261118-${id.toUpperCase().replaceAll('-', '').padLeft(6, '0')}',
+    'kind': kind,
+    'status': status,
+    'amountMinor': net.abs() - fee,
+    'feeMinor': fee,
+    'netMinor': net,
+    'currency': 'USD',
+    'createdAt': at,
+    'counterpartyName': ?name,
+    'counterpartyPhone': ?phone,
+    'operator': ?operator,
+    'msisdn': ?msisdn,
+    'note': ?note,
+  };
 
   static const token = 'jeton-test';
 
@@ -73,6 +103,12 @@ class FakeServer {
       if (bytes == null) return _error(404, 'PROMOTION_IMAGE_NOT_FOUND', 'Pas de visuel');
       return http.Response.bytes(bytes, 200, headers: {'content-type': 'image/png'});
     }
+    final receipt = RegExp(r'^/v1/me/history/([^/]+)$').firstMatch(path);
+    if (receipt != null) {
+      final item = history.where((h) => h['id'] == receipt.group(1)).firstOrNull;
+      if (item == null) return _error(404, 'OPERATION_NOT_FOUND', 'Opération introuvable');
+      return _json({'item': item, 'holderName': 'Amani Kabeya', 'holderPhone': '+243970000001', 'issuedAt': '2026-11-19T10:00:00Z'});
+    }
     switch ((req.method, path)) {
       case ('POST', '/v1/auth/login'):
         final b = body();
@@ -95,19 +131,19 @@ class FakeServer {
           'dailyOutRemainingMinor': 50000,
           'maxBalanceMinor': 100000,
         });
-      case ('GET', '/v1/me/entries'):
-        return _json([
-          for (final (i, d, a, at) in entries)
-            {
-              'id': 'e-$i',
-              'transactionId': 't-$i',
-              'accountId': 'w-1',
-              'direction': d,
-              'amountMinor': a,
-              'currency': 'USD',
-              'createdAt': at,
-            },
-        ]);
+      case ('GET', '/v1/me/history'):
+        final category = req.url.queryParameters['category'];
+        final kinds = switch (category) {
+          'TOPUP' => ['TOPUP'],
+          'TRANSFER' => ['TRANSFER_SENT', 'TRANSFER_RECEIVED'],
+          'WITHDRAWAL' => ['WITHDRAWAL', 'WITHDRAWAL_REFUND'],
+          _ => null,
+        };
+        final all = history.where((h) => kinds == null || kinds.contains(h['kind'])).toList();
+        final limit = int.parse(req.url.queryParameters['limit'] ?? '30');
+        final start = int.parse(req.url.queryParameters['cursor'] ?? '0');
+        final end = (start + limit).clamp(0, all.length);
+        return _json({'items': all.sublist(start, end), 'nextCursor': end < all.length ? '$end' : null});
       case ('GET', '/v1/transfers/fee'):
         final a = int.parse(req.url.queryParameters['amountMinor']!);
         final fee = ((a * 100 + 5000) ~/ 10000).clamp(10, 500);

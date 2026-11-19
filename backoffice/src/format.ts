@@ -1,4 +1,4 @@
-import type { AuditEntry, DiscrepancyKind, KycRequest, Operator, PromoAction, PromoAudience, PromoStyle, Role } from './api'
+import type { AuditEntry, DiscrepancyKind, HistoryItem, KycRequest, Operator, PromoAction, PromoAudience, PromoStyle, Role } from './api'
 
 export const roleLabel: Record<Role, string> = {
   KYC_AGENT: 'Agent KYC',
@@ -49,6 +49,7 @@ const auditLabels: Record<string, string> = {
   RECONCILIATION_CLOSE: 'Écart clos',
   WITHDRAWAL_REVIEW_PAID: 'Retrait vérifié : versé',
   WITHDRAWAL_REVIEW_REFUND: 'Retrait vérifié : remboursé',
+  CUSTOMER_VIEWED: 'Fiche client consultée',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 
@@ -136,3 +137,25 @@ export const kindLabel: Record<DiscrepancyKind, { title: string; help: string; t
 const usd = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 /** 125075 → « 1 250,75 $ » (espaces insécables normalisés pour l'affichage et les tests). */
 export const formatUsd = (minor: number) => `${usd.format(minor / 100).replace(/\s/g, ' ')} $`
+
+/** Titre d'une opération du point de vue du client. */
+export function historyTitle(i: HistoryItem): string {
+  const op = i.operator ? operatorLabel[i.operator] : null
+  switch (i.kind) {
+    case 'TOPUP': return op ? `Recharge ${op}` : 'Recharge'
+    case 'TRANSFER_SENT': return `Envoi à ${i.counterpartyName ?? 'un client'}`
+    case 'TRANSFER_RECEIVED': return `Reçu de ${i.counterpartyName ?? 'un client'}`
+    case 'WITHDRAWAL': return `Retrait vers ${op ?? 'mobile money'}`
+    case 'WITHDRAWAL_REFUND': return 'Retrait remboursé'
+    default: return 'Correction de solde'
+  }
+}
+
+export const historyStatus: Record<HistoryItem['status'], { label: string; cls: string } | null> = {
+  COMPLETED: null,
+  PENDING: { label: 'En cours', cls: 'wait' },
+  REVIEW: { label: 'En vérification', cls: 'wait' },
+  FAILED: { label: 'Refusé, remboursé', cls: 'alert' },
+}
+
+export const formatSigned = (minor: number) => `${minor > 0 ? '+' : ''}${formatUsd(minor)}`

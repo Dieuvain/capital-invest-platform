@@ -44,3 +44,10 @@ String? pinProblem(String pin) {
   if (asc.contains(pin) || desc.contains(pin)) return 'PIN trop simple (suite de chiffres)';
   return null;
 }
+
+/// « 14:05 · 19 nov. 2026 », à l'heure du téléphone.
+String formatDateTime(DateTime at) {
+  final d = at.toLocal();
+  const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} · ${d.day} ${months[d.month - 1]} ${d.year}';
+}

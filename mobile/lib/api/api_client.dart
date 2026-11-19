@@ -135,8 +135,13 @@ class ApiClient {
 
   Future<Limits> limits() async => Limits.fromJson(await _get('/v1/me/limits'));
 
-  Future<List<Entry>> entries({int limit = 20}) async =>
-      ((await _get('/v1/me/entries', {'limit': '$limit'})) as List).map((e) => Entry.fromJson(e)).toList();
+  /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
+  Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async => HistoryPage.fromJson(
+    await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}),
+  );
+
+  Future<Receipt> receipt(String id) async => Receipt.fromJson(await _get('/v1/me/history/$id'));
+
 
   // ---- Argent --------------------------------------------------------------------------------
 

@@ -50,26 +50,6 @@ class Limits {
   );
 }
 
-class Entry {
-  Entry({required this.id, required this.direction, required this.amountMinor, required this.createdAt});
-
-  final String id;
-
-  /// CREDIT : argent reçu ; DEBIT : argent sorti (envoi ou frais).
-  final String direction;
-  final int amountMinor;
-  final DateTime createdAt;
-
-  bool get isCredit => direction == 'CREDIT';
-
-  factory Entry.fromJson(Map<String, dynamic> j) => Entry(
-    id: j['id'],
-    direction: j['direction'],
-    amountMinor: j['amountMinor'],
-    createdAt: DateTime.parse(j['createdAt']),
-  );
-}
-
 class FeeQuote {
   FeeQuote({required this.amountMinor, required this.feeMinor, required this.totalMinor});
 
@@ -220,4 +200,91 @@ class Promotion {
     style: j['style'] ?? 'OCHRE',
     imageUrl: j['imageUrl'],
   );
+}
+
+/// Une opération de l'historique : une ligne par opération (pas par écriture comptable).
+class HistoryItem {
+  HistoryItem({
+    required this.id,
+    required this.receiptNumber,
+    required this.kind,
+    required this.status,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.netMinor,
+    required this.createdAt,
+    this.counterpartyName,
+    this.counterpartyPhone,
+    this.operator,
+    this.msisdn,
+    this.note,
+    this.failureMessage,
+  });
+
+  final String id;
+  final String receiptNumber;
+
+  /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, ADJUSTMENT.
+  final String kind;
+
+  /// COMPLETED, PENDING, REVIEW ou FAILED.
+  final String status;
+  final int amountMinor;
+  final int feeMinor;
+
+  /// Effet sur le solde : positif quand l'argent entre.
+  final int netMinor;
+  final DateTime createdAt;
+  final String? counterpartyName;
+  final String? counterpartyPhone;
+  final String? operator;
+  final String? msisdn;
+  final String? note;
+  final String? failureMessage;
+
+  bool get isIn => netMinor > 0;
+
+  /// Nom lisible de l'opérateur (M-Pesa…), si l'opération passe par le mobile money.
+  String? get operatorLabel => Operator.values.where((o) => o.apiName == operator).firstOrNull?.label;
+
+  factory HistoryItem.fromJson(Map<String, dynamic> j) => HistoryItem(
+    id: j['id'],
+    receiptNumber: j['receiptNumber'],
+    kind: j['kind'],
+    status: j['status'] ?? 'COMPLETED',
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'] ?? 0,
+    netMinor: j['netMinor'],
+    createdAt: DateTime.parse(j['createdAt']),
+    counterpartyName: j['counterpartyName'],
+    counterpartyPhone: j['counterpartyPhone'],
+    operator: j['operator'],
+    msisdn: j['msisdn'],
+    note: j['note'],
+    failureMessage: j['failureMessage'],
+  );
+}
+
+class HistoryPage {
+  HistoryPage(this.items, this.nextCursor);
+
+  final List<HistoryItem> items;
+
+  /// Null : il n'y a plus rien à charger.
+  final String? nextCursor;
+
+  factory HistoryPage.fromJson(Map<String, dynamic> j) =>
+      HistoryPage((j['items'] as List).map((e) => HistoryItem.fromJson(e)).toList(), j['nextCursor']);
+}
+
+/// Reçu d'une opération, à montrer ou à partager.
+class Receipt {
+  Receipt({required this.item, required this.holderName, required this.holderPhone});
+
+  final HistoryItem item;
+  final String holderName;
+  final String holderPhone;
+
+  factory Receipt.fromJson(Map<String, dynamic> j) =>
+      Receipt(item: HistoryItem.fromJson(j['item']), holderName: j['holderName'], holderPhone: j['holderPhone']);
 }
