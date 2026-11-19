@@ -339,6 +339,10 @@ data class CustomerSummary(
     val savingsMinor: Long = 0,
     /** Bloqué par le client lui-même (téléphone perdu ou volé) : à débloquer après vérification de sa pièce d'identité. */
     val blockedByCustomerAt: java.time.OffsetDateTime? = null,
+    /** Plafond d'envoi journalier choisi par le client ; null : celui de son niveau. */
+    val personalDailyOutMinor: Long? = null,
+    /** Hausse de ce plafond en attente (24 h après la demande). */
+    val pendingDailyOut: cd.capitalinvest.platform.limits.PendingDailyLimit? = null,
 )
 
 @RestController
@@ -349,6 +353,7 @@ class BackofficeCustomerController(
     private val ledger: LedgerRepository,
     private val history: HistoryService,
     private val audit: AuditLog,
+    private val limits: cd.capitalinvest.platform.limits.LimitsService,
 ) {
     /** Conformité et administrateurs : les autres rôles n'ont pas à lire les opérations des clients. */
     private fun requireAccess(me: AgentPrincipal) {
@@ -398,8 +403,10 @@ class BackofficeCustomerController(
 
     private fun summary(c: Customer): CustomerSummary {
         val wallet = ledger.findCustomerWallet(c.id, Currency.USD)
+        val personal = limits.personalLimit(c.id)
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
-        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt)
+        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt,
+            personal.dailyOutMinor, personal.pending)
     }
 }

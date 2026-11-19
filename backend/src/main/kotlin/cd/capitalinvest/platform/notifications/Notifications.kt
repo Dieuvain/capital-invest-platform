@@ -55,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING
 }
 
 data class NotificationView(
@@ -230,6 +230,17 @@ class NotificationService(
             NotificationKind.ACCOUNT_BLOCKED, "Compte bloqué",
             "Votre compte est bloqué à votre demande : plus personne ne peut se connecter ni envoyer votre argent. Pour le débloquer, présentez-vous en agence avec votre pièce d'identité.",
             "Capital Invest: votre compte est bloque a votre demande. Pour le debloquer, presentez-vous en agence avec votre piece d'identite.",
+        ),
+        null,
+    )
+
+    /** Hausse du plafond demandée : le SMS laisse 24 h au vrai titulaire pour réagir si ce n'est pas lui. */
+    fun dailyLimitRaisePending(customerId: UUID, dailyOutMinor: Long, hours: Long, at: OffsetDateTime) = queue(
+        customerId, "limit-raise:$customerId:${at.toEpochSecond()}",
+        Draft(
+            NotificationKind.DAILY_LIMIT_RAISE_PENDING, "Hausse du plafond demandée",
+            "Votre plafond d'envoi passera à ${money(dailyOutMinor)} par jour dans $hours heures. Si ce n'est pas vous, annulez la hausse dans Sécurité ou bloquez votre compte.",
+            "Capital Invest: votre plafond d'envoi passera a ${ascii(money(dailyOutMinor))} par jour dans $hours h. Si ce n'est pas vous, bloquez votre compte.",
         ),
         null,
     )

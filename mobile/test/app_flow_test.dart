@@ -524,6 +524,40 @@ void main() {
     expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));
   });
 
+  testWidgets('plafond par jour : baisser tout de suite, remonter après 24 h, annuler la hausse', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('daily-limit-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text('600,00\u00A0\$ par jour'), findsOneWidget);
+    expect(find.text('Le plafond de votre niveau 1.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('preset-5000')));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(server.personalDailyLimit, 5000);
+    expect(find.text('Plafond changé : 50,00\u00A0\$ par jour, dès maintenant.'), findsOneWidget);
+    expect(find.text('50,00\u00A0\$ par jour'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('amount')), '200');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hausse enregistrée'), findsOneWidget);
+    expect(find.textContaining('Passera à 200,00\u00A0\$'), findsOneWidget);
+    expect(find.text('50,00\u00A0\$ par jour'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cancel-raise')));
+    await tester.pumpAndSettle();
+    expect(server.pendingDailyLimit, isNull);
+    expect(find.text('Hausse annulée. Votre plafond reste à 50,00\u00A0\$ par jour.'), findsOneWidget);
+  });
+
   testWidgets('téléphone volé : bloquer son compte depuis Sécurité, PIN redemandé, retour à l\'accueil', (tester) async {
     await start(tester);
     await login(tester);

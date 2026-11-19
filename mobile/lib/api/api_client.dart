@@ -309,6 +309,13 @@ class ApiClient {
 
   Future<Limits> limits() async => Limits.fromJson(await _get('/v1/me/limits'));
 
+  /// Plafond d'envoi par jour choisi par le client ([minor] null : celui du niveau). Une hausse attend 24 h.
+  Future<Limits> setDailyLimit(int? minor, String pin) async =>
+      Limits.fromJson(await _put('/v1/me/limits/daily', {'dailyOutMinor': minor, 'pin': pin}));
+
+  /// Annule la hausse en attente : le plafond actuel reste.
+  Future<Limits> cancelDailyLimitRaise() async => Limits.fromJson(await _delete('/v1/me/limits/daily/pending'));
+
   /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
   Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async =>
       HistoryPage.fromJson(await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}));

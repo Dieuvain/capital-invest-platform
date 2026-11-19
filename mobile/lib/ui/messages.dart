@@ -31,6 +31,8 @@ String messageFor(Object error) {
     'RECIPIENT_NOT_ACTIVE' => 'Ce compte ne peut pas recevoir d\'argent pour le moment.',
     'SAME_ACCOUNT' => 'Vous ne pouvez pas vous envoyer de l\'argent.',
     'LIMIT_PER_TRANSACTION' => 'Montant au-dessus de votre plafond par opération.',
+    'LIMIT_DAILY_PERSONAL' => 'Plafond par jour que vous avez choisi atteint. Vous pouvez le changer dans Sécurité.',
+    'INVALID_DAILY_LIMIT' => error.detail,
     'LIMIT_DAILY' => 'Plafond journalier d\'envoi atteint.',
     'LIMIT_MAX_BALANCE' => 'Cette recharge dépasserait votre solde maximal.',
     'RECIPIENT_LIMIT_REACHED' => 'Le destinataire ne peut pas recevoir ce montant.',

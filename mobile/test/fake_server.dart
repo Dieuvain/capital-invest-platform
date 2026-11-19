@@ -77,6 +77,26 @@ class FakeServer {
     },
   };
 
+  /// Plafond d'envoi par jour choisi par le client (null : celui du niveau) et hausse en attente.
+  int? personalDailyLimit;
+  Map<String, dynamic>? pendingDailyLimit;
+
+  Map<String, dynamic> _limits() {
+    final daily = personalDailyLimit ?? 60000;
+    return {
+      'kycLevel': kycLevel,
+      'perTransactionMinor': kycLevel == 1 ? 20000 : 400000,
+      'dailyOutMinor': daily,
+      'dailyOutUsedMinor': 10000,
+      'dailyOutRemainingMinor': (daily - 10000).clamp(0, daily),
+      'maxBalanceMinor': 100000,
+      'levelDailyOutMinor': 60000,
+      'personalDailyOutMinor': personalDailyLimit,
+      'pendingDailyOut': pendingDailyLimit,
+      'personalMinMinor': 1000,
+    };
+  }
+
   /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
   bool blocked = false;
 
@@ -460,14 +480,22 @@ class FakeServer {
       case ('GET', '/v1/me/balance'):
         return _json({'accountId': 'w-1', 'currency': 'USD', 'balanceMinor': balance});
       case ('GET', '/v1/me/limits'):
-        return _json({
-          'kycLevel': kycLevel,
-          'perTransactionMinor': kycLevel == 1 ? 20000 : 400000,
-          'dailyOutMinor': 60000,
-          'dailyOutUsedMinor': 10000,
-          'dailyOutRemainingMinor': 50000,
-          'maxBalanceMinor': 100000,
-        });
+        return _json(_limits());
+      case ('PUT', '/v1/me/limits/daily'):
+        final b = body();
+        if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        final int? v = b['dailyOutMinor'];
+        if (v != null && (v < 1000 || v > 60000)) return _error(422, 'INVALID_DAILY_LIMIT', 'Choisissez entre 10,00 \$ et 600,00 \$');
+        if ((v ?? 60000) <= (personalDailyLimit ?? 60000)) {
+          personalDailyLimit = v != null && v < 60000 ? v : null;
+          pendingDailyLimit = null;
+        } else {
+          pendingDailyLimit = {'dailyOutMinor': v, 'effectiveAt': '2026-11-20T13:05:00Z'};
+        }
+        return _json(_limits());
+      case ('DELETE', '/v1/me/limits/daily/pending'):
+        pendingDailyLimit = null;
+        return _json(_limits());
       case ('GET', '/v1/me/history'):
         final category = req.url.queryParameters['category'];
         final kinds = switch (category) {

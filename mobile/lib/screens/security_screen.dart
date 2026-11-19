@@ -7,6 +7,7 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'block_screens.dart';
+import 'limit_screen.dart';
 
 /// Sécurité du compte : changer son PIN, voir où le compte a été ouvert, déconnecter les autres téléphones.
 class SecurityScreen extends StatefulWidget {
@@ -96,6 +97,30 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
                   children: [
                     const Text('Changer mon PIN', style: TextStyle(fontWeight: FontWeight.w600)),
                     Text('Avec votre PIN actuel', style: TextStyle(color: context.pal.muted, fontSize: 13)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SoftCard(
+          key: const ValueKey('daily-limit-entry'),
+          onTap: busy
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DailyLimitScreen(app: widget.app))),
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Row(
+            children: [
+              const IconTile(Icons.speed_rounded, size: 42),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Plafond d\'envoi par jour', style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text('Baissez-le : un voleur ne pourra pas tout prendre', style: TextStyle(color: context.pal.muted, fontSize: 13)),
                   ],
                 ),
               ),

@@ -127,6 +127,13 @@ function CustomerFile({ api, customer, notify, changed }: {
           <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? (customer.blockedByCustomerAt ? 'bloqué par le client' : 'compte suspendu') : `compte ${customer.status.toLowerCase()}`}</span>
         </div>
       </div>
+      {(customer.personalDailyOutMinor != null || customer.pendingDailyOut) && (
+        <p className="muted small" aria-label="Plafond choisi par le client">
+          Plafond d'envoi choisi par le client : {customer.personalDailyOutMinor != null ? `${formatUsd(customer.personalDailyOutMinor)} par jour` : 'celui de son niveau'}
+          {customer.pendingDailyOut && `, hausse à ${customer.pendingDailyOut.dailyOutMinor != null ? formatUsd(customer.pendingDailyOut.dailyOutMinor) : 'celui de son niveau'} prévue le ${formatDateTime(customer.pendingDailyOut.effectiveAt)}`}
+          . Un client qui appelle pour faire monter son plafond doit attendre ce délai : il protège contre le vol du PIN.
+        </p>
+      )}
       <AccountStatus api={api} customer={customer} notify={notify} changed={changed} />
       <Recurring api={api} customerId={customer.id} />
       <div className={selected ? 'history-split' : undefined}>

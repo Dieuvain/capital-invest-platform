@@ -340,6 +340,14 @@ void main() {
       await shot('8b-changer-pin$suffix');
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
+      server
+        ..personalDailyLimit = 5000
+        ..pendingDailyLimit = {'dailyOutMinor': 20000, 'effectiveAt': '2026-11-20T13:05:00Z'};
+      await tester.tap(find.byKey(const ValueKey('daily-limit-entry')));
+      await tester.pumpAndSettle();
+      await shot('17-plafond-par-jour$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Accueil'));

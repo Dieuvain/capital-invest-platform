@@ -374,6 +374,15 @@ describe('surveillance', () => {
       .toEqual({ status: 'ACTIVE', reason: 'Justificatifs reçus' })
   })
 
+  it('la fiche client montre le plafond par jour choisi par le client et la hausse en attente', async () => {
+    Object.assign(server.customer, { personalDailyOutMinor: 5000, pendingDailyOut: { dailyOutMinor: 20000, effectiveAt: '2026-11-20T11:05:00Z' } })
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const note = await screen.findByLabelText('Plafond choisi par le client')
+    expect(note).toHaveTextContent(/Plafond d'envoi choisi par le client : 50,00\s\$ par jour, hausse à 200,00\s\$ prévue le/)
+  })
+
   it('un compte bloqué par le client (téléphone volé) se débloque avec la pièce d\'identité vue en agence', async () => {
     Object.assign(server.customer, { status: 'SUSPENDED', blockedByCustomerAt: '2026-11-19T09:42:00Z' })
     const user = await signIn('conformite@capitalinvest.cd', 'Clients')

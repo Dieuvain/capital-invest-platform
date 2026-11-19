@@ -114,6 +114,24 @@ Valeurs **provisoires**, à valider par la conformité (fichier `application.yml
 - Le solde maximal compte aussi les recharges en attente et l'épargne, et s'applique au destinataire d'un envoi sans révéler son solde.
 - Les contrôles se font sous verrou du portefeuille : deux opérations simultanées ne peuvent pas dépasser un plafond ensemble.
 
+## Plafond d'envoi choisi par le client
+
+Dans l'app, sous Sécurité, puis **Plafond d'envoi par jour**, le client choisit un plafond plus bas que celui de son niveau, par exemple 50 $ par jour. Si quelqu'un lui vole son téléphone et son PIN, il ne peut pas tout prendre.
+
+- **Baisser** le plafond s'applique tout de suite.
+- **Remonter** le plafond, ou revenir à celui du niveau, ne prend effet que **24 heures plus tard**. Le client reçoit un SMS et peut annuler la hausse depuis l'app, sans PIN. Il a ainsi le temps de réagir si ce n'est pas lui, et de bloquer son compte.
+- Le plafond compte tout ce qui sort dans la journée, comme le plafond du niveau : envois, retraits, paiements chez les marchands, factures et crédit téléphone.
+- Bornes : de 10 $ jusqu'au plafond du niveau. Le PIN est demandé à chaque changement.
+- Code d'erreur `LIMIT_DAILY_PERSONAL`, distinct de `LIMIT_DAILY`, pour que l'app indique où changer le plafond.
+- Le back-office affiche ce plafond et la hausse en attente sur la fiche client.
+- API :
+  - `PUT /v1/me/limits/daily` (`dailyOutMinor`, ou `null` pour revenir au plafond du niveau, et `pin`) ;
+  - `DELETE /v1/me/limits/daily/pending` pour annuler la hausse en attente ;
+  - `GET /v1/me/limits` renvoie en plus `levelDailyOutMinor`, `personalDailyOutMinor` et `pendingDailyOut`.
+- Journal d'audit : `DAILY_LIMIT_LOWERED`, `DAILY_LIMIT_RAISE_REQUESTED`, `DAILY_LIMIT_RAISE_CANCELLED`.
+
+![Plafond d'envoi par jour](docs/captures-app/17-plafond-par-jour.png)
+
 ## Frais d'envoi
 
 Valeurs **provisoires**, à fixer par la direction générale (`capital-invest.fees` dans `application.yml`) : 1 % du montant, au moins 0,10 $, au plus 5 $.

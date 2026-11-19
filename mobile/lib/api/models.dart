@@ -116,7 +116,23 @@ class Limits {
     required this.dailyOutRemainingMinor,
     required this.maxBalanceMinor,
     this.outgoingBlockedUntil,
-  });
+    int? levelDailyOutMinor,
+    this.personalDailyOutMinor,
+    this.pendingAt,
+    this.pendingDailyOutMinor,
+  }) : levelDailyOutMinor = levelDailyOutMinor ?? dailyOutMinor;
+
+  /// Plafond journalier du niveau KYC.
+  final int levelDailyOutMinor;
+
+  /// Plafond choisi par le client ; null : celui du niveau.
+  final int? personalDailyOutMinor;
+
+  /// Hausse du plafond personnel en attente : sa date d'effet. Null : aucune hausse en attente.
+  final DateTime? pendingAt;
+
+  /// Plafond après la hausse ; null : retour au plafond du niveau.
+  final int? pendingDailyOutMinor;
 
   final int kycLevel;
   final int perTransactionMinor;
@@ -132,6 +148,10 @@ class Limits {
     dailyOutRemainingMinor: j['dailyOutRemainingMinor'],
     maxBalanceMinor: j['maxBalanceMinor'],
     outgoingBlockedUntil: j['outgoingBlockedUntil'] == null ? null : DateTime.parse(j['outgoingBlockedUntil']),
+    levelDailyOutMinor: j['levelDailyOutMinor'],
+    personalDailyOutMinor: j['personalDailyOutMinor'],
+    pendingAt: j['pendingDailyOut'] == null ? null : DateTime.parse(j['pendingDailyOut']['effectiveAt']),
+    pendingDailyOutMinor: j['pendingDailyOut']?['dailyOutMinor'],
   );
 }
 

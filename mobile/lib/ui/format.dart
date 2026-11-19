@@ -53,6 +53,12 @@ String formatDateTime(DateTime at) {
   return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} · ${formatDay(d)}';
 }
 
+/// « le 20 nov. 2026 à 14:05 », à l'heure du téléphone, pour une échéance dans une phrase.
+String formatWhen(DateTime at) {
+  final d = at.toLocal();
+  return 'le ${formatDay(d)} à ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
 /// « 19 nov. 2026 », à l'heure du téléphone.
 String formatDay(DateTime at) {
   final d = at.toLocal();

@@ -28,20 +28,37 @@ data class KycTier(
 data class LimitsProperties(
     val timezone: String = "Africa/Lubumbashi",
     val pinResetCooldownHours: Long = 24,
+    /** Délai avant qu'une hausse du plafond personnel prenne effet. */
+    val personalLimitRaiseDelayHours: Long = 24,
+    /** Plus petit plafond journalier qu'un client peut choisir (10 $). */
+    val personalLimitMinMinor: Long = 1_000,
     val tiers: Map<Int, KycTier> = mapOf(
         1 to KycTier(perTransactionMinor = 20_000, dailyOutMinor = 60_000, maxBalanceMinor = 100_000),
         2 to KycTier(perTransactionMinor = 400_000, dailyOutMinor = 1_000_000, maxBalanceMinor = 2_000_000),
     ),
 )
 
+/** Hausse du plafond personnel en attente. [dailyOutMinor] null : retour au plafond du niveau. */
+data class PendingDailyLimit(val dailyOutMinor: Long?, val effectiveAt: OffsetDateTime)
+
+/** Plafond personnel du client à un instant donné. */
+data class PersonalDailyLimit(val dailyOutMinor: Long?, val pending: PendingDailyLimit?)
+
 data class LimitsView(
     val kycLevel: Int,
     val perTransactionMinor: Long,
+    /** Plafond journalier qui s'applique : celui du niveau, ou le plafond personnel s'il est plus bas. */
     val dailyOutMinor: Long,
     val dailyOutUsedMinor: Long,
     val dailyOutRemainingMinor: Long,
     val maxBalanceMinor: Long,
     val outgoingBlockedUntil: OffsetDateTime?,
+    /** Plafond journalier du niveau KYC. */
+    val levelDailyOutMinor: Long = dailyOutMinor,
+    /** Plafond choisi par le client ; null : celui du niveau. */
+    val personalDailyOutMinor: Long? = null,
+    val pendingDailyOut: PendingDailyLimit? = null,
+    val personalMinMinor: Long = 0,
 )
 
 class LimitExceededException(code: String, message: String) : BusinessException(code, message)
@@ -76,7 +93,12 @@ class LimitsService(
         if (amountMinor > tier.perTransactionMinor) {
             throw LimitExceededException("LIMIT_PER_TRANSACTION", "Montant supérieur au plafond par opération de votre niveau")
         }
-        if (dailyOutUsed(walletId) + amountMinor > tier.dailyOutMinor) {
+        val personal = personalLimit(customer.id).dailyOutMinor
+        val used = dailyOutUsed(walletId)
+        if (personal != null && personal < tier.dailyOutMinor && used + amountMinor > personal) {
+            throw LimitExceededException("LIMIT_DAILY_PERSONAL", "Plafond journalier que vous avez choisi atteint")
+        }
+        if (used + amountMinor > tier.dailyOutMinor) {
             throw LimitExceededException("LIMIT_DAILY", "Plafond journalier d'envoi atteint")
         }
     }
@@ -103,15 +125,41 @@ class LimitsService(
     fun view(customer: Customer, walletId: UUID): LimitsView {
         val tier = tier(customer)
         val used = dailyOutUsed(walletId)
+        val personal = personalLimit(customer.id)
+        val daily = minOf(tier.dailyOutMinor, personal.dailyOutMinor ?: Long.MAX_VALUE)
         return LimitsView(
             kycLevel = customer.kycLevel,
             perTransactionMinor = tier.perTransactionMinor,
-            dailyOutMinor = tier.dailyOutMinor,
+            dailyOutMinor = daily,
             dailyOutUsedMinor = used,
-            dailyOutRemainingMinor = (tier.dailyOutMinor - used).coerceAtLeast(0),
+            dailyOutRemainingMinor = (daily - used).coerceAtLeast(0),
             maxBalanceMinor = tier.maxBalanceMinor,
             outgoingBlockedUntil = outgoingBlockedUntil(customer.id),
+            levelDailyOutMinor = tier.dailyOutMinor,
+            personalDailyOutMinor = personal.dailyOutMinor,
+            pendingDailyOut = personal.pending,
+            personalMinMinor = props.personalLimitMinMinor,
         )
+    }
+
+    /**
+     * Plafond personnel en vigueur maintenant. Une hausse arrivée à échéance s'applique ici, à la lecture :
+     * pas besoin de tâche planifiée.
+     */
+    fun personalLimit(customerId: UUID): PersonalDailyLimit {
+        val now = OffsetDateTime.now(clock)
+        return jdbc.sql("SELECT daily_limit_minor, pending_daily_limit_minor, pending_daily_limit_at FROM customer WHERE id = :id")
+            .param("id", customerId)
+            .query { rs, _ ->
+                val current = rs.getObject("daily_limit_minor") as Long?
+                val pendingValue = rs.getObject("pending_daily_limit_minor") as Long?
+                val pendingAt = rs.getObject("pending_daily_limit_at", OffsetDateTime::class.java)
+                when {
+                    pendingAt == null -> PersonalDailyLimit(current, null)
+                    !now.isBefore(pendingAt) -> PersonalDailyLimit(pendingValue, null)
+                    else -> PersonalDailyLimit(current, PendingDailyLimit(pendingValue, pendingAt))
+                }
+            }.list().firstOrNull() ?: PersonalDailyLimit(null, null)
     }
 
     /** Total envoyé depuis minuit, heure de Lubumbashi. */

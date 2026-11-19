@@ -161,6 +161,10 @@ export interface CustomerSummary {
   savingsMinor?: number
   /** Bloqué par le client lui-même (téléphone perdu ou volé) : débloquer après avoir vu sa pièce d'identité. */
   blockedByCustomerAt?: string | null
+  /** Plafond d'envoi par jour choisi par le client ; null : celui de son niveau. */
+  personalDailyOutMinor?: number | null
+  /** Hausse de ce plafond en attente ; dailyOutMinor null : retour au plafond du niveau. */
+  pendingDailyOut?: { dailyOutMinor: number | null; effectiveAt: string } | null
 }
 
 export type HistoryKind =
