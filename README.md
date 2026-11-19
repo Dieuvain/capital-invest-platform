@@ -399,6 +399,19 @@ Un envoi au mauvais numéro ne se rattrape pas. Avant la confirmation par PIN, l
 - Même vérification pour un envoi programmé. Un compte suspendu ou fermé est signalé (« ne peut pas recevoir d'argent pour le moment »).
 - API : `GET /v1/transfers/recipient?phone=…` (`{"phone", "displayName"}`), `GET /v1/transfers/recent` (5 derniers destinataires).
 
+## Contacts favoris
+
+Après un envoi, le client peut enregistrer le destinataire sous un **surnom** (« Maman », « Boutique Patrick »). Les favoris apparaissent en tête de l'écran d'envoi, avant les récents, et un favori ne se répète pas dans les récents. « Gérer » permet d'en retirer.
+
+| Ajouter après un envoi | Favoris en tête de l'écran d'envoi |
+|---|---|
+| ![](docs/captures-app/20-favoris.png) | ![](docs/captures-app/3a-envoi-recents.png) |
+
+- 20 favoris au plus, surnom de 1 à 30 caractères. Enregistrer à nouveau le même numéro change seulement le surnom.
+- L'ajout passe par la vérification du destinataire : il compte dans les 30 numéros vérifiés par heure, donc les favoris ne contournent pas la protection contre la collecte des noms. On ne peut pas se mettre soi-même en favori.
+- Un favori dont le compte est suspendu ou fermé n'est plus proposé.
+- API : `GET /v1/me/favorites`, `POST /v1/me/favorites` (`{"phone", "nickname"}`), `DELETE /v1/me/favorites/{id}`.
+
 ## Envois programmés
 
 Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.

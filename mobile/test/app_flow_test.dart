@@ -252,6 +252,59 @@ void main() {
     expect(server.requests.last.headers['Idempotency-Key'], isNotNull);
   });
 
+  testWidgets('favoris : ajouté après un envoi, proposé en tête, retiré dans « Gérer »', (tester) async {
+    server.recentRecipients = [
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+    ];
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Envoyer');
+    expect(find.text('Favoris'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('recent-+243970000402')));
+    await tester.enterText(find.byKey(const ValueKey('amount')), '5');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 5,00 \$'));
+    await tester.pumpAndSettle();
+
+    // Surnom vide : refusé sans appel au serveur.
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajouter aux favoris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Donnez un surnom de 1 à 30 caractères.'), findsOneWidget);
+    expect(server.requests.where((r) => r.method == 'POST' && r.url.path == '/v1/me/favorites'), isEmpty);
+
+    await tester.enterText(find.byKey(const ValueKey('favorite-nickname')), 'Maman');
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajouter aux favoris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dans vos favoris : Maman'), findsOneWidget);
+    expect(server.favorites.single['phone'], '+243970000402');
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
+    // Le favori est en tête et ne se répète pas dans les récents.
+    expect(find.byKey(const ValueKey('favorite-+243970000402')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recent-+243970000402')), findsNothing);
+    expect(find.byKey(const ValueKey('recent-+243970000002')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('favorite-+243970000402')));
+    await tester.pumpAndSettle();
+    expect(find.text('970000402'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('manage-favorites')));
+    await tester.pumpAndSettle();
+    expect(find.text('Mes favoris'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('remove-favorite-+243970000402')));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun favori pour le moment.'), findsOneWidget);
+    expect(server.favorites, isEmpty);
+    Navigator.of(tester.element(find.text('Mes favoris'))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Favoris'), findsNothing);
+    expect(find.byKey(const ValueKey('recent-+243970000402')), findsOneWidget);
+  });
+
   testWidgets('demande reçue : bandeau sur l\'accueil, frais montrés, avertissement, PIN, puis payée', (tester) async {
     server.moneyRequests = [
       // Plus récentes d'abord : celle de Grâce attend depuis plus longtemps.

@@ -375,13 +375,49 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
   FeeQuote? quote;
   TransferResult? done;
   List<Recipient> recent = const [];
+  List<Favorite> favorites = const [];
+  Favorite? savedFavorite;
+  final nickname = TextEditingController();
   String _key = newIdempotencyKey();
 
   @override
   void initState() {
     super.initState();
     _loadRecent();
+    _loadFavorites();
   }
+
+  Future<void> _loadFavorites() async {
+    try {
+      final f = await widget.app.api.favorites();
+      if (mounted) setState(() => favorites = f);
+    } on ApiException {
+      // Sans favoris, les récents et le numéro suffisent.
+    }
+  }
+
+  Favorite? get _existingFavorite {
+    for (final f in favorites) {
+      if (f.phone == toPhone) return f;
+    }
+    return null;
+  }
+
+  Future<void> _saveFavorite() async {
+    final n = nickname.text.trim();
+    if (n.isEmpty || n.length > 30) return setState(() => error = 'Donnez un surnom de 1 à 30 caractères.');
+    final f = await run(widget.app, () => widget.app.api.saveFavorite(toPhone!, n));
+    if (f != null) setState(() => savedFavorite = f);
+  }
+
+  Future<void> _manageFavorites() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => FavoritesScreen(app: widget.app)),
+    );
+    _loadFavorites();
+  }
+
+  void _pick(String p) => setState(() => phone.text = p.replaceFirst('+243', ''));
 
   Future<void> _loadRecent() async {
     try {
@@ -430,6 +466,55 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
     if (r != null) setState(() => done = r);
   }
 
+  /// Un favori n'apparaît pas une deuxième fois dans les récents.
+  List<Recipient> get _recentNotFavorite {
+    final fav = {for (final f in favorites) f.phone};
+    return recent.where((r) => !fav.contains(r.phone)).toList();
+  }
+
+  /// Après un envoi : proposer d'enregistrer le destinataire avec un surnom.
+  List<Widget> _favoriteBlock(BuildContext context) {
+    final existing = savedFavorite ?? _existingFavorite;
+    if (existing != null) {
+      return [
+        Row(
+          key: const ValueKey('favorite-saved'),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.star_rounded, color: Brand.ochreDeep),
+            const SizedBox(width: 6),
+            Text('Dans vos favoris : ${existing.nickname}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 16),
+      ];
+    }
+    return [
+      SoftCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Ajouter aux favoris', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(
+              'La prochaine fois, touchez son surnom au lieu de taper le numéro.',
+              style: TextStyle(color: context.pal.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('favorite-nickname'),
+              controller: nickname,
+              maxLength: 30,
+              decoration: const InputDecoration(labelText: 'Surnom', hintText: 'Maman, Boutique…'),
+            ),
+            BusyButton(label: 'Ajouter aux favoris', busy: busy, onPressed: _saveFavorite),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (done != null) {
@@ -451,6 +536,8 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
             style: TextStyle(color: context.pal.muted),
           ),
           const SizedBox(height: 24),
+          ErrorBanner(error),
+          ..._favoriteBlock(context),
           FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -506,20 +593,47 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
       subtitle: 'À un autre client Capital Invest, avec son numéro de téléphone.',
       children: [
         ErrorBanner(error),
-        if (recent.isNotEmpty) ...[
+        if (favorites.isNotEmpty) ...[
+          Row(
+            children: [
+              Expanded(child: Text('Favoris', style: TextStyle(color: context.pal.muted, fontSize: 13))),
+              TextButton(
+                key: const ValueKey('manage-favorites'),
+                onPressed: _manageFavorites,
+                child: const Text('Gérer'),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final f in favorites)
+                ActionChip(
+                  key: ValueKey('favorite-${f.phone}'),
+                  avatar: const Icon(Icons.star_rounded, size: 18, color: Brand.ochreDeep),
+                  label: Text(f.nickname),
+                  tooltip: f.displayName,
+                  onPressed: () => _pick(f.phone),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_recentNotFavorite.isNotEmpty) ...[
           Text('Récents', style: TextStyle(color: context.pal.muted, fontSize: 13)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
             runSpacing: 6,
             children: [
-              for (final r in recent)
+              for (final r in _recentNotFavorite)
                 ActionChip(
                   key: ValueKey('recent-${r.phone}'),
                   avatar: const Icon(Icons.person_outline_rounded, size: 18),
                   label: Text(r.displayName),
                   // Le champ affiche déjà +243 : on n'y met que les 9 chiffres.
-                  onPressed: () => setState(() => phone.text = r.phone.replaceFirst('+243', '')),
+                  onPressed: () => _pick(r.phone),
                 ),
             ],
           ),
@@ -541,6 +655,79 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
         ),
         const SizedBox(height: 12),
         BusyButton(label: 'Continuer', busy: busy, onPressed: _review),
+      ],
+    );
+  }
+}
+
+/// Liste des favoris, pour en retirer.
+class FavoritesScreen extends StatefulWidget {
+  const FavoritesScreen({super.key, required this.app});
+
+  final AppState app;
+
+  @override
+  State<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends State<FavoritesScreen> with ApiAction {
+  List<Favorite>? items;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final f = await run(widget.app, () => widget.app.api.favorites());
+    if (f != null) setState(() => items = f);
+  }
+
+  Future<void> _remove(Favorite f) async {
+    final ok = await run(widget.app, () async {
+      await widget.app.api.deleteFavorite(f.id);
+      return true;
+    });
+    if (ok == true) setState(() => items = items!.where((x) => x.id != f.id).toList());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = items;
+    return FormPage(
+      title: 'Mes favoris',
+      subtitle: 'Ajoutez un favori depuis l\'écran qui suit un envoi. 20 au plus.',
+      children: [
+        ErrorBanner(error),
+        if (list == null && error == null) const Center(child: CircularProgressIndicator()),
+        if (list != null && list.isEmpty)
+          Text('Aucun favori pour le moment.', style: TextStyle(color: context.pal.muted)),
+        for (final f in list ?? const <Favorite>[])
+          SoftCard(
+            key: ValueKey('favorite-row-${f.phone}'),
+            child: Row(
+              children: [
+                const Icon(Icons.star_rounded, color: Brand.ochreDeep),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(f.nickname, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                      Text('${f.displayName} · ${f.phone}', style: TextStyle(color: context.pal.muted, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  key: ValueKey('remove-favorite-${f.phone}'),
+                  tooltip: 'Retirer',
+                  onPressed: busy ? null : () => _remove(f),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

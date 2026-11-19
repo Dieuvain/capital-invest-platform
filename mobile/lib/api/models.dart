@@ -880,6 +880,18 @@ class Recipient {
   factory Recipient.fromJson(Map<String, dynamic> j) => Recipient(j['phone'], j['displayName']);
 }
 
+/// Un destinataire enregistré avec un surnom (« Maman », « Boutique »).
+class Favorite {
+  Favorite(this.id, this.nickname, this.phone, this.displayName);
+
+  final String id;
+  final String nickname;
+  final String phone;
+  final String displayName;
+
+  factory Favorite.fromJson(Map<String, dynamic> j) => Favorite(j['id'], j['nickname'], j['phone'], j['displayName']);
+}
+
 /// Une catégorie de « Mes dépenses ».
 class CategorySpending {
   CategorySpending(this.category, this.amountMinor, this.previousMinor, this.count);

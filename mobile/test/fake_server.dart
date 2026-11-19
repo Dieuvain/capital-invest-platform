@@ -130,6 +130,10 @@ class FakeServer {
   /// Clients connus de /v1/transfers/recipient (numéro → prénom et initiale).
   static const recipients = {'+243970000002': 'Josué K.', '+243970000402': 'Béni M.', '+243990000870': 'Patrick I.'};
 
+  /// Favoris servis par /v1/me/favorites.
+  List<Map<String, dynamic>> favorites = [];
+  int _favoriteSeq = 0;
+
   /// Destinataires servis par /v1/transfers/recent.
   List<Map<String, dynamic>> recentRecipients = [];
 
@@ -329,6 +333,13 @@ class FakeServer {
       return _json(s, 201);
     }
     if (path == '/v1/me/scheduled-transfers') return _json(scheduled);
+    final fav = RegExp(r'^/v1/me/favorites/([^/]+)$').firstMatch(path);
+    if (fav != null && req.method == 'DELETE') {
+      final before = favorites.length;
+      favorites = favorites.where((f) => f['id'] != fav.group(1)).toList();
+      if (favorites.length == before) return _error(404, 'FAVORITE_NOT_FOUND', 'Favori introuvable');
+      return http.Response('', 204);
+    }
     final st = RegExp(r'^/v1/me/scheduled-transfers/([^/]+)(?:/(pause|resume))?$').firstMatch(path);
     if (st != null) {
       final s = scheduled.firstWhere((x) => x['id'] == st.group(1));
@@ -546,6 +557,20 @@ class FakeServer {
         final name = recipients[p];
         if (name == null) return _error(404, 'RECIPIENT_NOT_FOUND', 'Aucun client');
         return _json({'phone': p, 'displayName': name});
+      case ('GET', '/v1/me/favorites'):
+        return _json(favorites);
+      case ('POST', '/v1/me/favorites'):
+        final b = body();
+        final p = b['phone'] as String;
+        final n = (b['nickname'] as String).trim();
+        if (n.isEmpty || n.length > 30) return _error(422, 'INVALID_NICKNAME', 'Surnom invalide');
+        final name = recipients[p];
+        if (name == null) return _error(404, 'RECIPIENT_NOT_FOUND', 'Aucun client');
+        favorites.removeWhere((f) => f['phone'] == p);
+        if (favorites.length >= 20) return _error(422, 'FAVORITES_LIMIT', 'Trop de favoris');
+        final f = {'id': 'fav-${++_favoriteSeq}', 'nickname': n, 'phone': p, 'displayName': name};
+        favorites = [...favorites, f]..sort((a, b) => (a['nickname'] as String).compareTo(b['nickname'] as String));
+        return _json(f);
       case ('GET', '/v1/transfers/recent'):
         return _json(recentRecipients);
       case ('GET', '/v1/transfers/fee'):

@@ -64,6 +64,10 @@ void main() {
       {'phone': '+243970000402', 'displayName': 'Béni M.'},
       {'phone': '+243990000870', 'displayName': 'Patrick I.'},
     ];
+    server.favorites = [
+      {'id': 'fav-1', 'nickname': 'Boutique Patrick', 'phone': '+243990000870', 'displayName': 'Patrick I.'},
+      {'id': 'fav-2', 'nickname': 'Propriétaire', 'phone': '+243970000402', 'displayName': 'Béni M.'},
+    ];
     server.scheduled = [
       FakeServer.scheduledTransfer('st-1', 'Béni Mukendi', 15000, 'MONTHLY', 5, note: 'Loyer', lastResult: 'SENT'),
       FakeServer.scheduledTransfer('st-2', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant')
@@ -158,7 +162,14 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
       await tester.pump();
       await shot('3-envoi-verification$suffix');
-      await tester.tap(find.byTooltip('Retour'));
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.tap(find.text('Envoyer 150,00\u00a0\$'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('favorite-nickname')), 'Josué, frais scolaires');
+      await tester.pump();
+      await shot('20-favoris$suffix');
+      server.balance += 15150; // les captures suivantes gardent le solde de départ
+      await tester.tap(find.text('Terminé'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('quick-Payer')));
