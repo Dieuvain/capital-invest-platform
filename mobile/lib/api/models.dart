@@ -109,6 +109,51 @@ class Topup {
       Topup(id: j['id'], status: j['status'], amountMinor: j['amountMinor'], failureCode: j['failureCode']);
 }
 
+/// Retrait vers le compte mobile money du client.
+class Withdrawal {
+  Withdrawal({
+    required this.id,
+    required this.status,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.msisdn,
+    this.failureCode,
+  });
+
+  final String id;
+
+  /// PENDING, CONFIRMED (argent versé), FAILED (remboursé, frais compris) ou REVIEW (en vérification).
+  final String status;
+  final int amountMinor;
+  final int feeMinor;
+
+  /// Numéro qui reçoit l'argent, sans « + » : 243970000001.
+  final String msisdn;
+  final String? failureCode;
+
+  factory Withdrawal.fromJson(Map<String, dynamic> j) => Withdrawal(
+    id: j['id'],
+    status: j['status'],
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'],
+    msisdn: j['msisdn'],
+    failureCode: j['failureCode'],
+  );
+}
+
+/// Opérateur le plus probable d'après le préfixe du numéro (+243 97… Airtel, 81… Vodacom M-Pesa, 84… Orange).
+Operator? operatorForPhone(String phone) {
+  final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  final local = digits.startsWith('243') ? digits.substring(3) : digits;
+  if (local.length < 2) return null;
+  return switch (local.substring(0, 2)) {
+    '81' || '82' || '83' => Operator.mpesa,
+    '97' || '98' || '99' => Operator.airtel,
+    '80' || '84' || '85' || '89' => Operator.orange,
+    _ => null,
+  };
+}
+
 class TransferResult {
   TransferResult({required this.amountMinor, required this.feeMinor, required this.totalDebitedMinor});
 

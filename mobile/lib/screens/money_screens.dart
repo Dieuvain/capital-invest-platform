@@ -152,6 +152,193 @@ class _TopupScreenState extends State<TopupScreen> with ApiAction {
   }
 }
 
+/// Retrait vers le compte mobile money du client : montant, vérification des frais, PIN, puis suivi.
+class WithdrawScreen extends StatefulWidget {
+  const WithdrawScreen({super.key, required this.app, this.limits, this.pollInterval = const Duration(seconds: 3)});
+
+  final AppState app;
+  final Limits? limits;
+  final Duration pollInterval;
+
+  @override
+  State<WithdrawScreen> createState() => _WithdrawScreenState();
+}
+
+class _WithdrawScreenState extends State<WithdrawScreen> with ApiAction {
+  final amount = TextEditingController();
+  final pin = TextEditingController();
+  late Operator op = operatorForPhone(widget.app.customer!.phone) ?? Operator.mpesa;
+  FeeQuote? quote;
+  Withdrawal? withdrawal;
+  Timer? _timer;
+  int _polls = 0;
+  String _key = newIdempotencyKey();
+
+  String get _phone => widget.app.customer!.phone;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _review() async {
+    final minor = parseUsd(amount.text);
+    if (minor == null) return setState(() => error = 'Entrez un montant, par exemple 25 ou 12,50.');
+    final l = widget.limits;
+    if (l != null && minor > l.perTransactionMinor) {
+      return setState(() => error = 'Votre plafond par opération est de ${formatUsd(l.perTransactionMinor)}.');
+    }
+    final q = await run(widget.app, () => widget.app.api.withdrawalFee(minor));
+    if (q == null) return;
+    setState(() {
+      quote = q;
+      _key = newIdempotencyKey(); // une nouvelle vérification est un nouveau retrait
+    });
+  }
+
+  Future<void> _confirm() async {
+    if (pin.text.length != 4) return setState(() => error = 'Entrez vos 4 chiffres de PIN.');
+    final w = await run(
+      widget.app,
+      () => widget.app.api.withdraw(op: op, amountMinor: quote!.amountMinor, pin: pin.text, idempotencyKey: _key),
+    );
+    pin.clear();
+    if (w == null) return;
+    setState(() => withdrawal = w);
+    if (w.status == 'PENDING') _timer = Timer.periodic(widget.pollInterval, (_) => _poll());
+  }
+
+  Future<void> _poll() async {
+    final w = withdrawal;
+    if (w == null || w.status != 'PENDING') return;
+    if (++_polls > 40) {
+      _timer?.cancel();
+      return setState(() => error = 'Toujours en cours chez ${op.label}. Vous recevrez l\'argent dès que l\'opérateur aura versé.');
+    }
+    try {
+      final next = await widget.app.api.withdrawal(w.id);
+      if (!mounted) return;
+      setState(() => withdrawal = next);
+      if (next.status != 'PENDING') _timer?.cancel();
+    } on ApiException {
+      // Réseau instable : on réessaie au prochain tour.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = withdrawal;
+    if (w != null) return _status(w);
+    final q = quote;
+    if (q != null) {
+      return FormPage(
+        title: 'Vérifier le retrait',
+        children: [
+          ErrorBanner(error),
+          SoftCard(
+            child: Column(
+              children: [
+                _Row('Vers', '${op.label} · $_phone'),
+                _Row('Montant reçu', formatUsd(q.amountMinor)),
+                _Row('Frais', formatUsd(q.feeMinor)),
+                Divider(height: 28, color: context.pal.divider),
+                _Row('Total débité', formatUsd(q.totalMinor), strong: true),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          PinField(controller: pin, label: 'PIN pour confirmer', autofocus: true, onSubmitted: (_) => _confirm()),
+          const SizedBox(height: 20),
+          BusyButton(label: 'Retirer ${formatUsd(q.amountMinor)}', busy: busy, onPressed: _confirm),
+          TextButton(onPressed: () => setState(() => quote = null), child: const Text('Modifier')),
+        ],
+      );
+    }
+    return FormPage(
+      title: 'Retirer',
+      subtitle: 'L\'argent part de votre solde vers votre compte mobile money, au $_phone.',
+      children: [
+        ErrorBanner(error),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final o in Operator.values)
+              ChoiceChip(label: Text(o.label), selected: op == o, onSelected: (_) => setState(() => op = o)),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: const ValueKey('amount'),
+          controller: amount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Montant à recevoir', suffixText: '\$'),
+        ),
+        const SizedBox(height: 20),
+        BusyButton(label: 'Continuer', busy: busy, onPressed: _review),
+      ],
+    );
+  }
+
+  Widget _status(Withdrawal w) {
+    final (icon, color, title, text) = switch (w.status) {
+      'CONFIRMED' => (
+        Icons.check_circle,
+        Brand.success,
+        'Argent envoyé',
+        '${formatUsd(w.amountMinor)} sont arrivés sur votre compte ${op.label}.',
+      ),
+      'FAILED' => (
+        Icons.cancel,
+        Brand.danger,
+        'Retrait refusé',
+        '${withdrawalFailureText(w.failureCode, op.label)} Votre solde a été recrédité, frais compris.',
+      ),
+      'REVIEW' => (
+        Icons.manage_search,
+        Brand.ochre,
+        'Retrait en vérification',
+        'Nous vérifions ce versement avec ${op.label}. Si l\'argent n\'arrive pas, il vous sera rendu, frais compris. '
+            'Vous n\'avez rien à refaire.',
+      ),
+      _ => (
+        Icons.hourglass_top,
+        Brand.ochre,
+        'Retrait en cours',
+        '${formatUsd(w.amountMinor)} sont en route vers votre compte ${op.label}. Cela prend en général moins d\'une minute.',
+      ),
+    };
+    return FormPage(
+      title: 'Retirer',
+      children: [
+        const SizedBox(height: 24),
+        Icon(icon, size: 72, color: color),
+        const SizedBox(height: 16),
+        Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(text, textAlign: TextAlign.center, style: TextStyle(color: context.pal.muted, fontSize: 15)),
+        const SizedBox(height: 24),
+        ErrorBanner(error),
+        if (w.status == 'PENDING') const Center(child: CircularProgressIndicator()),
+        if (w.status != 'PENDING')
+          FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminé')),
+      ],
+    );
+  }
+}
+
+/// Motif d'un retrait refusé, en mots simples.
+String withdrawalFailureText(String? code, String operator) => switch (code) {
+  'RECIPIENT_NOT_FOUND' || 'PAYER_NOT_FOUND' || 'INVALID_PHONE_NUMBER' =>
+    'Ce numéro n\'a pas de compte $operator. Choisissez l\'opérateur de votre numéro.',
+  'RECIPIENT_NOT_ALLOWED_TO_RECEIVE' || 'PAYER_LIMIT_REACHED' || 'AMOUNT_OUT_OF_BOUNDS' =>
+    'Votre compte $operator ne peut pas recevoir ce montant pour le moment.',
+  'INSUFFICIENT_BALANCE' || 'PROVIDER_TEMPORARILY_UNAVAILABLE' =>
+    '$operator est momentanément indisponible. Réessayez dans quelques minutes.',
+  'NOT_RECEIVED' => 'La demande n\'est pas arrivée chez $operator.',
+  _ => 'L\'opérateur n\'a pas pu verser l\'argent.',
+};
+
 /// Explication d'un refus, en mots simples. Le message brut de l'opérateur n'est jamais montré.
 String topupFailureText(String? code, String operator) => switch (code) {
   'INSUFFICIENT_BALANCE' => 'Solde $operator insuffisant. Rien n\'a été débité.',

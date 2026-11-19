@@ -164,6 +164,26 @@ class ApiClient {
     }, idempotencyKey: idempotencyKey),
   );
 
+  // ---- Retraits ------------------------------------------------------------------------------
+
+  Future<FeeQuote> withdrawalFee(int amountMinor) async =>
+      FeeQuote.fromJson(await _get('/v1/withdrawals/fee', {'amountMinor': '$amountMinor'}));
+
+  Future<Withdrawal> withdraw({
+    required Operator op,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+  }) async => Withdrawal.fromJson(
+    await _post('/v1/withdrawals', {
+      'operator': op.apiName,
+      'amountMinor': amountMinor,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<Withdrawal> withdrawal(String id) async => Withdrawal.fromJson(await _get('/v1/withdrawals/$id'));
+
   // ---- Promotions ---------------------------------------------------------------------------
 
   Future<List<Promotion>> promotions() async =>
