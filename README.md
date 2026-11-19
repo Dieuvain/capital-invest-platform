@@ -189,6 +189,14 @@ Le client voit **une ligne par opération** (pas une ligne par écriture comptab
 
 Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
 
+## Relevés de compte
+
+Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l'ouverture du compte (24 au plus), le mois en cours arrêté à aujourd'hui. Le relevé donne le solde au 1er du mois, les entrées, les sorties (dont les frais), le solde de fin et chaque opération avec son n° de reçu. Le client le télécharge en PDF A4 et le partage (WhatsApp, e-mail, Fichiers) : utile pour tenir ses comptes ou prouver ses revenus à un bailleur ou une banque.
+
+- Les montants viennent du grand livre, comme l'historique : le solde de fin d'un mois est le solde d'ouverture du suivant. Les numéros des autres clients restent masqués.
+- API : `GET /v1/me/statements` (mois disponibles), `GET /v1/me/statements/{AAAA-MM}`, `GET /v1/me/statements/{AAAA-MM}/pdf`.
+- PDF produit par OpenPDF (LGPL/MPL). Exemple : `docs/captures-app/9b-releve-octobre.pdf`.
+
 ## Notifications au client
 
 Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçue, argent reçu, envoi effectué, retrait versé, retrait remboursé, correction de solde, décision sur le niveau 2, PIN changé. Un envoi que le client n'a pas fait est souvent le premier signe d'un vol de compte : chaque sortie d'argent est donc notifiée.

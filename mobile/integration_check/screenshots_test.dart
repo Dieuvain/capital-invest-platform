@@ -184,6 +184,18 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byTooltip('Historique'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('statements')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Octobre 2026'));
+      await tester.pumpAndSettle();
+      await shot('9-releve$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Profil'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sécurité et PIN'));

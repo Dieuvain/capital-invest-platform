@@ -139,6 +139,27 @@ class ApiClient {
     }
   }
 
+  // ---- Relevés de compte -------------------------------------------------------------------
+
+  Future<List<StatementMonth>> statementMonths() async =>
+      (await _get('/v1/me/statements') as List).map((j) => StatementMonth.fromJson(j)).toList();
+
+  Future<Statement> statement(String month) async => Statement.fromJson(await _get('/v1/me/statements/$month'));
+
+  /// Le relevé en PDF, à partager ou enregistrer.
+  Future<Uint8List> statementPdf(String month) async {
+    final http.Response res;
+    try {
+      res = await _http
+          .get(_uri('/v1/me/statements/$month/pdf'), headers: _headers(json: false))
+          .timeout(const Duration(seconds: 30));
+    } on Exception {
+      throw ApiException(0, 'NETWORK', 'Pas de connexion. Vérifiez votre réseau et réessayez.');
+    }
+    if (res.statusCode != 200) await _send(Future.value(res));
+    return res.bodyBytes;
+  }
+
   // ---- Sécurité ------------------------------------------------------------------------------
 
   /// Change le PIN : les autres téléphones sont déconnectés, celui-ci reste connecté.
