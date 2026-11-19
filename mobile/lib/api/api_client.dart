@@ -84,6 +84,7 @@ class ApiClient {
     required String fullName,
     required String pin,
     required String deviceId,
+    String? deviceName,
     String language = 'fr',
   }) async {
     final j = await _post('/v1/auth/register', {
@@ -93,12 +94,21 @@ class ApiClient {
       'language': language,
       'pin': pin,
       'deviceId': deviceId,
+      'deviceName': ?deviceName,
     });
     return _keep(SessionTokens.fromJson(j));
   }
 
-  Future<SessionTokens> login({required String phone, required String pin, required String deviceId}) async =>
-      _keep(SessionTokens.fromJson(await _post('/v1/auth/login', {'phone': phone, 'pin': pin, 'deviceId': deviceId})));
+  Future<SessionTokens> login({
+    required String phone,
+    required String pin,
+    required String deviceId,
+    String? deviceName,
+  }) async => _keep(
+    SessionTokens.fromJson(
+      await _post('/v1/auth/login', {'phone': phone, 'pin': pin, 'deviceId': deviceId, 'deviceName': ?deviceName}),
+    ),
+  );
 
   Future<void> requestPinResetCode(String phone) => _post('/v1/auth/pin-reset/otp', {'phone': phone});
 
@@ -107,9 +117,16 @@ class ApiClient {
     required String code,
     required String newPin,
     required String deviceId,
+    String? deviceName,
   }) async => _keep(
     SessionTokens.fromJson(
-      await _post('/v1/auth/pin-reset', {'phone': phone, 'code': code, 'newPin': newPin, 'deviceId': deviceId}),
+      await _post('/v1/auth/pin-reset', {
+        'phone': phone,
+        'code': code,
+        'newPin': newPin,
+        'deviceId': deviceId,
+        'deviceName': ?deviceName,
+      }),
     ),
   );
 
@@ -121,6 +138,19 @@ class ApiClient {
       token = null;
     }
   }
+
+  // ---- Sécurité ------------------------------------------------------------------------------
+
+  /// Change le PIN : les autres téléphones sont déconnectés, celui-ci reste connecté.
+  Future<void> changePin(String currentPin, String newPin) =>
+      _post('/v1/me/security/pin', {'currentPin': currentPin, 'newPin': newPin});
+
+  Future<List<DeviceSession>> deviceSessions() async =>
+      (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();
+
+  /// Déconnecte tous les autres téléphones. Renvoie le nombre de sessions fermées.
+  Future<int> signOutOtherDevices() async =>
+      (await _post('/v1/me/security/sessions/sign-out-others', null))['closed'] as int;
 
   SessionTokens _keep(SessionTokens t) {
     token = t.accessToken;
@@ -136,9 +166,8 @@ class ApiClient {
   Future<Limits> limits() async => Limits.fromJson(await _get('/v1/me/limits'));
 
   /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
-  Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async => HistoryPage.fromJson(
-    await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}),
-  );
+  Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async =>
+      HistoryPage.fromJson(await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}));
 
   Future<Receipt> receipt(String id) async => Receipt.fromJson(await _get('/v1/me/history/$id'));
 
@@ -146,7 +175,6 @@ class ApiClient {
 
   /// Marque toutes les notifications comme lues.
   Future<void> markNotificationsRead() => _post('/v1/me/notifications/read', const <String, dynamic>{});
-
 
   // ---- Argent --------------------------------------------------------------------------------
 

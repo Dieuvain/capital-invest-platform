@@ -71,6 +71,10 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - PIN haché en BCrypt ; 5 erreurs bloquent le compte 15 minutes ; le PIN est redemandé pour chaque envoi.
 - Jetons de session aléatoires, stockés hachés, révocables ; expiration après 15 minutes d'inactivité et 12 heures au plus.
 - PIN oublié : code SMS, nouveau PIN, toutes les anciennes sessions fermées. Les envois sont ensuite suspendus 24 heures, contre le vol de carte SIM. La demande de code répond de la même façon que le numéro ait un compte ou non.
+- Changer son PIN depuis l'app (Profil, **Sécurité et PIN**) : il faut l'ancien PIN. Les autres téléphones sont déconnectés, celui-ci reste connecté, et le client reçoit un SMS. Pas de suspension des envois : l'ancien PIN prouve que c'est bien le titulaire.
+- Connexions récentes : les 10 dernières, avec le nom du téléphone (« Samsung Galaxy A14 ») envoyé par l'app à la connexion. Le client peut déconnecter tous ses autres téléphones.
+- Nouveau téléphone : une connexion depuis un téléphone jamais vu sur ce compte envoie un SMS au client (« Si ce n'est pas vous, appelez vite le service client »). L'app tire un identifiant de téléphone à la première ouverture et le garde.
+- API : `POST /v1/me/security/pin` (`currentPin`, `newPin`), `GET /v1/me/security/sessions`, `POST /v1/me/security/sessions/sign-out-others`. `deviceName` est facultatif à l'inscription, à la connexion et au PIN oublié.
 - En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
 ## Plafonds KYC

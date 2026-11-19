@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE
 }
 
 data class NotificationView(
@@ -220,6 +220,20 @@ class NotificationService(
         ),
         null,
     )
+
+    /** Connexion depuis un téléphone jamais vu sur ce compte : souvent le premier signe d'un vol de PIN. */
+    fun newDevice(customerId: UUID, deviceName: String?, at: OffsetDateTime) {
+        val phone = deviceName?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+        queue(
+            customerId, "device:$customerId:${at.toEpochSecond()}",
+            Draft(
+                NotificationKind.NEW_DEVICE, "Nouvelle connexion",
+                "Votre compte vient d'être ouvert sur un autre téléphone$phone. Si ce n'est pas vous, changez votre PIN dans Sécurité et appelez le service client.",
+                "Capital Invest: connexion a votre compte sur un nouveau telephone${ascii(phone).take(40)}. Si ce n'est pas vous, appelez vite le service client.",
+            ),
+            null,
+        )
+    }
 
     private fun balance(customerId: UUID): Long =
         ledger.findCustomerWallet(customerId, Currency.USD)?.let { ledger.balance(it.id) } ?: 0

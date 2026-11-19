@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'api/api_client.dart';
 import 'app_state.dart';
+import 'device.dart';
 import 'screens/auth_screens.dart';
 import 'screens/home_screen.dart';
 import 'screens/kyc_screen.dart';
@@ -11,7 +12,19 @@ import 'ui/theme.dart';
 /// Par défaut, le serveur local vu depuis l'émulateur Android.
 const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:8080');
 
-void main() => runApp(CapitalInvestApp(app: AppState(ApiClient(baseUrl: apiUrl))));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final device = await DeviceIdentity.load();
+  runApp(
+    CapitalInvestApp(
+      app: AppState(
+        ApiClient(baseUrl: apiUrl),
+        deviceId: device.id,
+        deviceName: device.name,
+      ),
+    ),
+  );
+}
 
 class CapitalInvestApp extends StatelessWidget {
   const CapitalInvestApp({super.key, required this.app, this.photos});

@@ -8,6 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
 import 'request_screens.dart';
+import 'security_screen.dart';
 
 IconData _icon(AppNotification n) => switch (n.kind) {
   'TOPUP' => Icons.bolt_rounded,
@@ -17,6 +18,7 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'WITHDRAWAL_REFUNDED' => Icons.undo_rounded,
   'KYC_APPROVED' || 'KYC_REJECTED' => Icons.verified_user_outlined,
   'PIN_CHANGED' => Icons.lock_outline_rounded,
+  'NEW_DEVICE' => Icons.phonelink_lock_rounded,
   'MONEY_REQUEST' => Icons.call_made_rounded,
   'MONEY_REQUEST_DECLINED' => Icons.call_received_rounded,
   _ => Icons.notifications_none_rounded,
@@ -51,11 +53,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
   }
 
   static const _requestKinds = {'MONEY_REQUEST', 'MONEY_REQUEST_DECLINED'};
+  static const _securityKinds = {'PIN_CHANGED', 'NEW_DEVICE'};
 
   void _open(AppNotification n) {
     final tx = n.transactionId;
     final Widget? screen = _requestKinds.contains(n.kind)
         ? MoneyRequestsScreen(app: widget.app)
+        : _securityKinds.contains(n.kind)
+        ? SecurityScreen(app: widget.app)
         : tx == null
         ? null
         : ReceiptScreen(app: widget.app, id: tx);
@@ -92,7 +97,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconTile(_icon(n), size: 42, accent: n.kind == 'PIN_CHANGED'),
+                          IconTile(_icon(n), size: 42, accent: _securityKinds.contains(n.kind)),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -103,7 +108,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
                                     Expanded(
                                       child: Text(
                                         n.title,
-                                        style: TextStyle(fontSize: 15, fontWeight: n.read ? FontWeight.w600 : FontWeight.w800),
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: n.read ? FontWeight.w600 : FontWeight.w800,
+                                        ),
                                       ),
                                     ),
                                     if (!n.read)
@@ -118,7 +126,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with ApiActio
                                 const SizedBox(height: 2),
                                 Text(n.body, style: const TextStyle(fontSize: 14, height: 1.35)),
                                 const SizedBox(height: 4),
-                                Text(formatDateTime(n.createdAt), style: TextStyle(color: context.pal.muted, fontSize: 12)),
+                                Text(
+                                  formatDateTime(n.createdAt),
+                                  style: TextStyle(color: context.pal.muted, fontSize: 12),
+                                ),
                               ],
                             ),
                           ),

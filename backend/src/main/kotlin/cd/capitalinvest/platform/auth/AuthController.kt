@@ -28,12 +28,16 @@ data class RegisterRequest(
     val language: Language = Language.fr,
     val pin: String,
     @field:NotBlank @field:Size(max = 100) val deviceId: String,
+    /** Nom lisible du téléphone (« Samsung Galaxy A14 »), montré au client dans ses connexions. */
+    @field:Size(max = 80) val deviceName: String? = null,
 )
 
 data class LoginRequest(
     @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
     val pin: String,
     @field:NotBlank @field:Size(max = 100) val deviceId: String,
+    /** Nom lisible du téléphone (« Samsung Galaxy A14 »), montré au client dans ses connexions. */
+    @field:Size(max = 80) val deviceName: String? = null,
 )
 
 data class PinResetRequest(
@@ -41,6 +45,8 @@ data class PinResetRequest(
     @field:Pattern(regexp = "^[0-9]{6}$", message = "code à 6 chiffres") val code: String,
     val newPin: String,
     @field:NotBlank @field:Size(max = 100) val deviceId: String,
+    /** Nom lisible du téléphone (« Samsung Galaxy A14 »), montré au client dans ses connexions. */
+    @field:Size(max = 80) val deviceName: String? = null,
 )
 
 @RestController
@@ -54,17 +60,17 @@ class AuthController(private val otp: OtpService, private val auth: AuthService)
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     fun register(@Valid @RequestBody b: RegisterRequest): SessionTokens =
-        auth.register(b.phone, b.code, b.fullName, b.language, b.pin, b.deviceId)
+        auth.register(b.phone, b.code, b.fullName, b.language, b.pin, b.deviceId, b.deviceName)
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody b: LoginRequest): SessionTokens = auth.login(b.phone, b.pin, b.deviceId)
+    fun login(@Valid @RequestBody b: LoginRequest): SessionTokens = auth.login(b.phone, b.pin, b.deviceId, b.deviceName)
 
     @PostMapping("/pin-reset/otp")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun requestPinReset(@Valid @RequestBody body: OtpRequest) = auth.requestPinReset(body.phone)
 
     @PostMapping("/pin-reset")
-    fun resetPin(@Valid @RequestBody b: PinResetRequest): SessionTokens = auth.resetPin(b.phone, b.code, b.newPin, b.deviceId)
+    fun resetPin(@Valid @RequestBody b: PinResetRequest): SessionTokens = auth.resetPin(b.phone, b.code, b.newPin, b.deviceId, b.deviceName)
 
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)

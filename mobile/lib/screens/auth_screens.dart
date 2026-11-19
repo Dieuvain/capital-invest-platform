@@ -26,7 +26,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
     if (pin.text.length != 4) return setState(() => error = 'Entrez vos 4 chiffres de PIN.');
     final tokens = await run(
       widget.app,
-      () => widget.app.api.login(phone: p, pin: pin.text, deviceId: widget.app.deviceId),
+      () => widget.app.api.login(
+        phone: p,
+        pin: pin.text,
+        deviceId: widget.app.deviceId,
+        deviceName: widget.app.deviceName,
+      ),
     );
     pin.clear();
     if (tokens != null) widget.app.signedInAs(tokens);
@@ -140,6 +145,7 @@ class _SignupScreenState extends State<SignupScreen> with ApiAction {
         fullName: name.text.trim(),
         pin: pin.text,
         deviceId: widget.app.deviceId,
+        deviceName: widget.app.deviceName,
       ),
     );
     if (tokens != null && mounted) {
@@ -226,7 +232,13 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
     if (pin.text != pin2.text) return setState(() => error = 'Les deux PIN sont différents.');
     final tokens = await run(
       widget.app,
-      () => widget.app.api.resetPin(phone: sentTo!, code: code.text, newPin: pin.text, deviceId: widget.app.deviceId),
+      () => widget.app.api.resetPin(
+        phone: sentTo!,
+        code: code.text,
+        newPin: pin.text,
+        deviceId: widget.app.deviceId,
+        deviceName: widget.app.deviceName,
+      ),
     );
     if (tokens != null && mounted) {
       widget.app.signedInAs(tokens);

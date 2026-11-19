@@ -17,6 +17,7 @@ import 'kyc_screen.dart';
 import 'notifications_screen.dart';
 import 'pay_screen.dart';
 import 'request_screens.dart';
+import 'security_screen.dart';
 import 'money_screens.dart';
 
 /// Tableau de bord : cartes empilées, actions rapides, promotions, mouvements ; barre du bas flottante.
@@ -349,6 +350,9 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
     );
   }
 
+  void _security() =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SecurityScreen(app: widget.app)));
+
   Widget _profilePage(Customer c) => ListView(
     padding: const EdgeInsets.only(bottom: 120),
     children: [
@@ -387,6 +391,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                     c.kycLevel >= 2 ? 'Niveau 2 actif' : 'Passer au niveau 2',
                     _kyc,
                   ),
+                  _SheetRow(Icons.lock_outline_rounded, 'Sécurité et PIN', _security),
                   _SheetRow(Icons.credit_card_outlined, 'Carte prépayée Visa · bientôt', null),
                   _SheetRow(Icons.savings_outlined, 'Épargne · bientôt', null),
                 ],

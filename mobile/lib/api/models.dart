@@ -23,6 +23,38 @@ class SessionTokens {
       SessionTokens(accessToken: j['accessToken'], customer: Customer.fromJson(j['customer']['customer']));
 }
 
+/// Une connexion à ce compte, pour l'écran Sécurité.
+class DeviceSession {
+  DeviceSession({
+    required this.id,
+    required this.deviceName,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.current,
+    required this.active,
+  });
+
+  final String id;
+  final String? deviceName;
+  final DateTime createdAt;
+  final DateTime lastSeenAt;
+
+  /// La session de ce téléphone.
+  final bool current;
+
+  /// Encore utilisable : ni fermée, ni expirée.
+  final bool active;
+
+  factory DeviceSession.fromJson(Map<String, dynamic> j) => DeviceSession(
+    id: j['id'],
+    deviceName: j['deviceName'],
+    createdAt: DateTime.parse(j['createdAt']),
+    lastSeenAt: DateTime.parse(j['lastSeenAt']),
+    current: j['current'] == true,
+    active: j['active'] == true,
+  );
+}
+
 class Limits {
   Limits({
     required this.kycLevel,

@@ -73,7 +73,7 @@ abstract class ApiTest : DatabaseTest() {
 
     fun loginRequest(phone: String, pin: String) = mvc.post("/v1/auth/login") {
         contentType = MediaType.APPLICATION_JSON
-        content = """{"phone":"$phone","pin":"$pin","deviceId":"tel-1"}"""
+        content = """{"phone":"$phone","pin":"$pin","deviceId":"test-device"}"""
     }
 
     fun login(phone: String, pin: String = "2580"): Session {

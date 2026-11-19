@@ -1,18 +1,20 @@
-import 'dart:math';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api/api_client.dart';
 import 'api/models.dart';
+import 'device.dart';
 
 /// État de l'app : client connecté et identifiant de l'appareil. Le jeton reste en mémoire seulement :
 /// à chaque ouverture, le client entre son PIN.
 class AppState extends ChangeNotifier {
-  AppState(this.api, {String? deviceId}) : deviceId = deviceId ?? _randomDeviceId();
+  AppState(this.api, {String? deviceId, this.deviceName}) : deviceId = deviceId ?? randomDeviceId();
 
   final ApiClient api;
   final String deviceId;
+
+  /// Nom du téléphone, montré au client dans ses connexions récentes.
+  final String? deviceName;
 
   /// Ouvre le partage du téléphone (WhatsApp, SMS…). Remplacé dans les tests.
   Future<void> Function(String text, String subject) share = _systemShare;
@@ -58,11 +60,6 @@ class AppState extends ChangeNotifier {
     api.token = null;
     customer = null;
     notifyListeners();
-  }
-
-  static String _randomDeviceId() {
-    final r = Random.secure();
-    return 'app-${List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
   }
 }
 
