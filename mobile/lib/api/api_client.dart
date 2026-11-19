@@ -174,6 +174,33 @@ class ApiClient {
     }, idempotencyKey: idempotencyKey),
   );
 
+  // ---- Demandes d'argent ----------------------------------------------------------------------
+
+  Future<MoneyRequestList> moneyRequests() async => MoneyRequestList.fromJson(await _get('/v1/money-requests'));
+
+  Future<MoneyRequest> requestMoney({
+    required String payerPhone,
+    required int amountMinor,
+    required String idempotencyKey,
+    String? note,
+  }) async => MoneyRequest.fromJson(
+    await _post('/v1/money-requests', {
+      'payerPhone': payerPhone,
+      'amountMinor': amountMinor,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  /// Payer une demande reçue : un envoi ordinaire, confirmé par le PIN.
+  Future<TransferResult> payMoneyRequest(String id, String pin) async =>
+      TransferResult.fromJson((await _post('/v1/money-requests/$id/pay', {'pin': pin}))['transfer']);
+
+  Future<MoneyRequest> declineMoneyRequest(String id) async =>
+      MoneyRequest.fromJson(await _post('/v1/money-requests/$id/decline', const <String, dynamic>{}));
+
+  Future<MoneyRequest> cancelMoneyRequest(String id) async =>
+      MoneyRequest.fromJson(await _post('/v1/money-requests/$id/cancel', const <String, dynamic>{}));
+
   // ---- Paiement marchand ----------------------------------------------------------------------
 
   Future<MerchantInfo> merchant(String code) async => MerchantInfo.fromJson(await _get('/v1/merchants/$code'));

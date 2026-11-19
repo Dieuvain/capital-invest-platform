@@ -16,6 +16,7 @@ import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
 import 'pay_screen.dart';
+import 'request_screens.dart';
 import 'money_screens.dart';
 
 /// Tableau de bord : cartes empilées, actions rapides, promotions, mouvements ; barre du bas flottante.
@@ -41,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   List<HistoryItem> recent = const [];
   List<Promotion> promos = const [];
   int unread = 0;
+  List<MoneyRequest> toPay = const [];
   int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
@@ -68,6 +70,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       // La cloche reste sans pastille.
     }
     try {
+      final r = await api.moneyRequests();
+      if (mounted) setState(() => toPay = r.toPay);
+    } on ApiException {
+      // Pas de bandeau des demandes.
+    }
+    try {
       final p = await api.promotions();
       if (mounted) setState(() => promos = p);
     } on ApiException {
@@ -87,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _transfer() => _open(TransferScreen(app: widget.app, limits: limits));
   void _withdraw() => _open(WithdrawScreen(app: widget.app, limits: limits));
   void _payMerchant() => _open(PayMerchantScreen(app: widget.app, limits: limits));
+  void _requests() => _open(MoneyRequestsScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
@@ -117,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               const Text('Plus', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
+              _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
               _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
               _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
               _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
@@ -246,6 +256,10 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ],
                 ),
               ),
+              if (toPay.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                RequestsBanner(toPay: toPay, onTap: _requests),
+              ],
               if (promos.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 PromoCarousel(

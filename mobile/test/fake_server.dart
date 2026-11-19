@@ -44,6 +44,16 @@ class FakeServer {
   /// Notifications servies par /v1/me/notifications ; « read » passe à vrai à la lecture.
   List<Map<String, dynamic>> notifications = [];
 
+  /// Demandes d'argent, plus récentes d'abord.
+  List<Map<String, dynamic>> moneyRequests = [];
+
+  static Map<String, dynamic> moneyRequest(String id, {required bool incoming, required String name, required String phone,
+      required int amount, String status = 'PENDING', String? note, String at = '2026-11-19T08:00:00Z'}) => {
+    'id': id, 'direction': incoming ? 'INCOMING' : 'OUTGOING', 'counterpartyName': name, 'counterpartyPhone': phone,
+    'amountMinor': amount, 'currency': 'USD', 'note': note, 'status': status, 'transactionId': null,
+    'createdAt': at, 'expiresAt': '2026-11-26T08:00:00Z', 'decidedAt': null,
+  };
+
   /// Marchands connus, par code.
   Map<String, Map<String, dynamic>> merchants = {
     'K7P2QX': {'code': 'K7P2QX', 'name': 'Alimentation Mama Nzuzi', 'category': 'Alimentation', 'city': 'Lubumbashi'},
@@ -104,7 +114,8 @@ class FakeServer {
         path.startsWith('/v1/topups') ||
         path.startsWith('/v1/transfers') ||
         path.startsWith('/v1/withdrawals') ||
-        path.startsWith('/v1/merchant')) {
+        path.startsWith('/v1/merchant') ||
+        path.startsWith('/v1/money-requests')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
     final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);
@@ -125,6 +136,45 @@ class FakeServer {
       if (m == null) return _error(404, 'MERCHANT_NOT_FOUND', 'Aucun marchand avec ce code');
       if (m['suspended'] == true) return _error(422, 'MERCHANT_NOT_ACTIVE', 'Ce marchand n\'accepte pas de paiement');
       return _json(m);
+    }
+    final requestAction = RegExp(r'^/v1/money-requests/([^/]+)/(pay|decline|cancel)$').firstMatch(path);
+    if (requestAction != null) {
+      final r = moneyRequests.firstWhere((x) => x['id'] == requestAction.group(1));
+      if (r['status'] != 'PENDING') return _error(422, 'REQUEST_CLOSED', 'Demande déjà traitée');
+      switch (requestAction.group(2)) {
+        case 'pay':
+          if (body()['pin'] != '2580') return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+          final a = r['amountMinor'] as int;
+          final fee = ((a * 100 + 5000) ~/ 10000).clamp(10, 500);
+          if (a + fee > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+          balance -= a + fee;
+          r['status'] = 'PAID';
+          r['transactionId'] = 'tx-${r['id']}';
+          return _json({
+            'request': r,
+            'transfer': {'transaction': {}, 'replayed': false, 'amountMinor': a, 'feeMinor': fee, 'totalDebitedMinor': a + fee},
+          });
+        case 'decline':
+          r['status'] = 'DECLINED';
+        default:
+          r['status'] = 'CANCELLED';
+      }
+      return _json(r);
+    }
+    if (path == '/v1/money-requests') {
+      if (req.method == 'POST') {
+        final b = body();
+        if (b['payerPhone'] == '+243970000001') return _error(422, 'SAME_ACCOUNT', 'Impossible');
+        final r = moneyRequest('rq-${moneyRequests.length + 1}', incoming: false, name: 'Béni Mukendi',
+            phone: b['payerPhone'], amount: b['amountMinor'], note: b['note'], at: '2026-11-19T10:00:00Z');
+        moneyRequests.insert(0, r);
+        return _json(r, 201);
+      }
+      bool toPay(Map<String, dynamic> r) => r['direction'] == 'INCOMING' && r['status'] == 'PENDING';
+      return _json({
+        'toPay': moneyRequests.where(toPay).toList().reversed.toList(),
+        'recent': moneyRequests.where((r) => !toPay(r)).toList(),
+      });
     }
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});

@@ -60,6 +60,11 @@ capital-invest:
     auto-payout-enabled: true
     auto-payout-min-minor: 1000
     auto-payout-cron: "0 30 1 * * *"  # heure de Lubumbashi, avant le rapprochement de 2 h
+  # Demander de l'argent à un autre client.
+  money-requests:
+    expiry-days: 7               # sans réponse, la demande expire
+    max-per-day: 10              # demandes par client en 24 h
+    max-pending-per-payer: 3     # demandes en attente vers un même client
   # Surveillance des opérations (anti-blanchiment). Seuils PROVISOIRES : à valider par la conformité.
   monitoring:
     enabled: true

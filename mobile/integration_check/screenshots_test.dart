@@ -154,6 +154,36 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      server.moneyRequests = [
+        FakeServer.moneyRequest('rq-3', incoming: false, name: 'Béni Mukendi', phone: '+243970000402', amount: 1500,
+            note: 'Part du taxi', at: '2026-11-19T07:15:00Z'),
+        FakeServer.moneyRequest('rq-2', incoming: true, name: 'Grâce Mbuyi', phone: '+243810000214', amount: 2000,
+            note: 'Frais scolaires', at: '2026-11-18T18:40:00Z'),
+        FakeServer.moneyRequest('rq-1', incoming: false, name: 'Patrick Ilunga', phone: '+243990000870', amount: 4500,
+            note: 'Loyer de novembre', status: 'PAID', at: '2026-11-17T10:00:00Z'),
+      ];
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Demander de l\'argent'));
+      await tester.pumpAndSettle();
+      await shot('7-demandes$suffix');
+      await tester.tap(find.text('Grâce Mbuyi vous demande'));
+      await tester.pumpAndSettle();
+      await shot('7b-demande-a-payer$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('new-request')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du client')), '970 000 402');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '15');
+      await tester.enterText(find.byKey(const ValueKey('note')), 'Part du taxi');
+      await tester.pump();
+      await shot('7c-demander$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Passer au niveau 2'));

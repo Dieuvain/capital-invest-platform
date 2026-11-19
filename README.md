@@ -221,6 +221,16 @@ Ce que Capital Invest doit au marchand part vers son **compte mobile money de re
 - Activé par défaut pour chaque nouveau marchand ; un administrateur le coupe ou le remet depuis la fiche (`POST /v1/backoffice/merchants/{id}/auto-payout`, `enabled`). Toute la tâche se coupe avec `capital-invest.merchants.auto-payout-enabled: false`, l'heure se règle avec `auto-payout-cron`.
 - Pas encore fait : reversement vers un compte bancaire.
 
+## Demander de l'argent
+
+Un client demande un montant à un autre client (menu « Demander de l'argent » de l'app). Le client sollicité reçoit un SMS et une notification, voit la demande en haut de son accueil, puis **paie avec son PIN** ou **refuse**.
+
+- Payer, c'est faire un envoi ordinaire au demandeur : mêmes frais (payés par celui qui paie), mêmes plafonds, même reçu. Rejouer le paiement ne paie jamais deux fois.
+- L'écran de paiement rappelle de ne payer que quelqu'un qu'on connaît : ces demandes sont un terrain d'arnaque connu. Le SMS ne contient aucun lien.
+- Le refus prévient le demandeur dans l'app (sans SMS). Le demandeur peut annuler une demande en attente. Sans réponse, une demande expire au bout de 7 jours.
+- Contre le harcèlement : 10 demandes par client en 24 h, et 3 demandes en attente au plus vers un même client (`capital-invest.money-requests`).
+- API : `POST /v1/money-requests` (`payerPhone`, `amountMinor`, `note`, en-tête `Idempotency-Key`), `GET /v1/money-requests` (`toPay`, `recent`), `POST /v1/money-requests/{id}/pay` (`pin`), `/decline`, `/cancel`.
+
 ## Surveillance des opérations (anti-blanchiment)
 
 Après chaque mouvement d'argent, le serveur regarde le comportement récent des clients concernés. Une règle franchie ouvre une alerte pour la conformité, dans le menu **Surveillance** du back-office. Rien n'est bloqué automatiquement, et le client n'est jamais prévenu : il ne doit pas savoir qu'il est surveillé.
