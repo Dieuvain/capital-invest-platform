@@ -15,6 +15,7 @@ import '../ui/widgets.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
+import 'pay_screen.dart';
 import 'money_screens.dart';
 
 /// Tableau de bord : cartes empilées, actions rapides, promotions, mouvements ; barre du bas flottante.
@@ -85,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _topup() => _open(TopupScreen(app: widget.app));
   void _transfer() => _open(TransferScreen(app: widget.app, limits: limits));
   void _withdraw() => _open(WithdrawScreen(app: widget.app, limits: limits));
+  void _payMerchant() => _open(PayMerchantScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
@@ -114,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
             children: [
               const Text('Plus', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
+              _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
               _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
               _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
               _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
@@ -238,7 +241,8 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                     _QuickAction(Icons.north_east_rounded, 'Envoyer', _transfer),
                     _QuickAction(Icons.credit_card_rounded, 'Recharger', _topup),
                     _QuickAction(Icons.south_west_rounded, 'Retirer', _withdraw),
-                    _QuickAction(Icons.more_horiz_rounded, 'Plus', _more),
+                    // « Plus » reste dans le bouton Menu en haut à gauche.
+                    _QuickAction(Icons.qr_code_scanner_rounded, 'Payer', _payMerchant),
                   ],
                 ),
               ),

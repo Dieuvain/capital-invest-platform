@@ -8,6 +8,7 @@ import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
 import 'package:capital_invest/screens/money_screens.dart';
 import 'package:capital_invest/ui/chrome.dart';
+import 'package:capital_invest/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -55,7 +56,7 @@ void main() {
     await login(tester);
     expect(find.text('Bonjour Amani !'), findsOneWidget);
     expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
-    for (final a in ['Envoyer', 'Recharger', 'Retirer', 'Plus']) {
+    for (final a in ['Envoyer', 'Recharger', 'Retirer', 'Payer']) {
       expect(find.byKey(ValueKey('quick-$a')), findsOneWidget);
     }
     expect(find.text('Recharge M-Pesa'), findsOneWidget);
@@ -233,6 +234,66 @@ void main() {
     expect(find.text('12,50 \$ envoyés'), findsOneWidget);
     expect(server.balance, 5000 - 1263);
     expect(server.requests.last.headers['Idempotency-Key'], isNotNull);
+  });
+
+  testWidgets('paiement marchand : QR scanné, commerce vérifié, sans frais, PIN, puis preuve pour le caissier', (tester) async {
+    app.scanQr = (_) async => 'capitalinvest://pay?m=K7P2QX';
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Payer');
+
+    // L'appareil photo s'ouvre tout seul ; le commerce est affiché avant tout montant.
+    expect(find.byKey(const ValueKey('merchant-name')), findsOneWidget);
+    expect(find.text('Alimentation Mama Nzuzi'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vérifier le paiement'), findsOneWidget);
+    expect(find.text('Aucun'), findsOneWidget);
+    expect(find.text(formatUsd(1250)), findsNWidgets(2));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Payer ${formatUsd(1250)}'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Paiement effectué'), findsOneWidget);
+    expect(find.text('payés à Alimentation Mama Nzuzi'), findsOneWidget);
+    expect(find.textContaining('Reçu CI-20261119-00MP01'), findsOneWidget);
+    expect(server.balance, 5000 - 1250);
+    final req = server.requests.lastWhere((r) => r.url.path == '/v1/merchant-payments');
+    expect(req.headers['Idempotency-Key'], isNotNull);
+    expect(req.body, contains('"merchantCode":"K7P2QX"'));
+
+    // Le reçu de l'opération s'ouvre depuis l'écran de preuve.
+    await tester.tap(find.text('Voir le reçu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marchand'), findsOneWidget);
+    expect(find.text('Paiement à Alimentation Mama Nzuzi'), findsOneWidget);
+  });
+
+  testWidgets('paiement marchand : code tapé, QR étranger et marchand suspendu', (tester) async {
+    var scanned = 'https://exemple.com/menu';
+    app.scanQr = (_) async => scanned;
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Payer');
+    expect(find.text('Ce QR n\'est pas un QR de paiement Capital Invest.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('merchant-code')), 'susp 22');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ce marchand n\'accepte pas de paiement pour le moment.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('merchant-code')), 'zzz 999');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun marchand avec ce code. Vérifiez le code sous le QR.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('merchant-code')), 'k7p 2qx');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alimentation Mama Nzuzi'), findsOneWidget);
+    scanned = '';
   });
 
   testWidgets('un montant au-dessus du plafond est arrêté avant l\'envoi', (tester) async {

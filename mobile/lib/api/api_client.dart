@@ -174,6 +174,25 @@ class ApiClient {
     }, idempotencyKey: idempotencyKey),
   );
 
+  // ---- Paiement marchand ----------------------------------------------------------------------
+
+  Future<MerchantInfo> merchant(String code) async => MerchantInfo.fromJson(await _get('/v1/merchants/$code'));
+
+  Future<MerchantPaymentResult> payMerchant({
+    required String code,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+    String? note,
+  }) async => MerchantPaymentResult.fromJson(
+    await _post('/v1/merchant-payments', {
+      'merchantCode': code,
+      'amountMinor': amountMinor,
+      'pin': pin,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }, idempotencyKey: idempotencyKey),
+  );
+
   // ---- Retraits ------------------------------------------------------------------------------
 
   Future<FeeQuote> withdrawalFee(int amountMinor) async =>

@@ -14,6 +14,7 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'TRANSFER_RECEIVED' => 'Reçu de ${i.counterpartyName ?? 'un client'}',
   'WITHDRAWAL' => 'Retrait vers ${i.operatorLabel ?? 'mobile money'}',
   'WITHDRAWAL_REFUND' => 'Retrait remboursé',
+  'MERCHANT_PAYMENT' => 'Paiement à ${i.counterpartyName ?? 'un marchand'}',
   _ => 'Correction de solde',
 };
 
@@ -31,6 +32,7 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'TRANSFER_RECEIVED' => Icons.south_west_rounded,
   'WITHDRAWAL' => Icons.south_east_rounded,
   'WITHDRAWAL_REFUND' => Icons.undo_rounded,
+  'MERCHANT_PAYMENT' => Icons.storefront_rounded,
   _ => Icons.tune_rounded,
 };
 
@@ -46,6 +48,7 @@ String receiptText(Receipt r) {
     '',
     historyTitle(i),
     if (i.counterpartyPhone != null) 'Numéro : ${i.counterpartyPhone}',
+    if (i.merchantCode != null) 'Code marchand : ${i.merchantCode}',
     if (i.msisdn != null && i.kind == 'WITHDRAWAL') 'Vers : ${i.msisdn}',
     'Montant : ${formatUsd(i.amountMinor)}',
     if (i.feeMinor != 0) '${i.kind == 'WITHDRAWAL_REFUND' ? 'Frais rendus' : 'Frais'} : ${formatUsd(i.feeMinor)}',
@@ -124,7 +127,7 @@ class HistoryView extends StatefulWidget {
 }
 
 class _HistoryViewState extends State<HistoryView> with ApiAction {
-  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits'};
+  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits', 'PAYMENT': 'Paiements'};
 
   String? category;
   List<HistoryItem>? items;
@@ -256,7 +259,13 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
     final rows = <(String, String)>[
       ('N° de reçu', i.receiptNumber),
       ('Date', formatDateTime(i.createdAt)),
-      if (i.counterpartyName != null) (i.kind == 'TRANSFER_RECEIVED' ? 'Expéditeur' : 'Destinataire', i.counterpartyName!),
+      if (i.counterpartyName != null)
+        (switch (i.kind) {
+          'TRANSFER_RECEIVED' => 'Expéditeur',
+          'MERCHANT_PAYMENT' => 'Marchand',
+          _ => 'Destinataire',
+        }, i.counterpartyName!),
+      if (i.merchantCode != null) ('Code marchand', i.merchantCode!),
       if (i.counterpartyPhone != null) ('Numéro', i.counterpartyPhone!),
       if (i.operatorLabel != null) ('Opérateur', i.operatorLabel!),
       if (i.msisdn != null && i.kind == 'WITHDRAWAL') ('Envoyé vers', i.msisdn!),
