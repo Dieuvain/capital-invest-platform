@@ -49,8 +49,9 @@ class PawapayApiTest : ApiTest() {
                     authorizations += ex.requestHeaders.getFirst("Authorization")
                 }
                 val (status, response) = when {
-                    ex.requestMethod == "POST" && path == "/v2/deposits" -> {
-                        val id = ObjectMapper().readTree(body)["depositId"].asText()
+                    ex.requestMethod == "POST" && (path == "/v2/deposits" || path == "/v2/payouts") -> {
+                        val sent = ObjectMapper().readTree(body)
+                        val id = (sent["depositId"] ?: sent["payoutId"]).asText()
                         initiateStatus to initiateBody(id)
                     }
                     path == "/v2/public-key/http" -> {
@@ -59,8 +60,8 @@ class PawapayApiTest : ApiTest() {
                             "\n-----END PUBLIC KEY-----"
                         200 to ObjectMapper().writeValueAsString(listOf(mapOf("id" to "HTTP_EC_P256_KEY:1", "key" to pem)))
                     }
-                    path.startsWith("/v2/deposits/") -> {
-                        val data = deposits[path.removePrefix("/v2/deposits/")]
+                    path.startsWith("/v2/deposits/") || path.startsWith("/v2/payouts/") -> {
+                        val data = deposits[path.substringAfterLast('/')]
                         200 to if (data == null) """{"status":"NOT_FOUND"}""" else """{"status":"FOUND","data":$data}"""
                     }
                     else -> 404 to "{}"
@@ -238,6 +239,37 @@ class PawapayApiTest : ApiTest() {
         val topup = topupService.get(UUID.fromString(id))
         assertEquals("FAILED", topup.status.name)
         assertEquals("Solde M-Pesa insuffisant", topup.failureMessage)
+    }
+
+    @Test
+    fun `un retrait part chez pawaPay, et un echec confirme rembourse le client`() {
+        val alice = register("+243970000307")
+        FakePawapay.deposits.clear()
+        val top = startTopup(alice, 10000, "pp-7")["id"].asText()
+        FakePawapay.deposits[top] = completed("100.00")
+        testClock.advance(Duration.ofSeconds(11))
+        topupService.checkDue()
+        assertEquals(10000, balance(alice))
+
+        val w = mvc.post("/v1/withdrawals") {
+            header("Authorization", "Bearer ${alice.token}")
+            header("Idempotency-Key", "pp-w-1")
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"operator":"AIRTEL","amountMinor":4000,"pin":"2580"}"""
+        }.andExpect { status { isAccepted() } }.body()
+        val id = w["id"].asText()
+        val (call, body) = FakePawapay.requests.last()
+        assertEquals("POST /v2/payouts", call)
+        val sent = json.readTree(body)
+        assertEquals(id, sent["payoutId"].asText())
+        assertEquals("40.00", sent["amount"].asText())
+        assertEquals("243970000307", sent["recipient"]["accountDetails"]["phoneNumber"].asText())
+        assertEquals("AIRTEL_COD", sent["recipient"]["accountDetails"]["provider"].asText())
+        assertEquals(10000 - 4000 - 60, balance(alice), "argent bloqué dès la demande")
+
+        FakePawapay.deposits[id] = """{"status":"FAILED","failureReason":{"failureCode":"RECIPIENT_NOT_FOUND","failureMessage":"Unknown wallet"}}"""
+        callback("""{"payoutId":"$id","status":"FAILED"}""").andExpect { status { isOk() } }
+        assertEquals(10000, balance(alice), "montant et frais rendus")
     }
 
     @Test

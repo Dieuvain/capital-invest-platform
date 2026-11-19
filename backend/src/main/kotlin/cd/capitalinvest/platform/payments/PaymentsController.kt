@@ -27,6 +27,13 @@ import java.util.UUID
 
 data class TopupRequest(val operator: Operator, @field:Positive val amountMinor: Long)
 
+data class WithdrawalRequest(
+    val operator: Operator,
+    @field:Positive val amountMinor: Long,
+    /** Chaque retrait se confirme par le PIN, comme un envoi. */
+    val pin: String,
+)
+
 data class TransferRequest(
     val toPhone: String,
     @field:Positive val amountMinor: Long,
@@ -50,6 +57,7 @@ class PaymentsController(
     private val transfers: TransferService,
     private val auth: AuthService,
     private val fees: FeeService,
+    private val withdrawals: WithdrawalService,
 ) {
 
     @PostMapping("/topups")
@@ -66,6 +74,30 @@ class PaymentsController(
         // Une recharge d'un autre client répond comme si elle n'existait pas.
         if (topup.customerId != customerId) throw NotFoundException("TOPUP_NOT_FOUND", "Recharge introuvable")
         return topup
+    }
+
+    /** Retrait vers le compte mobile money du client (son propre numéro). L'argent est bloqué dès maintenant. */
+    @PostMapping("/withdrawals")
+    fun withdraw(
+        @RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID,
+        @RequestHeader("Idempotency-Key") key: String,
+        @Valid @RequestBody body: WithdrawalRequest,
+    ): ResponseEntity<Withdrawal> {
+        auth.confirmWithPin(customerId, body.pin)
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(withdrawals.initiate(key, customerId, body.operator, body.amountMinor))
+    }
+
+    @GetMapping("/withdrawals/fee")
+    fun withdrawalFee(@RequestParam amountMinor: Long): FeeQuote {
+        if (amountMinor <= 0) throw BusinessException("INVALID_AMOUNT", "Le montant doit être positif")
+        return fees.withdrawalQuote(amountMinor)
+    }
+
+    @GetMapping("/withdrawals/{id}")
+    fun getWithdrawal(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @PathVariable id: UUID): Withdrawal {
+        val w = withdrawals.get(id)
+        if (w.customerId != customerId) throw NotFoundException("WITHDRAWAL_NOT_FOUND", "Retrait introuvable")
+        return w
     }
 
     @PostMapping("/transfers")
@@ -102,6 +134,13 @@ data class SimulatedCallback(
     val amountMinor: Long? = null,
 )
 
+data class SimulatedPayout(
+    val withdrawalId: UUID,
+    val success: Boolean,
+    val amountMinor: Long? = null,
+    val failureCode: String? = null,
+)
+
 /**
  * Remplace l'opérateur en développement : fixe ce que « l'opérateur » répondra, puis déclenche la même
  * relecture du statut qu'une vraie notification. Désactivé en production.
@@ -109,7 +148,30 @@ data class SimulatedCallback(
 @RestController
 @RequestMapping("/v1/simulators/mobile-money")
 @ConditionalOnProperty("capital-invest.simulators-enabled", havingValue = "true")
-class MobileMoneySimulatorController(private val topups: TopupService, private val simulator: SimulatorConnector) {
+class MobileMoneySimulatorController(
+    private val topups: TopupService,
+    private val withdrawals: WithdrawalService,
+    private val simulator: SimulatorConnector,
+) {
+
+    /** Versement simulé : « l'opérateur » paie (ou refuse) le retrait, puis le statut est relu. */
+    @PostMapping("/payouts")
+    fun payout(@RequestBody body: SimulatedPayout): Withdrawal {
+        val w = withdrawals.get(body.withdrawalId)
+        if (w.provider != SimulatorConnector.NAME) {
+            throw ConflictException("NOT_SIMULATED", "Ce retrait passe par ${w.provider}, pas par le simulateur")
+        }
+        simulator.setPayoutOutcome(
+            w.id,
+            if (body.success) {
+                CheckResult.Completed(body.amountMinor ?: w.amountMinor, w.currency.name, "SIM-${UUID.randomUUID().toString().take(8)}")
+            } else {
+                CheckResult.Failed(body.failureCode ?: "SIMULATED_FAILURE", "Versement refusé par l'opérateur (simulation)")
+            },
+        )
+        return withdrawals.refresh(w.id)
+    }
+
 
     @PostMapping("/callbacks")
     fun callback(@RequestBody body: SimulatedCallback): Topup {

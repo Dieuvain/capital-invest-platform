@@ -75,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
 
   void _topup() => _open(TopupScreen(app: widget.app));
   void _transfer() => _open(TransferScreen(app: widget.app, limits: limits));
+  void _withdraw() => _open(WithdrawScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
 
   void _promoAction(Promotion p) => switch (p.action) {
@@ -226,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   children: [
                     _QuickAction(Icons.north_east_rounded, 'Envoyer', _transfer),
                     _QuickAction(Icons.credit_card_rounded, 'Recharger', _topup),
-                    _QuickAction(Icons.speed_rounded, 'Plafonds', () => setState(() => page = 2)),
+                    _QuickAction(Icons.south_west_rounded, 'Retirer', _withdraw),
                     _QuickAction(Icons.more_horiz_rounded, 'Plus', _more),
                   ],
                 ),

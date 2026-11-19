@@ -75,7 +75,16 @@ export interface AuditEntry {
 }
 
 export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
-export type DiscrepancyKind = 'CONFIRMED_NOT_CREDITED' | 'CREDITED_NOT_CONFIRMED' | 'AMOUNT_MISMATCH' | 'STILL_PENDING'
+export type DiscrepancyKind =
+  | 'CONFIRMED_NOT_CREDITED'
+  | 'CREDITED_NOT_CONFIRMED'
+  | 'PAID_BUT_REFUNDED'
+  | 'MARKED_PAID_NOT_PAID'
+  | 'AMOUNT_MISMATCH'
+  | 'STILL_PENDING'
+/** Recharge (l'argent entre) ou retrait (il sort vers le mobile money). */
+export type MovementType = 'TOPUP' | 'WITHDRAWAL'
+export type WithdrawalDecision = 'PAID' | 'REFUND'
 export type ResolveAction = 'CREDIT' | 'CLOSE'
 
 export interface ReconciliationRun {
@@ -91,7 +100,8 @@ export interface ReconciliationRun {
 export interface ReconciliationItem {
   id: string
   businessDate: string
-  topupId: string
+  type: MovementType
+  targetId: string
   kind: DiscrepancyKind
   ourStatus: string
   providerStatus: string
@@ -110,6 +120,7 @@ export interface ReconciliationItem {
 
 export interface ReviewTopup {
   id: string
+  type: MovementType
   operator: Operator
   provider: string
   amountMinor: number
@@ -231,6 +242,8 @@ export class Api {
   reviewTopups = () => this.json<ReviewTopup[]>('GET', '/v1/backoffice/topups/review')
   resolveTopup = (id: string, action: ResolveAction, note: string) =>
     this.json<unknown>('POST', `/v1/backoffice/topups/${id}/resolve`, { action, note })
+  resolveWithdrawal = (id: string, action: WithdrawalDecision, note: string) =>
+    this.json<unknown>('POST', `/v1/backoffice/withdrawals/${id}/resolve`, { action, note })
   reconciliationRuns = (limit = 14) => this.json<ReconciliationRun[]>('GET', `/v1/backoffice/reconciliation/runs?limit=${limit}`)
   runReconciliation = (businessDate?: string) =>
     this.json<ReconciliationRun>('POST', '/v1/backoffice/reconciliation/runs', businessDate ? { businessDate } : {})

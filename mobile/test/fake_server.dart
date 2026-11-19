@@ -37,6 +37,10 @@ class FakeServer {
   );
   /// Réponse de l'opérateur à la recharge en cours.
   Map<String, dynamic> topupOutcome = {'status': 'CONFIRMED'};
+
+  /// Réponse de l'opérateur au retrait en cours.
+  Map<String, dynamic> withdrawalOutcome = {'status': 'CONFIRMED'};
+  int _withdrawn = 0;
   List<(int, String, int, String)> entries = [(1, 'CREDIT', 5000, '2026-11-18T10:00:00Z')];
 
   static const token = 'jeton-test';
@@ -59,7 +63,8 @@ class FakeServer {
     if (path.startsWith('/v1/me') ||
         path.startsWith('/v1/promotions') ||
         path.startsWith('/v1/topups') ||
-        path.startsWith('/v1/transfers')) {
+        path.startsWith('/v1/transfers') ||
+        path.startsWith('/v1/withdrawals')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
     final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);
@@ -121,6 +126,21 @@ class FakeServer {
           'feeMinor': fee,
           'totalDebitedMinor': a + fee,
         }, 201);
+      case ('GET', '/v1/withdrawals/fee'):
+        final a = int.parse(req.url.queryParameters['amountMinor']!);
+        final fee = ((a * 150 + 5000) ~/ 10000).clamp(25, 750);
+        return _json({'amountMinor': a, 'feeMinor': fee, 'totalMinor': a + fee});
+      case ('POST', '/v1/withdrawals'):
+        final b = body();
+        if (b['pin'] != '2580') return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        final a = b['amountMinor'] as int;
+        final fee = ((a * 150 + 5000) ~/ 10000).clamp(25, 750);
+        if (a + fee > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+        balance -= a + fee;
+        _withdrawn = a;
+        return _json({'id': 'wd-1', 'status': 'PENDING', 'amountMinor': a, 'feeMinor': fee, 'msisdn': '243970000001'}, 202);
+      case ('GET', '/v1/withdrawals/wd-1'):
+        return _json({'id': 'wd-1', 'amountMinor': _withdrawn, 'feeMinor': 38, 'msisdn': '243970000001', ...withdrawalOutcome});
       case ('POST', '/v1/topups'):
         return _json({'id': 'top-1', 'status': 'PENDING', 'amountMinor': body()['amountMinor']}, 202);
       case ('GET', '/v1/topups/top-1'):

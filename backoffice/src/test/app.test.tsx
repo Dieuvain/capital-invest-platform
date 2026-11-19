@@ -259,7 +259,7 @@ describe('rapprochement', () => {
     expect(within(pendingRow).queryByRole('button', { name: 'Créditer' })).toBeNull()
     expect(within(pendingRow).queryByText(/reçu/)).toBeNull()
 
-    const review = screen.getByRole('region', { name: 'Recharges à vérifier' })
+    const review = screen.getByRole('region', { name: 'Recharges et retraits à vérifier' })
     expect(within(review).getByText("Montant reçu chez l'opérateur : 40,00 $, attendu 50,00 $")).toBeInTheDocument()
     expect(within(review).getByText('50,00 $')).toBeInTheDocument()
     expect(within(review).getByText('M-Pesa · pawaPay')).toBeInTheDocument()
@@ -267,7 +267,7 @@ describe('rapprochement', () => {
 
   it('créditer une recharge à vérifier demande un motif, envoyé au serveur', async () => {
     const user = await signIn('conformite@capitalinvest.cd', 'Rapprochement')
-    const review = await screen.findByRole('region', { name: 'Recharges à vérifier' })
+    const review = await screen.findByRole('region', { name: 'Recharges et retraits à vérifier' })
     await user.click(await within(review).findByRole('button', { name: 'Créditer' }))
     const confirm = within(review).getByRole('button', { name: 'Créditer le client' })
     expect(confirm).toBeDisabled()
@@ -278,7 +278,35 @@ describe('rapprochement', () => {
       action: 'CREDIT',
       note: 'Le client a envoyé 40 $, confirmé par M-Pesa',
     })
-    expect(await within(review).findByText('Aucune recharge à vérifier.')).toBeInTheDocument()
+    await waitFor(() => expect(within(review).queryByText('Amani Kabeya')).toBeNull())
+  })
+
+  it('un retrait sans réponse ne peut être remboursé que si l\'opérateur confirme l\'échec', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Rapprochement')
+    const review = await screen.findByRole('region', { name: 'Recharges et retraits à vérifier' })
+    const row = (await within(review).findByText('Esther Mbuyi')).closest('tr')!
+    expect(within(row).getByText('Retrait')).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Créditer' })).toBeNull()
+    await user.click(within(row).getByRole('button', { name: 'Rembourser' }))
+    await user.type(within(review).getByRole('textbox'), 'Le client dit ne rien avoir reçu')
+    await user.click(within(review).getByRole('button', { name: 'Rembourser le client' }))
+    expect(await within(review).findByRole('alert')).toHaveTextContent('payer le client deux fois')
+    expect(within(review).getByText('Esther Mbuyi')).toBeInTheDocument()
+  })
+
+  it('un retrait noté versé mais non payé se rembourse depuis les écarts', async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Rapprochement')
+    const items = await screen.findByRole('region', { name: 'Écarts à traiter' })
+    const row = (await within(items).findByText('Grâce Ngalula')).closest('tr')!
+    expect(within(row).getByText('Noté versé, non payé')).toBeInTheDocument()
+    await user.click(within(row).getByRole('button', { name: 'Rembourser' }))
+    await user.type(within(items).getByRole('textbox'), 'Échec confirmé par M-Pesa')
+    await user.click(within(items).getByRole('button', { name: 'Rembourser le client' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Grâce Ngalula a été remboursé')
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/reconciliation/items/i-3/resolve')?.body).toEqual({
+      action: 'CREDIT',
+      note: 'Échec confirmé par M-Pesa',
+    })
   })
 
   it("clore un écart l'enlève de la liste", async () => {

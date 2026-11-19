@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:capital_invest/api/api_client.dart';
+import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
@@ -53,7 +54,7 @@ void main() {
     await login(tester);
     expect(find.text('Bonjour Amani !'), findsOneWidget);
     expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
-    for (final a in ['Envoyer', 'Recharger', 'Plafonds', 'Plus']) {
+    for (final a in ['Envoyer', 'Recharger', 'Retirer', 'Plus']) {
       expect(find.byKey(ValueKey('quick-$a')), findsOneWidget);
     }
     expect(find.text('Argent reçu'), findsOneWidget);
@@ -188,6 +189,56 @@ void main() {
       expect(find.text('Terminé'), findsOneWidget);
     });
   }
+
+  testWidgets('retrait : opérateur deviné, frais vérifiés, PIN, puis argent envoyé', (tester) async {
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Retirer');
+    // Le numéro +243 97… est un numéro Airtel : l'opérateur est déjà choisi.
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Airtel Money')).selected, isTrue);
+    await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vérifier le retrait'), findsOneWidget);
+    expect(find.text('0,38\u00A0\$'), findsOneWidget);
+    expect(find.text('25,38\u00A0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Retirer 25,00\u00A0\$'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Retrait en cours'), findsOneWidget);
+    expect(server.balance, 5000 - 2538);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.text('Argent envoyé'), findsOneWidget);
+    expect(find.textContaining('Airtel Money'), findsOneWidget);
+  });
+
+  testWidgets('retrait refusé : le motif et le remboursement sont expliqués', (tester) async {
+    server.withdrawalOutcome = {'status': 'FAILED', 'failureCode': 'RECIPIENT_NOT_FOUND'};
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Retirer');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '10');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.textContaining('Retirer 10'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.text('Retrait refusé'), findsOneWidget);
+    expect(find.textContaining('pas de compte Airtel Money'), findsOneWidget);
+    expect(find.textContaining('recrédité, frais compris'), findsOneWidget);
+  });
+
+  test('opérateur deviné d\'après le numéro', () {
+    expect(operatorForPhone('+243970000001'), Operator.airtel);
+    expect(operatorForPhone('+243810000001'), Operator.mpesa);
+    expect(operatorForPhone('+243890000001'), Operator.orange);
+    expect(operatorForPhone('+243900000001'), isNull);
+  });
 
   testWidgets('une session expirée ramène à l\'écran de connexion', (tester) async {
     await start(tester);
