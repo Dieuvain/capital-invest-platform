@@ -55,6 +55,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.app.lockNotice != null && error == null) ...[
+                  Row(
+                    key: const ValueKey('lock-notice'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.lock_clock_rounded, color: Brand.ochreDeep),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(widget.app.lockNotice!, style: TextStyle(color: context.pal.muted))),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 ErrorBanner(error),
                 PhoneField(controller: phone),
                 const SizedBox(height: 12),

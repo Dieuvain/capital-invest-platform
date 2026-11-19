@@ -19,7 +19,13 @@ class StackedCards extends StatelessWidget {
     this.pillLabel,
     this.pillIcon = Icons.add,
     this.onPill,
+    this.onToggleHidden,
+    this.hidden = false,
   });
+
+  /// Œil à côté du libellé : masquer ou montrer le montant.
+  final VoidCallback? onToggleHidden;
+  final bool hidden;
 
   final String backLabel;
   final String backNumber;
@@ -118,7 +124,26 @@ class StackedCards extends StatelessWidget {
                               ],
                             ),
                             const Spacer(),
-                            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            Row(
+                              children: [
+                                Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                if (onToggleHidden != null)
+                                  InkResponse(
+                                    key: const ValueKey('toggle-balance'),
+                                    onTap: onToggleHidden,
+                                    radius: 20,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      child: Icon(
+                                        hidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                        size: 15,
+                                        color: Colors.white70,
+                                        semanticLabel: hidden ? 'Montrer le solde' : 'Masquer le solde',
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,

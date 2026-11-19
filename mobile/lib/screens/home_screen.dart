@@ -262,7 +262,9 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 backLabel: 'Carte prépayée · bientôt',
                 backNumber: '•••• •••• •••• ••••',
                 label: 'Solde',
-                amount: balance == null ? '…' : formatUsd(balance!),
+                amount: widget.app.hideBalance ? '•••••' : (balance == null ? '…' : formatUsd(balance!)),
+                hidden: widget.app.hideBalance,
+                onToggleHidden: widget.app.toggleHideBalance,
                 cornerLabel: 'Niveau',
                 cornerValue: '${limits?.kycLevel ?? c.kycLevel}',
                 ownerLabel: 'Titulaire · •••• $last4',
@@ -284,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ],
                 ),
               ),
-              if (savings != null) ...[const SizedBox(height: 16), _SavingsCard(savings: savings!, onTap: _savings)],
+              if (savings != null) ...[const SizedBox(height: 16), _SavingsCard(savings: savings!, onTap: _savings, hidden: widget.app.hideBalance)],
               if (toPay.isNotEmpty) ...[const SizedBox(height: 16), RequestsBanner(toPay: toPay, onTap: _requests)],
               if (promos.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -900,7 +902,10 @@ class _NavPill extends StatelessWidget {
 
 /// Carte Épargne du tableau de bord : montant mis de côté et progrès de l'objectif.
 class _SavingsCard extends StatelessWidget {
-  const _SavingsCard({required this.savings, required this.onTap});
+  const _SavingsCard({required this.savings, required this.onTap, this.hidden = false});
+
+  /// Solde masqué : l'épargne aussi.
+  final bool hidden;
 
   final Savings savings;
   final VoidCallback onTap;
@@ -935,7 +940,7 @@ class _SavingsCard extends StatelessWidget {
             ),
           ),
           if (savings.balanceMinor > 0)
-            Text(formatUsd(savings.balanceMinor), style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(hidden ? '•••••' : formatUsd(savings.balanceMinor), style: const TextStyle(fontWeight: FontWeight.w700)),
           const Icon(Icons.chevron_right_rounded),
         ],
       ),

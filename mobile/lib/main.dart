@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import 'api/api_client.dart';
@@ -15,18 +17,12 @@ const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final device = await DeviceIdentity.load();
-  runApp(
-    CapitalInvestApp(
-      app: AppState(
-        ApiClient(baseUrl: apiUrl),
-        deviceId: device.id,
-        deviceName: device.name,
-      ),
-    ),
-  );
+  final app = AppState(ApiClient(baseUrl: apiUrl), deviceId: device.id, deviceName: device.name);
+  await app.loadPreferences();
+  runApp(CapitalInvestApp(app: app));
 }
 
-class CapitalInvestApp extends StatelessWidget {
+class CapitalInvestApp extends StatefulWidget {
   const CapitalInvestApp({super.key, required this.app, this.photos});
 
   final AppState app;
@@ -35,9 +31,51 @@ class CapitalInvestApp extends StatelessWidget {
   final PhotoSource? photos;
 
   @override
+  State<CapitalInvestApp> createState() => _CapitalInvestAppState();
+}
+
+/// Surveille le passage en arrière-plan : au retour, après le délai choisi, l'app redemande le PIN.
+/// Un téléphone posé ou volé déverrouillé ne laisse donc pas l'argent ouvert.
+class _CapitalInvestAppState extends State<CapitalInvestApp> with WidgetsBindingObserver {
+  final navigator = GlobalKey<NavigatorState>();
+
+  AppState get app => widget.app;
+  PhotoSource? get photos => widget.photos;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      // « paused » seulement : au retour, le téléphone repasse aussi par « hidden ».
+      case AppLifecycleState.paused:
+        app.wentToBackground();
+      case AppLifecycleState.resumed:
+        if (app.shouldLockOnReturn()) {
+          // Les écrans ouverts (envoi en cours, PIN tapé à moitié) sont fermés avec la session.
+          navigator.currentState?.popUntil((r) => r.isFirst);
+          unawaited(app.lock());
+        }
+      default:
+        break;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: app,
     builder: (context, _) => MaterialApp(
+      navigatorKey: navigator,
       title: 'Capital Invest',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
