@@ -185,6 +185,15 @@ Le client voit **une ligne par opération** (pas une ligne par écriture comptab
 
 Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
 
+## Notifications au client
+
+Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçue, argent reçu, envoi effectué, retrait versé, retrait remboursé, correction de solde, décision sur le niveau 2, PIN changé. Un envoi que le client n'a pas fait est souvent le premier signe d'un vol de compte : chaque sortie d'argent est donc notifiée.
+
+- **Rien ne se perd** : la notification est écrite dans la même transaction que le mouvement d'argent (table `notification`), puis le SMS part juste après. Une passerelle indisponible est relancée après 1, 2, 4 et 8 minutes ; après 5 essais le SMS est abandonné, la notification reste dans l'app. Un rejeu d'opération ne renvoie jamais de second SMS.
+- **SMS** : 160 caractères au plus, sans accents (un SMS accentué compte double), avec le nouveau solde et le numéro de reçu. Les codes de connexion ne passent pas par là.
+- **App** : la cloche de l'accueil porte une pastille tant qu'il reste des notifications non lues. `GET /v1/me/notifications` (avec `unread`) et `POST /v1/me/notifications/read` (toutes, ou `{"ids": [...]}`). Une notification liée à une opération ouvre son reçu.
+- La passerelle SMS est encore le simulateur : il faudra brancher un fournisseur (agrégateur SMS ou opérateur) avant la mise en service. Les notifications push viendront plus tard.
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.

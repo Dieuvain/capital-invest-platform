@@ -17,3 +17,6 @@ capital-invest:
     # Les tests déclenchent eux-mêmes relances et rapprochement.
     poller-enabled: false
     reconciliation-enabled: false
+  notifications:
+    # Les SMS partent dès la fin de chaque opération ; les tests déclenchent eux-mêmes les relances.
+    dispatcher-enabled: false

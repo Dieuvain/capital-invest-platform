@@ -4,6 +4,8 @@ import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.common.ConflictException
 import cd.capitalinvest.platform.common.Currency
 import cd.capitalinvest.platform.common.NotFoundException
+import cd.capitalinvest.platform.notifications.MoneyMoved
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
@@ -22,7 +24,10 @@ data class PostingResult(val transaction: LedgerTransaction, val replayed: Boole
  *   pour une autre demande est refusée.
  */
 @Service
-class LedgerService(private val repository: LedgerRepository) {
+class LedgerService(
+    private val repository: LedgerRepository,
+    private val events: ApplicationEventPublisher,
+) {
 
     @Transactional
     fun post(request: PostingRequest): PostingResult {
@@ -59,6 +64,8 @@ class LedgerService(private val repository: LedgerRepository) {
             }
         }
 
+        // Les notifications au client sont écrites dans cette même transaction.
+        events.publishEvent(MoneyMoved(transactionId))
         return PostingResult(repository.findTransaction(transactionId)!!, replayed = false)
     }
 

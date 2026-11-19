@@ -14,6 +14,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
+import 'notifications_screen.dart';
 import 'money_screens.dart';
 
 /// Tableau de bord : cartes empilées, actions rapides, promotions, mouvements ; barre du bas flottante.
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   Limits? limits;
   List<HistoryItem> recent = const [];
   List<Promotion> promos = const [];
+  int unread = 0;
   int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
@@ -57,7 +59,13 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
         recent = (results[2] as HistoryPage).items;
       });
     });
-    // Les promotions ne doivent jamais bloquer le tableau de bord.
+    // Notifications et promotions ne doivent jamais bloquer le tableau de bord.
+    try {
+      final box = await api.notifications();
+      if (mounted) setState(() => unread = box.unread);
+    } on ApiException {
+      // La cloche reste sans pastille.
+    }
     try {
       final p = await api.promotions();
       if (mounted) setState(() => promos = p);
@@ -165,9 +173,9 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               const Spacer(),
               RoundButton(
                 icon: Icons.notifications_none_rounded,
-                tooltip: 'Alertes',
-                dot: c.kycLevel < 2 || limits?.outgoingBlockedUntil != null,
-                onTap: () => setState(() => page = 0),
+                tooltip: unread > 0 ? 'Notifications, $unread non lues' : 'Notifications',
+                dot: unread > 0,
+                onTap: () => _open(NotificationsScreen(app: widget.app)),
               ),
               const SizedBox(width: 8),
               Tooltip(

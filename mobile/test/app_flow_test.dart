@@ -163,6 +163,42 @@ void main() {
     expect(find.textContaining('introuvable'), findsOneWidget);
   });
 
+  testWidgets('notifications : pastille sur la cloche, lecture, puis reçu de l\'opération', (tester) async {
+    server.history = [FakeServer.historyItem('r1', 'TRANSFER_RECEIVED', 4500, name: 'Patrick Ilunga', phone: '+243 99• ••• 870')];
+    server.notifications = [
+      {
+        'id': 'n2', 'kind': 'TRANSFER_RECEIVED', 'title': 'Argent reçu', 'transactionId': 'r1', 'read': false,
+        'body': 'Patrick Ilunga vous a envoyé 45,00 \$. Nouveau solde : 95,00 \$.', 'createdAt': '2026-11-19T08:00:00Z',
+      },
+      {
+        'id': 'n1', 'kind': 'PIN_CHANGED', 'title': 'PIN changé', 'read': true,
+        'body': 'Votre PIN vient d\'être changé.', 'createdAt': '2026-11-18T08:00:00Z',
+      },
+    ];
+    await start(tester);
+    await login(tester);
+    expect(find.byTooltip('Notifications, 1 non lues'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Notifications, 1 non lues'));
+    await tester.pumpAndSettle();
+    expect(find.text('Argent reçu'), findsOneWidget);
+    expect(find.byKey(const ValueKey('unread-n2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('unread-n1')), findsNothing);
+    expect(server.requests.where((r) => r.url.path == '/v1/me/notifications/read'), hasLength(1));
+
+    await tester.tap(find.text('Argent reçu'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReceiptScreen), findsOneWidget);
+    expect(find.text('Patrick Ilunga'), findsOneWidget);
+
+    // Retour à l'accueil : la pastille s'est éteinte.
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Notifications'), findsOneWidget);
+  });
+
   testWidgets('sans promotions, le bandeau disparaît sans erreur', (tester) async {
     server.promotions = [];
     await start(tester);

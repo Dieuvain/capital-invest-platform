@@ -1,6 +1,7 @@
 package cd.capitalinvest.platform.auth
 
 import cd.capitalinvest.platform.common.BusinessException
+import cd.capitalinvest.platform.notifications.NotificationService
 import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.customers.CustomerService
 import cd.capitalinvest.platform.customers.CustomerView
@@ -30,6 +31,7 @@ class AuthService(
     private val customerService: CustomerService,
     private val props: SecurityProperties,
     private val clock: Clock,
+    private val notifications: NotificationService,
 ) {
     private val encoder = BCryptPasswordEncoder(12)
     private val random = SecureRandom()
@@ -76,6 +78,7 @@ class AuthService(
         jdbc.sql("UPDATE customer SET pin_reset_at = :now WHERE id = :id").param("now", now).param("id", customer.id).update()
         jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
             .param("now", now).param("id", customer.id).update()
+        notifications.pinChanged(customer.id, now)
         return openSession(customerService.get(customer.id), deviceId)
     }
 

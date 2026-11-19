@@ -152,7 +152,7 @@ class HistoryService(
 
     private fun select(where: String, having: String) = """
         WITH tx AS (
-            SELECT t.id, t.type, t.description, t.created_at,
+            SELECT t.id, t.type, t.description, t.created_at, t.idempotency_key,
                    SUM(CASE WHEN e.direction = 'CREDIT' THEN e.amount_minor ELSE -e.amount_minor END) AS net,
                    MIN(e.currency) AS currency
             FROM ledger_transaction t
@@ -180,7 +180,8 @@ class HistoryService(
              WHERE oe.transaction_id = tx.id AND oa.type = 'CUSTOMER_WALLET' AND oa.id <> :wallet
              LIMIT 1
         ) other ON TRUE
-        LEFT JOIN topup tp ON tp.ledger_transaction_id = tx.id
+        -- Par la clé aussi : juste après l'écriture (notifications), la recharge n'est pas encore liée à sa transaction.
+        LEFT JOIN topup tp ON tp.ledger_transaction_id = tx.id OR tx.idempotency_key = 'topup:' || tp.id
         LEFT JOIN withdrawal w ON w.hold_transaction_id = tx.id OR w.final_transaction_id = tx.id
         ORDER BY tx.created_at DESC, tx.id DESC
     """
