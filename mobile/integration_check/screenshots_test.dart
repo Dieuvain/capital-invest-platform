@@ -184,6 +184,24 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byTooltip('Profil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sécurité et PIN'));
+      await tester.pumpAndSettle();
+      await shot('8-securite$suffix');
+      await tester.tap(find.text('Changer mon PIN'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN actuel')), '2580');
+      await tester.enterText(find.byKey(const ValueKey('pin-Nouveau PIN')), '7391');
+      await tester.pump();
+      await shot('8b-changer-pin$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Accueil'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Passer au niveau 2'));

@@ -11,6 +11,7 @@ String messageFor(Object error) {
     'OTP_INVALID' => 'Code invalide ou expiré.',
     'OTP_RATE_LIMITED' => 'Trop de codes demandés. Réessayez dans 10 minutes.',
     'PHONE_ALREADY_REGISTERED' => 'Ce numéro a déjà un compte. Connectez-vous.',
+    'PIN_SAME' => 'Choisissez un PIN différent de l\'actuel.',
     'PIN_TOO_SIMPLE' || 'PIN_FORMAT' => 'Ce PIN est trop facile à deviner.',
     'INSUFFICIENT_FUNDS' => 'Solde insuffisant pour ce montant et les frais.',
     'RECIPIENT_NOT_FOUND' => 'Aucun client Capital Invest avec ce numéro.',

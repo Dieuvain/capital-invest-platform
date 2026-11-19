@@ -463,6 +463,52 @@ void main() {
     expect(operatorForPhone('+243900000001'), isNull);
   });
 
+  testWidgets('sécurité : changer son PIN avec l\'ancien, puis déconnecter les autres téléphones', (tester) async {
+    server.deviceSessions[2]['active'] = false;
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Samsung Galaxy A14'), findsOneWidget);
+    expect(find.textContaining('Ce téléphone'), findsOneWidget);
+    expect(find.text('Déconnecter les autres téléphones'), findsOneWidget);
+
+    await tester.tap(find.text('Changer mon PIN'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN actuel')), '1111');
+    await tester.enterText(find.byKey(const ValueKey('pin-Nouveau PIN')), '7391');
+    await tester.enterText(find.byKey(const ValueKey('pin-Confirmez le nouveau PIN')), '7391');
+    await tester.tap(find.widgetWithText(FilledButton, 'Changer mon PIN'));
+    await tester.pumpAndSettle();
+    expect(find.text('PIN actuel incorrect.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN actuel')), '2580');
+    await tester.tap(find.widgetWithText(FilledButton, 'Changer mon PIN'));
+    await tester.pumpAndSettle();
+    expect(server.pin, '7391');
+    expect(find.text('PIN changé. Vos autres téléphones ont été déconnectés.'), findsOneWidget);
+    // Plus aucun autre téléphone connecté : le bouton disparaît.
+    expect(find.text('Déconnecter les autres téléphones'), findsNothing);
+  });
+
+  testWidgets('sécurité : déconnecter les autres téléphones après confirmation', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Déconnecter les autres téléphones'));
+    await tester.tap(find.text('Déconnecter les autres téléphones'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Déconnecter'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 téléphone déconnecté.'), findsOneWidget);
+    expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));
+  });
+
   testWidgets('une session expirée ramène à l\'écran de connexion', (tester) async {
     await start(tester);
     await login(tester);

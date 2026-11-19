@@ -44,6 +44,20 @@ class FakeServer {
   /// Notifications servies par /v1/me/notifications ; « read » passe à vrai à la lecture.
   List<Map<String, dynamic>> notifications = [];
 
+  /// PIN du client, changé par /v1/me/security/pin.
+  String pin = '2580';
+
+  /// Connexions servies par /v1/me/security/sessions, celle de ce téléphone en tête.
+  List<Map<String, dynamic>> deviceSessions = [
+    deviceSession('s-1', 'Samsung Galaxy A14', '2026-11-19T09:10:00Z', current: true),
+    deviceSession('s-2', 'Tecno Spark 10', '2026-11-19T08:55:00Z', active: true),
+    deviceSession('s-3', 'iPhone 12', '2026-11-12T18:20:00Z'),
+  ];
+
+  static Map<String, dynamic> deviceSession(String id, String? name, String at, {bool current = false, bool active = false}) => {
+    'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
+  };
+
   /// Demandes d'argent, plus récentes d'abord.
   List<Map<String, dynamic>> moneyRequests = [];
 
@@ -176,6 +190,16 @@ class FakeServer {
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
     }
+    if (path == '/v1/me/security/pin') {
+      final b = body();
+      if (b['currentPin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      if (b['newPin'] == pin) return _error(422, 'PIN_SAME', 'Choisissez un PIN différent');
+      pin = b['newPin'];
+      _signOutOthers();
+      return http.Response('', 204);
+    }
+    if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
     }
@@ -188,7 +212,7 @@ class FakeServer {
     switch ((req.method, path)) {
       case ('POST', '/v1/auth/login'):
         final b = body();
-        if (b['pin'] != '2580') return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,
@@ -302,6 +326,17 @@ class FakeServer {
     }
     return _error(404, 'NOT_FOUND', 'Route inconnue ${req.method} $path');
   });
+
+  int _signOutOthers() {
+    var closed = 0;
+    for (final d in deviceSessions) {
+      if (d['current'] != true && d['active'] == true) {
+        d['active'] = false;
+        closed++;
+      }
+    }
+    return closed;
+  }
 
   static http.Response _json(Object body, [int status = 200]) =>
       http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json'});
