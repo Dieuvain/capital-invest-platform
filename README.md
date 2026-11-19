@@ -9,7 +9,7 @@ Visa ou Mastercard (physique et virtuelle), menu USSD, back-office et paie B2B.
 | --- | --- | --- |
 | `backend/` | Serveur : grand livre, clients, paiements, cartes, crédit, USSD | Kotlin, Spring Boot 3.5, PostgreSQL 16 |
 | `mobile/` | Application Android et iOS | Flutter 3.50 (Dart) |
-| `backoffice/` | Back-office et portail employeur | TypeScript, React (à venir) |
+| `backoffice/` | Back-office des agents (KYC 2, promotions, agents, journal) | TypeScript, React |
 | `docs/` | Documents d'analyse et décisions d'architecture | |
 
 ## Démarrer le serveur en local
@@ -107,6 +107,9 @@ Côté back-office (jeton agent, distinct des jetons clients) :
 - `POST /v1/backoffice/auth/login` : e-mail et mot de passe (12 caractères au moins). 5 erreurs bloquent le compte 15 minutes ; session de 15 minutes d'inactivité, 8 heures au plus.
 - `GET /v1/backoffice/kyc?status=PENDING`, `GET /v1/backoffice/kyc/{id}`, `GET /v1/backoffice/kyc/{id}/documents/{docId}`.
 - `POST /v1/backoffice/kyc/{id}/approve` ou `/reject` avec `{"reason":"…"}`. Le client reçoit un SMS.
+- `GET /v1/backoffice/me` : l'agent connecté. `GET /v1/backoffice/agents`, `POST /v1/backoffice/agents/{id}/disable` ou `/enable` (administrateurs). Désactiver un agent ferme ses sessions.
+- `GET /v1/backoffice/audit` : journal d'audit (conformité et administrateurs).
+- Les routes KYC sont réservées aux rôles `KYC_AGENT`, `COMPLIANCE` et `ADMIN`.
 - `POST /v1/backoffice/agents` : création d'un agent (`KYC_AGENT`, `COMPLIANCE`, `ADMIN`, `MARKETING`), réservée aux administrateurs. Le premier administrateur est créé au démarrage à partir de `BACKOFFICE_ADMIN_EMAIL` et `BACKOFFICE_ADMIN_PASSWORD`.
 
 Règles :
