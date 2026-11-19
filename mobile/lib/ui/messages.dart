@@ -12,6 +12,8 @@ String messageFor(Object error) {
     'OTP_RATE_LIMITED' => 'Trop de codes demandés. Réessayez dans 10 minutes.',
     'PHONE_ALREADY_REGISTERED' => 'Ce numéro a déjà un compte. Connectez-vous.',
     'STATEMENT_UNAVAILABLE' => 'Pas de relevé pour ce mois : le compte n\'était pas encore ouvert.',
+    'SAVINGS_INSUFFICIENT' => 'Votre épargne ne contient pas autant.',
+    'INVALID_GOAL' => 'Donnez un nom et un montant à votre objectif.',
     'PIN_SAME' => 'Choisissez un PIN différent de l\'actuel.',
     'PIN_TOO_SIMPLE' || 'PIN_FORMAT' => 'Ce PIN est trop facile à deviner.',
     'INSUFFICIENT_FUNDS' => 'Solde insuffisant pour ce montant et les frais.',

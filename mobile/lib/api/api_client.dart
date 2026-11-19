@@ -74,6 +74,11 @@ class ApiClient {
     ),
   );
 
+  Future<dynamic> _put(String path, Object? body) =>
+      _send(_http.put(_uri(path), headers: _headers(), body: jsonEncode(body)));
+
+  Future<dynamic> _delete(String path) => _send(_http.delete(_uri(path), headers: _headers()));
+
   // ---- Connexion -----------------------------------------------------------------------------
 
   Future<void> requestSignupCode(String phone) => _post('/v1/auth/otp', {'phone': phone});
@@ -179,6 +184,23 @@ class ApiClient {
   }
 
   // ---- Compte --------------------------------------------------------------------------------
+
+  // ---- Épargne ---------------------------------------------------------------------------------
+
+  Future<Savings> savings() async => Savings.fromJson(await _get('/v1/me/savings'));
+
+  /// Mettre de côté : du solde vers l'épargne, sans frais.
+  Future<Savings> saveMoney(int amountMinor, String idempotencyKey) async =>
+      Savings.fromJson(await _post('/v1/me/savings/deposits', {'amountMinor': amountMinor}, idempotencyKey: idempotencyKey));
+
+  /// Reprendre : de l'épargne vers le solde, à tout moment.
+  Future<Savings> takeBackSavings(int amountMinor, String idempotencyKey) async =>
+      Savings.fromJson(await _post('/v1/me/savings/withdrawals', {'amountMinor': amountMinor}, idempotencyKey: idempotencyKey));
+
+  Future<Savings> setSavingsGoal(String label, int targetMinor) async =>
+      Savings.fromJson(await _put('/v1/me/savings/goal', {'label': label, 'targetMinor': targetMinor}));
+
+  Future<Savings> clearSavingsGoal() async => Savings.fromJson(await _delete('/v1/me/savings/goal'));
 
   Future<Customer> me() async => Customer.fromJson((await _get('/v1/me'))['customer']);
 

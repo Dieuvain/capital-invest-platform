@@ -58,6 +58,32 @@ class FakeServer {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
 
+  /// Épargne servie par /v1/me/savings.
+  int savings = 0;
+  Map<String, dynamic>? savingsGoal;
+  List<Map<String, dynamic>> savingsMoves = [];
+
+  Map<String, dynamic> get _savings {
+    final g = savingsGoal;
+    return {
+      'balanceMinor': savings,
+      'walletBalanceMinor': balance,
+      'currency': 'USD',
+      'savedThisMonthMinor': savingsMoves.where((m) => (m['createdAt'] as String).startsWith('2026-11')).fold<int>(
+        0,
+        (sum, m) => sum + (m['kind'] == 'DEPOSIT' ? m['amountMinor'] as int : -(m['amountMinor'] as int)),
+      ),
+      'goal': g == null
+          ? null
+          : {
+              ...g,
+              'remainingMinor': ((g['targetMinor'] as int) - savings).clamp(0, 1 << 31),
+              'progressPercent': (savings * 100 ~/ (g['targetMinor'] as int)).clamp(0, 100),
+            },
+      'moves': savingsMoves,
+    };
+  }
+
   /// Fichiers PDF servis par /v1/me/statements/{mois}/pdf.
   static final pdf = utf8.encode('%PDF-1.4 relevé');
 
@@ -193,6 +219,29 @@ class FakeServer {
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
     }
+    if (path == '/v1/me/savings') return _json(_savings);
+    if (path == '/v1/me/savings/deposits' || path == '/v1/me/savings/withdrawals') {
+      final a = body()['amountMinor'] as int;
+      final deposit = path.endsWith('deposits');
+      if (a > (deposit ? balance : savings)) {
+        return _error(422, deposit ? 'INSUFFICIENT_FUNDS' : 'SAVINGS_INSUFFICIENT', 'Solde insuffisant');
+      }
+      balance += deposit ? -a : a;
+      savings += deposit ? a : -a;
+      final id = 'sv-${savingsMoves.length + 1}';
+      savingsMoves.insert(0, {'id': id, 'kind': deposit ? 'DEPOSIT' : 'WITHDRAWAL', 'amountMinor': a, 'createdAt': '2026-11-19T10:00:00Z'});
+      history.insert(0, historyItem(id, deposit ? 'SAVINGS_DEPOSIT' : 'SAVINGS_WITHDRAWAL', deposit ? -a : a, at: '2026-11-19T10:00:00Z'));
+      return _json(_savings);
+    }
+    if (path == '/v1/me/savings/goal') {
+      if (req.method == 'DELETE') {
+        savingsGoal = null;
+      } else {
+        final b = body();
+        savingsGoal = {'label': (b['label'] as String).trim(), 'targetMinor': b['targetMinor']};
+      }
+      return _json(_savings);
+    }
     if (path == '/v1/me/statements') {
       return _json([
         {'month': '2026-11', 'partial': true},
@@ -265,6 +314,7 @@ class FakeServer {
           'TRANSFER' => ['TRANSFER_SENT', 'TRANSFER_RECEIVED'],
           'WITHDRAWAL' => ['WITHDRAWAL', 'WITHDRAWAL_REFUND'],
           'PAYMENT' => ['MERCHANT_PAYMENT'],
+          'SAVINGS' => ['SAVINGS_DEPOSIT', 'SAVINGS_WITHDRAWAL'],
           _ => null,
         };
         final all = history.where((h) => kinds == null || kinds.contains(h['kind'])).toList();

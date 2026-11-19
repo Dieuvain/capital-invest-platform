@@ -358,7 +358,8 @@ class HistoryItem {
   final String id;
   final String receiptNumber;
 
-  /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, ADJUSTMENT.
+  /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
+  /// SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -530,5 +531,58 @@ class MoneyRequestList {
   factory MoneyRequestList.fromJson(Map<String, dynamic> j) => MoneyRequestList(
     toPay: [for (final r in j['toPay'] as List) MoneyRequest.fromJson(r)],
     recent: [for (final r in j['recent'] as List) MoneyRequest.fromJson(r)],
+  );
+}
+
+/// Objectif d'épargne : un nom et un montant à atteindre.
+class SavingsGoal {
+  SavingsGoal(this.label, this.targetMinor, this.remainingMinor, this.progressPercent);
+
+  final String label;
+  final int targetMinor;
+  final int remainingMinor;
+  final int progressPercent;
+
+  factory SavingsGoal.fromJson(Map<String, dynamic> j) =>
+      SavingsGoal(j['label'], j['targetMinor'], j['remainingMinor'], j['progressPercent']);
+}
+
+/// Argent mis de côté (DEPOSIT) ou repris (WITHDRAWAL).
+class SavingsMove {
+  SavingsMove(this.id, this.kind, this.amountMinor, this.createdAt);
+
+  final String id;
+  final String kind;
+  final int amountMinor;
+  final DateTime createdAt;
+
+  bool get isDeposit => kind == 'DEPOSIT';
+
+  factory SavingsMove.fromJson(Map<String, dynamic> j) =>
+      SavingsMove(j['id'], j['kind'], j['amountMinor'], DateTime.parse(j['createdAt']));
+}
+
+/// Épargne du client, à côté de son solde.
+class Savings {
+  Savings({
+    required this.balanceMinor,
+    required this.walletBalanceMinor,
+    required this.savedThisMonthMinor,
+    required this.goal,
+    required this.moves,
+  });
+
+  final int balanceMinor;
+  final int walletBalanceMinor;
+  final int savedThisMonthMinor;
+  final SavingsGoal? goal;
+  final List<SavingsMove> moves;
+
+  factory Savings.fromJson(Map<String, dynamic> j) => Savings(
+    balanceMinor: j['balanceMinor'],
+    walletBalanceMinor: j['walletBalanceMinor'],
+    savedThisMonthMinor: j['savedThisMonthMinor'],
+    goal: j['goal'] == null ? null : SavingsGoal.fromJson(j['goal']),
+    moves: (j['moves'] as List).map((m) => SavingsMove.fromJson(m)).toList(),
   );
 }
