@@ -97,6 +97,19 @@ class FakeServer {
     };
   }
 
+  /// Réponse de /v1/me/closure, et compte fermé par /v1/me/closure (POST).
+  Map<String, dynamic> closure = {
+    'canClose': false, 'balanceMinor': 5000, 'savingsMinor': 1850,
+    'blockers': [
+      {'code': 'SAVINGS_NOT_EMPTY', 'message': 'Reprenez votre épargne (18,50 \$) sur votre solde.'},
+      {'code': 'BALANCE_NOT_EMPTY', 'message': 'Retirez ou envoyez votre solde (50,00 \$) : un compte fermé ne peut plus rien rendre.'},
+    ],
+  };
+  bool closed = false;
+
+  /// Seuil d'alerte de solde bas (/v1/me/notifications/low-balance).
+  int? lowBalance;
+
   /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
   bool blocked = false;
 
@@ -450,12 +463,27 @@ class FakeServer {
       return found == null ? _error(422, 'STATEMENT_UNAVAILABLE', 'Pas de relevé') : _json(found);
     }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/closure') {
+      if (req.method == 'GET') return _json(closure);
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      closed = true;
+      return http.Response('', 204);
+    }
     if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
       if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
       blocked = true;
       return http.Response('', 204);
     }
     if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
+    if (path == '/v1/me/notifications/low-balance') {
+      if (req.method == 'PUT') {
+        final int? t = body()['thresholdMinor'];
+        if (t != null && (t < 100 || t > 100000)) return _error(422, 'INVALID_THRESHOLD', 'Seuil invalide');
+        lowBalance = t;
+      }
+      return _json({'thresholdMinor': lowBalance});
+    }
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
     }
@@ -470,6 +498,7 @@ class FakeServer {
         final b = body();
         if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
         if (blocked) return _error(403, 'CUSTOMER_BLOCKED', 'Compte bloqué à votre demande');
+        if (closed) return _error(403, 'CUSTOMER_CLOSED', 'Ce compte est fermé');
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,

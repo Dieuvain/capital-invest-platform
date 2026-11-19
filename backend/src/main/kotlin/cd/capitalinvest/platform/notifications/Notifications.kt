@@ -27,6 +27,8 @@ import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
+import cd.capitalinvest.platform.common.BusinessException
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestAttribute
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -44,6 +46,9 @@ import java.util.UUID
 /** Publié par le grand livre quand une nouvelle opération est écrite (pas lors d'un rejeu). */
 data class MoneyMoved(val transactionId: UUID)
 
+/** Seuil d'alerte de solde bas ; null : pas d'alerte. */
+data class LowBalanceSetting(val thresholdMinor: Long?)
+
 /** Publié après l'écriture d'une notification : l'envoi du SMS part dès la fin de la transaction. */
 object NotificationQueued
 
@@ -55,7 +60,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE
 }
 
 data class NotificationView(
@@ -101,7 +106,9 @@ class NotificationService(
         ).param("tx", event.transactionId).query(UUID::class.java).list()
         val items = customerIds.associateWith { customerId ->
             val item = history.receipt(customerId, event.transactionId, maskPhones = true).item
-            draftFor(item, balance(customerId))?.let { queue(customerId, "tx:${event.transactionId}:$customerId", it, event.transactionId) }
+            val balance = balance(customerId)
+            draftFor(item, balance)?.let { queue(customerId, "tx:${event.transactionId}:$customerId", it, event.transactionId) }
+            checkLowBalance(customerId, balance, event.transactionId)
             item
         }
         // Paiement marchand : le caissier attend ce SMS pour laisser partir le client avec ses achats.
@@ -245,6 +252,17 @@ class NotificationService(
         null,
     )
 
+    /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
+    fun accountClosed(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "closed:$customerId",
+        Draft(
+            NotificationKind.ACCOUNT_CLOSED, "Compte fermé",
+            "Votre compte Capital Invest est fermé. Merci de nous avoir fait confiance. Si ce n'est pas vous, appelez tout de suite le service client.",
+            "Capital Invest: votre compte est ferme. Merci de votre confiance. Si ce n'est pas vous, appelez vite le service client.",
+        ),
+        null,
+    )
+
     fun accountUnblocked(customerId: UUID, at: OffsetDateTime) = queue(
         customerId, "unblocked:$customerId:${at.toEpochSecond()}",
         Draft(
@@ -325,6 +343,45 @@ class NotificationService(
             ),
             null,
         )
+    }
+
+    /**
+     * Alerte de solde bas : une seule fois en passant sous le seuil. Elle se réarme quand le solde
+     * repasse au-dessus, pour ne pas envoyer un SMS à chaque petit achat.
+     */
+    private fun checkLowBalance(customerId: UUID, balance: Long, transactionId: UUID) {
+        // Une seule requête : elle ne change la ligne que si l'état bascule, et dit alors quel était le seuil.
+        val threshold = jdbc.sql(
+            """UPDATE customer SET low_balance_alerted = (:balance < low_balance_minor)
+               WHERE id = :id AND low_balance_minor IS NOT NULL AND low_balance_alerted <> (:balance < low_balance_minor)
+               RETURNING low_balance_minor""",
+        ).param("balance", balance).param("id", customerId).query(Long::class.java).optional().orElse(null) ?: return
+        if (balance < threshold) {
+            queue(
+                customerId, "low-balance:$customerId:$transactionId",
+                Draft(
+                    NotificationKind.LOW_BALANCE, "Solde bas",
+                    "Votre solde est de ${money(balance)}, sous votre seuil d'alerte de ${money(threshold)}. Rechargez depuis M-Pesa, Airtel Money ou Orange Money.",
+                    "Capital Invest: votre solde est de ${money(balance)}, sous votre seuil de ${money(threshold)}.",
+                ),
+                null,
+            )
+        }
+    }
+
+    fun lowBalanceSetting(customerId: UUID): LowBalanceSetting = LowBalanceSetting(
+        jdbc.sql("SELECT low_balance_minor FROM customer WHERE id = :id").param("id", customerId).query { rs, _ -> rs.getObject("low_balance_minor") as Long? }.single(),
+    )
+
+    /** Choisir ou retirer le seuil. Pas d'alerte tout de suite si le solde est déjà dessous : le client le voit à l'écran. */
+    @Transactional
+    fun setLowBalance(customerId: UUID, thresholdMinor: Long?): LowBalanceSetting {
+        if (thresholdMinor != null && thresholdMinor !in 100..100_000) {
+            throw BusinessException("INVALID_THRESHOLD", "Choisissez un seuil entre 1,00 $ et 1 000,00 $")
+        }
+        jdbc.sql("UPDATE customer SET low_balance_minor = :t, low_balance_alerted = :a WHERE id = :id")
+            .param("t", thresholdMinor).param("a", thresholdMinor != null && balance(customerId) < thresholdMinor).param("id", customerId).update()
+        return LowBalanceSetting(thresholdMinor)
     }
 
     private fun balance(customerId: UUID): Long =
@@ -541,6 +598,14 @@ class NotificationController(private val notifications: NotificationService) {
     @GetMapping
     fun inbox(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @RequestParam(defaultValue = "50") limit: Int): NotificationInbox =
         notifications.inbox(customerId, limit)
+
+    @GetMapping("/low-balance")
+    fun lowBalance(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID) = notifications.lowBalanceSetting(customerId)
+
+    /** [LowBalanceSetting.thresholdMinor] null : plus d'alerte. */
+    @PutMapping("/low-balance")
+    fun setLowBalance(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @RequestBody b: LowBalanceSetting) =
+        notifications.setLowBalance(customerId, b.thresholdMinor)
 
     /** Corps vide ou sans « ids » : tout est marqué comme lu. */
     @PostMapping("/read")

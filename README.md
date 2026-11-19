@@ -101,6 +101,28 @@ Le déblocage se fait **en agence seulement**, après vérification de la pièce
 |---|---|
 | ![Bloquer mon compte](docs/captures-app/15-bloquer-compte.png) | ![Compte bloqué](docs/captures-app/15b-compte-bloque.png) |
 
+## Fermer son compte
+
+Dans l'app, sous Sécurité, tout en bas, **Fermer mon compte**.
+
+- **Ce qu'il faut d'abord :** que le compte soit vide (portefeuille et épargne) et qu'aucune opération ne soit en cours (recharge, retrait, crédit ou facture). L'écran liste ce qu'il reste à faire, avec les montants. Aucun argent ne peut rester bloqué sur un compte fermé.
+- **Pour confirmer :** le client choisit un motif (ne s'en sert plus, frais, autre service, déménagement, autre), peut laisser un commentaire, puis donne son PIN.
+- **Ce que fait la fermeture :**
+  - le compte et ses comptes du grand livre passent en `CLOSED` ;
+  - les envois programmés sont arrêtés ;
+  - les demandes d'argent en attente sont annulées ;
+  - toutes les sessions sont fermées ;
+  - le client reçoit un SMS.
+- **Ensuite :**
+  - la connexion est refusée avec le code `CUSTOMER_CLOSED` ;
+  - personne ne peut plus envoyer d'argent sur ce numéro ;
+  - les opérations et le dossier KYC sont conservés ;
+  - le numéro reste attaché au compte fermé, et rouvrir un compte se fait en agence.
+- **Back-office :** la fiche client affiche « Compte fermé », avec la date, le motif et le commentaire.
+- API : `GET /v1/me/closure` (ce qu'il reste à faire), `POST /v1/me/closure` (`pin`, `reason`, `comment`). Journal d'audit : `CUSTOMER_CLOSED`.
+
+![Fermer mon compte](docs/captures-app/18-fermer-compte.png)
+
 ## Plafonds KYC
 
 Valeurs **provisoires**, à valider par la conformité (fichier `application.yml`, section `capital-invest.limits`).
@@ -315,6 +337,18 @@ Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçu
 - **SMS** : 160 caractères au plus, sans accents (un SMS accentué compte double), avec le nouveau solde et le numéro de reçu. Les codes de connexion ne passent pas par là.
 - **App** : la cloche de l'accueil porte une pastille tant qu'il reste des notifications non lues. `GET /v1/me/notifications` (avec `unread`) et `POST /v1/me/notifications/read` (toutes, ou `{"ids": [...]}`). Une notification liée à une opération ouvre son reçu.
 - La passerelle SMS est encore le simulateur : il faudra brancher un fournisseur (agrégateur SMS ou opérateur) avant la mise en service. Les notifications push viendront plus tard.
+
+## Alerte de solde bas
+
+Dans l'app, sous Notifications, puis **Alerte de solde bas** : le client choisit un seuil (5, 10, 20 ou 50 $, ou un autre montant entre 1 $ et 1 000 $). Il reçoit un SMS et une notification quand son solde passe dessous, par exemple : « votre solde est de 19,20 $, sous votre seuil de 20,00 $ ».
+
+- Le client n'est prévenu **qu'une fois** par passage sous le seuil, pas à chaque achat. L'alerte se réarme quand le solde repasse au-dessus, après une recharge ou un envoi reçu.
+- Pas d'alerte au moment où le client choisit le seuil, même si son solde est déjà dessous : il le voit à l'écran.
+- Le contrôle se fait dans la même transaction que le mouvement d'argent, en une seule requête qui ne modifie la ligne du client que si l'état change.
+- Toucher la notification « Solde bas » ouvre ce réglage.
+- API : `GET` et `PUT /v1/me/notifications/low-balance` (`thresholdMinor`, ou `null` pour ne plus être prévenu).
+
+![Alerte de solde bas](docs/captures-app/19-alerte-solde-bas.png)
 
 ## Paiement chez un marchand (QR)
 

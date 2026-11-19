@@ -7,6 +7,7 @@ import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'block_screens.dart';
+import 'closure_screen.dart';
 import 'limit_screen.dart';
 
 /// Sécurité du compte : changer son PIN, voir où le compte a été ouvert, déconnecter les autres téléphones.
@@ -163,6 +164,15 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
                 ),
           icon: const Icon(Icons.lock_rounded),
           label: const Text('Bloquer mon compte'),
+        ),
+        const SizedBox(height: 24),
+        TextButton(
+          key: const Key('close-account'),
+          style: TextButton.styleFrom(foregroundColor: context.pal.muted),
+          onPressed: busy
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CloseAccountScreen(app: widget.app))),
+          child: const Text('Fermer mon compte'),
         ),
       ],
     );

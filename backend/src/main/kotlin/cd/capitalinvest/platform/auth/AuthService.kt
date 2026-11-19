@@ -141,6 +141,9 @@ class AuthService(
                 HttpStatus.FORBIDDEN,
             )
         }
+        if (customer.status == "CLOSED") {
+            throw BusinessException("CUSTOMER_CLOSED", "Ce compte est fermé. Pour en ouvrir un nouveau sur ce numéro, présentez-vous en agence.", HttpStatus.FORBIDDEN)
+        }
         throw BusinessException("CUSTOMER_NOT_ACTIVE", "Compte suspendu ou fermé", HttpStatus.FORBIDDEN)
     }
 

@@ -5,6 +5,7 @@ import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
+import 'package:capital_invest/screens/notifications_screen.dart';
 import 'package:capital_invest/screens/complaint_screens.dart';
 import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
@@ -556,6 +557,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.pendingDailyLimit, isNull);
     expect(find.text('Hausse annulée. Votre plafond reste à 50,00\u00A0\$ par jour.'), findsOneWidget);
+  });
+
+  testWidgets('fermer son compte : d\'abord vider le solde et l\'épargne, puis motif et PIN', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('close-account')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('blocker-SAVINGS_NOT_EMPTY')), findsOneWidget);
+    expect(find.textContaining('Retirez ou envoyez votre solde (50,00'), findsOneWidget);
+    expect(find.byKey(const Key('close-confirm')), findsNothing);
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+
+    server.closure = {'canClose': true, 'balanceMinor': 0, 'savingsMinor': 0, 'blockers': []};
+    await tester.tap(find.byKey(const Key('close-account')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.byKey(const Key('close-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dites-nous pourquoi vous partez.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reason-FEES')));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.byKey(const Key('close-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.closed, isTrue);
+    expect(server.requests.lastWhere((r) => r.url.path == '/v1/me/closure').body, contains('"reason":"FEES"'));
+    expect(find.text('Compte fermé'), findsOneWidget);
+    expect(app.signedIn, isFalse);
+    await tester.tap(find.text('Terminer'));
+    await tester.pumpAndSettle();
+    await login(tester);
+    expect(find.textContaining('Ce compte est fermé'), findsOneWidget);
+  });
+
+  testWidgets('alerte de solde bas : choisir 20 \$, puis la désactiver', (tester) async {
+    server.notifications = [
+      {
+        'id': 'n9', 'kind': 'LOW_BALANCE', 'title': 'Solde bas', 'transactionId': null, 'read': false,
+        'body': 'Votre solde est de 19,20 \$, sous votre seuil d\'alerte de 20,00 \$.', 'createdAt': '2026-11-19T12:10:00Z',
+      },
+    ];
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => NotificationsScreen(app: app)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('low-balance')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('threshold-off'))).selected, isTrue);
+    await tester.tap(find.byKey(const ValueKey('threshold-2000')));
+    await tester.pump();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(server.lowBalance, 2000);
+    expect(find.text('C\'est noté : un SMS vous préviendra sous 20,00\u00A0\$.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('threshold-off')));
+    await tester.pump();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(server.lowBalance, isNull);
+    expect(find.text('Alerte désactivée.'), findsOneWidget);
+
+    // La notification « Solde bas » ouvre ce réglage.
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('notification-n9')));
+    await tester.pumpAndSettle();
+    expect(find.text('Alerte de solde bas'), findsWidgets);
   });
 
   testWidgets('téléphone volé : bloquer son compte depuis Sécurité, PIN redemandé, retour à l\'accueil', (tester) async {

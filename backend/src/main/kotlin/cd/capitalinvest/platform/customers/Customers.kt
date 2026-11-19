@@ -26,6 +26,9 @@ data class Customer(
     val status: String,
     /** Le client a bloqué lui-même son compte (téléphone perdu ou volé). */
     val blockedByCustomerAt: java.time.OffsetDateTime? = null,
+    val closedAt: java.time.OffsetDateTime? = null,
+    /** Motif donné par le client (NOT_USED, FEES…), suivi de son commentaire. */
+    val closureReason: String? = null,
 )
 
 @Repository
@@ -77,6 +80,8 @@ class CustomerRepository(private val jdbc: JdbcClient) {
         kycLevel = rs.getInt("kyc_level"),
         status = rs.getString("status"),
         blockedByCustomerAt = rs.getObject("blocked_by_customer_at", java.time.OffsetDateTime::class.java),
+        closedAt = rs.getObject("closed_at", java.time.OffsetDateTime::class.java),
+        closureReason = rs.getString("closure_reason"),
     )
 }
 
