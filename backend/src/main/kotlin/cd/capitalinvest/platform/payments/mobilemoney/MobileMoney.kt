@@ -47,8 +47,9 @@ data class PawapayProperties(
     val timeoutSeconds: Long = 20,
 )
 
+/** Demande d'encaissement (recharge) ou de versement (retrait), identifiée par l'id de la recharge ou du retrait. */
 data class PaymentRequest(
-    val topupId: UUID,
+    val id: UUID,
     val operator: Operator,
     /** Numéro au format international sans « + » : 243970000001. */
     val msisdn: String,
@@ -94,7 +95,7 @@ class IncomingNotification(
 )
 
 /** Ce qu'on retient d'une notification : quelle recharge relire, et si la signature est bonne (null : non signée). */
-data class ParsedNotification(val topupId: UUID?, val signatureValid: Boolean?)
+data class ParsedNotification(val topupId: UUID?, val signatureValid: Boolean?, val withdrawalId: UUID? = null)
 
 interface MobileMoneyConnector {
     /** Nom stocké sur chaque recharge, pour toujours la relire chez le même prestataire. */
@@ -106,6 +107,11 @@ interface MobileMoneyConnector {
     fun initiate(request: PaymentRequest): InitiateResult
 
     fun check(topup: Topup): CheckResult
+
+    /** Versement vers le compte mobile money du client (retrait). */
+    fun initiatePayout(request: PaymentRequest): InitiateResult
+
+    fun checkPayout(withdrawalId: UUID): CheckResult
 
     fun parseNotification(notification: IncomingNotification): ParsedNotification
 

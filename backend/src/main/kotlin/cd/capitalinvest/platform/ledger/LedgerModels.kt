@@ -6,7 +6,7 @@ import java.util.UUID
 
 enum class Direction { DEBIT, CREDIT }
 
-enum class AccountType { CUSTOMER_WALLET, OPERATOR_SETTLEMENT, FEES_REVENUE }
+enum class AccountType { CUSTOMER_WALLET, OPERATOR_SETTLEMENT, FEES_REVENUE, PAYOUT_IN_TRANSIT }
 
 enum class AccountStatus { ACTIVE, FROZEN, CLOSED }
 

@@ -126,8 +126,16 @@ class LimitsService(
                WHERE t.type = 'TRANSFER'
                  AND t.id IN (SELECT d.transaction_id FROM ledger_entry d
                               WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
-        ).param("w", walletId).param("since", dayStart).query(Long::class.java).single()
+        ).param("w", walletId).param("since", dayStart).query(Long::class.java).single() + withdrawnSince(walletId, dayStart)
     }
+
+    /** Retraits vers mobile money du jour, sans les frais ; un retrait échoué et remboursé ne compte pas. */
+    private fun withdrawnSince(walletId: UUID, since: OffsetDateTime): Long =
+        jdbc.sql(
+            """SELECT COALESCE(SUM(w.amount_minor), 0) FROM withdrawal w
+               JOIN ledger_account a ON a.customer_id = w.customer_id AND a.id = :w
+               WHERE w.created_at >= :since AND w.status <> 'FAILED'""",
+        ).param("w", walletId).param("since", since).query(Long::class.java).single()
 
     private fun pendingTopups(customerId: UUID): Long =
         jdbc.sql("SELECT COALESCE(SUM(amount_minor), 0) FROM topup WHERE customer_id = :c AND status = 'PENDING'")

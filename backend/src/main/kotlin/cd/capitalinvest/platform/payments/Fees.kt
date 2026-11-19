@@ -13,6 +13,10 @@ data class FeeProperties(
     val transferBps: Long = 100,
     val transferMinMinor: Long = 10,
     val transferMaxMinor: Long = 500,
+    /** Retrait vers mobile money : couvre ce que l'opérateur nous facture pour le versement. */
+    val withdrawalBps: Long = 150,
+    val withdrawalMinMinor: Long = 25,
+    val withdrawalMaxMinor: Long = 750,
 )
 
 data class FeeQuote(val amountMinor: Long, val feeMinor: Long, val totalMinor: Long)
@@ -24,6 +28,17 @@ class FeeService(private val props: FeeProperties) {
         require(amountMinor > 0)
         val raw = (amountMinor * props.transferBps + 5_000) / 10_000
         return raw.coerceIn(props.transferMinMinor, props.transferMaxMinor)
+    }
+
+    fun withdrawalFee(amountMinor: Long): Long {
+        require(amountMinor > 0)
+        val raw = (amountMinor * props.withdrawalBps + 5_000) / 10_000
+        return raw.coerceIn(props.withdrawalMinMinor, props.withdrawalMaxMinor)
+    }
+
+    fun withdrawalQuote(amountMinor: Long): FeeQuote {
+        val fee = withdrawalFee(amountMinor)
+        return FeeQuote(amountMinor, fee, amountMinor + fee)
     }
 
     fun quote(amountMinor: Long): FeeQuote {

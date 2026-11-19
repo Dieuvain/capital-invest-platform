@@ -328,7 +328,7 @@ class TopupService(
 }
 
 /** 4000, USD → « 40,00 $ » ; autre devise → « 40,00 CDF ». */
-private fun money(minor: Long, currency: String): String =
+internal fun money(minor: Long, currency: String): String =
     java.math.BigDecimal.valueOf(minor, 2).toPlainString().replace('.', ',') + if (currency == "USD") " $" else " $currency"
 
 /** Libellé court d'un statut lu chez le prestataire, pour le back-office et le rapprochement. */

@@ -2,6 +2,7 @@ package cd.capitalinvest.platform.payments.mobilemoney
 
 import cd.capitalinvest.platform.limits.LimitsProperties
 import cd.capitalinvest.platform.payments.TopupService
+import cd.capitalinvest.platform.payments.WithdrawalService
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -23,12 +24,12 @@ import java.util.UUID
 /** Journal brut des notifications reçues, gardé comme preuve. */
 @Repository
 class MobileMoneyEventRepository(private val jdbc: JdbcClient) {
-    fun record(provider: String, signatureValid: Boolean?, topupId: UUID?, body: String, outcome: String) {
+    fun record(provider: String, signatureValid: Boolean?, topupId: UUID?, body: String, outcome: String, withdrawalId: UUID? = null) {
         jdbc.sql(
-            """INSERT INTO mobile_money_event (id, provider, signature_valid, topup_id, body, outcome)
-               VALUES (:id, :provider, :valid, :topup, :body, :outcome)""",
+            """INSERT INTO mobile_money_event (id, provider, signature_valid, topup_id, withdrawal_id, body, outcome)
+               VALUES (:id, :provider, :valid, :topup, :withdrawal, :body, :outcome)""",
         ).param("id", UUID.randomUUID()).param("provider", provider).param("valid", signatureValid)
-            .param("topup", topupId).param("body", body.take(20_000)).param("outcome", outcome).update()
+            .param("topup", topupId).param("withdrawal", withdrawalId).param("body", body.take(20_000)).param("outcome", outcome).update()
     }
 }
 
@@ -42,6 +43,7 @@ class MobileMoneyEventRepository(private val jdbc: JdbcClient) {
 class MobileMoneyWebhookController(
     private val router: MobileMoneyRouter,
     private val topups: TopupService,
+    private val withdrawals: WithdrawalService,
     private val events: MobileMoneyEventRepository,
 ) {
     private val log = LoggerFactory.getLogger(MobileMoneyWebhookController::class.java)
@@ -65,6 +67,21 @@ class MobileMoneyWebhookController(
         if (parsed.signatureValid == false || (parsed.signatureValid == null && connector.requiresSignature)) {
             events.record(connector.name, parsed.signatureValid, null, text, "REJECTED_SIGNATURE")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(mapOf("code" to "INVALID_SIGNATURE"))
+        }
+        parsed.withdrawalId?.let { id ->
+            val w = runCatching { withdrawals.get(id) }.getOrNull()
+            if (w == null || w.provider != connector.name) {
+                events.record(connector.name, parsed.signatureValid, null, text, "UNKNOWN_WITHDRAWAL $id")
+                return ResponseEntity.ok(mapOf("received" to true))
+            }
+            val outcome = try {
+                "REFRESHED ${withdrawals.refresh(id).status}"
+            } catch (e: Exception) {
+                log.warn("Notification de versement {} : relecture impossible : {}", id, e.toString())
+                "REFRESH_ERROR ${e.javaClass.simpleName}"
+            }
+            events.record(connector.name, parsed.signatureValid, null, text, outcome, withdrawalId = id)
+            return ResponseEntity.ok(mapOf("received" to true))
         }
         val topupId = parsed.topupId
         if (topupId == null) {
@@ -92,6 +109,7 @@ class MobileMoneyWebhookController(
 @Component
 class MobileMoneyJobs(
     private val topups: TopupService,
+    private val withdrawals: WithdrawalService,
     private val reconciliation: ReconciliationService,
     private val properties: MobileMoneyProperties,
     private val limits: LimitsProperties,
@@ -101,7 +119,9 @@ class MobileMoneyJobs(
 
     @Scheduled(fixedDelayString = "\${capital-invest.mobile-money.poll-delay-ms:5000}", initialDelay = 15_000)
     fun poll() {
-        if (properties.pollerEnabled) topups.checkDue()
+        if (!properties.pollerEnabled) return
+        topups.checkDue()
+        withdrawals.checkDue()
     }
 
     /** Chaque nuit à 2 h (heure de Lubumbashi), on rapproche les recharges de la veille. */
