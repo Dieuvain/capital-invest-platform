@@ -12,6 +12,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 6MB
 
 server:
   port: ${PORT:8080}
@@ -49,3 +53,13 @@ capital-invest:
     transfer-bps: 100        # 1 % du montant
     transfer-min-minor: 10   # au moins 0,10 $
     transfer-max-minor: 500  # au plus 5 $
+  # Passage au KYC 2.
+  kyc:
+    # Clé AES-256 (base64, 32 octets) de chiffrement des pièces d'identité. A fournir en production.
+    encryption-key: ${KYC_ENCRYPTION_KEY:ZGV2LW9ubHktY2hhbmdlLW1lLWRldi1vbmx5LWtleSE=}
+    max-file-bytes: 5242880
+    minimum-age: 18
+  backoffice:
+    # Premier administrateur, créé au démarrage s'il n'existe aucun agent.
+    bootstrap-admin-email: ${BACKOFFICE_ADMIN_EMAIL:}
+    bootstrap-admin-password: ${BACKOFFICE_ADMIN_PASSWORD:}

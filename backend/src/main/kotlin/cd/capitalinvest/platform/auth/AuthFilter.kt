@@ -22,7 +22,8 @@ class AuthFilter(private val auth: AuthService, private val json: ObjectMapper) 
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI
-        return !path.startsWith("/v1/") || publicPrefixes.any { path.startsWith(it) }
+        // Le back-office a son propre filtre et ses propres jetons.
+        return !path.startsWith("/v1/") || path.startsWith("/v1/backoffice/") || publicPrefixes.any { path.startsWith(it) }
     }
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {

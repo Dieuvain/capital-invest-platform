@@ -7,3 +7,7 @@ capital-invest:
   simulators-enabled: true
   security:
     otp-secret: test-secret
+  kyc:
+    encryption-key: dGVzdC1vbmx5LWtleS10ZXN0LW9ubHkta2V5LTMyYiE=
+    simulated-watchlist:
+      - Mutombo Fictif Sanction
