@@ -62,9 +62,11 @@ void main() {
     );
     expect(sent.totalDebitedMinor, 1263);
     expect(await alice.balance(), 3737);
-    final entries = await alice.entries();
-    expect(entries.where((e) => e.isCredit).length, 1);
-    expect(entries.where((e) => !e.isCredit).length, 2); // montant + frais
+    final history = (await alice.history()).items;
+    expect(history.map((h) => h.kind).toList(), ['TRANSFER_SENT', 'TOPUP']);
+    expect(history.first.feeMinor, 13); // une ligne par opération, frais compris
+    final receipt = await alice.receipt(history.first.id);
+    expect(receipt.item.netMinor, -1263);
 
     final jpeg = Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, ...List.filled(500, 7)]);
     for (final kind in ['ID_FRONT', 'ID_BACK', 'SELFIE']) {

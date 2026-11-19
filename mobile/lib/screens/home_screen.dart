@@ -12,6 +12,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'money_screens.dart';
 
@@ -35,9 +36,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with ApiAction {
   int? balance;
   Limits? limits;
-  List<Entry> entries = const [];
+  List<HistoryItem> recent = const [];
   List<Promotion> promos = const [];
-  int page = 0; // Accueil, Mouvements, Plafonds, Profil
+  int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
   void initState() {
@@ -48,12 +49,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   Future<void> _refresh() async {
     final api = widget.app.api;
     await run(widget.app, () async {
-      final results = await Future.wait([api.balance(), api.limits(), api.entries(limit: 30)]);
+      final results = await Future.wait([api.balance(), api.limits(), api.history(limit: 5)]);
       if (!mounted) return;
       setState(() {
         balance = results[0] as int;
         limits = results[1] as Limits;
-        entries = results[2] as List<Entry>;
+        recent = (results[2] as HistoryPage).items;
       });
     });
     // Les promotions ne doivent jamais bloquer le tableau de bord.
@@ -77,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _transfer() => _open(TransferScreen(app: widget.app, limits: limits));
   void _withdraw() => _open(WithdrawScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
+  void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
   void _promoAction(Promotion p) => switch (p.action) {
     'KYC' => _kyc(),
@@ -106,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               const SizedBox(height: 8),
               _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
               _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
-              _SheetRow(Icons.receipt_long_outlined, 'Tous mes mouvements', () => go(() => setState(() => page = 1))),
+              _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
               _SheetRow(Icons.person_outline_rounded, 'Mon profil', () => go(() => setState(() => page = 3))),
             ],
           ),
@@ -243,9 +245,10 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               ],
               const SizedBox(height: 16),
               _MovementsCard(
-                entries: entries.take(4).toList(),
+                items: recent.take(4).toList(),
                 loaded: balance != null,
-                onSeeAll: entries.length > 4 ? () => setState(() => page = 1) : null,
+                onOpen: _receipt,
+                onSeeAll: recent.isNotEmpty ? () => setState(() => page = 1) : null,
               ),
             ],
           ),
@@ -257,15 +260,10 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   Widget _movementsPage() => ListView(
     padding: const EdgeInsets.only(bottom: 120),
     children: [
-      _header(widget.app.customer!, 'Mouvements', 'Tout ce qui entre et sort de votre portefeuille.'),
+      _header(widget.app.customer!, 'Historique', 'Toutes vos opérations. Touchez-en une pour voir son reçu.'),
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-        child: Column(
-          children: [
-            ErrorBanner(error),
-            _MovementsCard(entries: entries, loaded: balance != null),
-          ],
-        ),
+        child: HistoryView(app: widget.app, onOpen: _receipt),
       ),
     ],
   );
@@ -661,10 +659,11 @@ class _QuickAction extends StatelessWidget {
 }
 
 class _MovementsCard extends StatelessWidget {
-  const _MovementsCard({required this.entries, required this.loaded, this.onSeeAll});
+  const _MovementsCard({required this.items, required this.loaded, required this.onOpen, this.onSeeAll});
 
-  final List<Entry> entries;
+  final List<HistoryItem> items;
   final bool loaded;
+  final ValueChanged<HistoryItem> onOpen;
   final VoidCallback? onSeeAll;
 
   @override
@@ -686,7 +685,7 @@ class _MovementsCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        if (loaded && entries.isEmpty)
+        if (loaded && items.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 18),
             child: Text(
@@ -694,49 +693,10 @@ class _MovementsCard extends StatelessWidget {
               style: TextStyle(color: context.pal.muted),
             ),
           ),
-        for (final e in entries) _EntryTile(e),
+        for (final i in items) HistoryTile(i, onTap: () => onOpen(i)),
       ],
     ),
   );
-}
-
-class _EntryTile extends StatelessWidget {
-  const _EntryTile(this.e);
-
-  final Entry e;
-
-  @override
-  Widget build(BuildContext context) {
-    final d = e.createdAt.toLocal();
-    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    final date =
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} · ${d.day} ${months[d.month - 1]} ${d.year}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          IconTile(e.isCredit ? Icons.south_west_rounded : Icons.north_east_rounded, size: 42),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  e.isCredit ? 'Argent reçu' : 'Argent sorti',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                Text(date, style: TextStyle(color: context.pal.muted, fontSize: 12)),
-              ],
-            ),
-          ),
-          Text(
-            '${e.isCredit ? '+' : '-'}${formatUsd(e.amountMinor)}',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: e.isCredit ? Brand.success : null),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _Gauge extends StatelessWidget {
@@ -801,7 +761,7 @@ class _NavPill extends StatelessWidget {
 
   static const items = [
     (Icons.home_rounded, 'Accueil'),
-    (Icons.account_balance_wallet_outlined, 'Mouvements'),
+    (Icons.account_balance_wallet_outlined, 'Historique'),
     (Icons.bar_chart_rounded, 'Plafonds'),
     (Icons.person_outline_rounded, 'Profil'),
   ];

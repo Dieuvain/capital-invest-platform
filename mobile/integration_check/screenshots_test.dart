@@ -25,12 +25,14 @@ void main() {
   setUp(() {
     server = FakeServer()
       ..balance = 123750
-      ..entries = [
-        (1, 'DEBIT', 200, '2026-11-18T16:42:00Z'),
-        (2, 'DEBIT', 20000, '2026-11-18T16:42:00Z'),
-        (3, 'CREDIT', 4500, '2026-11-18T12:10:00Z'),
-        (4, 'CREDIT', 100000, '2026-11-17T09:05:00Z'),
-        (5, 'CREDIT', 40000, '2026-11-16T18:30:00Z'),
+      ..history = [
+        FakeServer.historyItem('a1b2c3', 'TRANSFER_SENT', -20200, fee: 200, at: '2026-11-18T16:42:00Z',
+            name: 'Grâce Mbuyi', phone: '+243 81• ••• 214', note: 'Frais scolaires'),
+        FakeServer.historyItem('d4e5f6', 'TRANSFER_RECEIVED', 4500, at: '2026-11-18T12:10:00Z',
+            name: 'Patrick Ilunga', phone: '+243 99• ••• 870'),
+        FakeServer.historyItem('a7b8c9', 'TOPUP', 100000, at: '2026-11-17T09:05:00Z', operator: 'MPESA'),
+        FakeServer.historyItem('d1e2f3', 'WITHDRAWAL', -40600, fee: 600, at: '2026-11-16T18:30:00Z',
+            operator: 'AIRTEL', msisdn: '+243970000001'),
       ];
     app = AppState(
       ApiClient(baseUrl: 'http://test', httpClient: server.client),
@@ -83,8 +85,13 @@ void main() {
       await tester.drag(find.byType(ListView).first, const Offset(0, 420));
       await tester.pumpAndSettle();
 
-      await nav(tester, 'Mouvements');
-      await shot('2b-mouvements$suffix');
+      await nav(tester, 'Historique');
+      await shot('2b-historique$suffix');
+      await tester.tap(find.text('Envoi à Grâce Mbuyi'));
+      await tester.pumpAndSettle();
+      await shot('2e-recu$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await nav(tester, 'Plafonds');
       await shot('2c-plafonds$suffix');
       await nav(tester, 'Profil');

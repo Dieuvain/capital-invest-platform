@@ -4,6 +4,7 @@ import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
+import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
 import 'package:capital_invest/screens/money_screens.dart';
 import 'package:capital_invest/ui/chrome.dart';
@@ -57,7 +58,7 @@ void main() {
     for (final a in ['Envoyer', 'Recharger', 'Retirer', 'Plus']) {
       expect(find.byKey(ValueKey('quick-$a')), findsOneWidget);
     }
-    expect(find.text('Argent reçu'), findsOneWidget);
+    expect(find.text('Recharge M-Pesa'), findsOneWidget);
     expect(find.text('Passez au niveau 2'), findsOneWidget);
   });
 
@@ -105,6 +106,61 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('promo-image-p-v')));
     await tester.pumpAndSettle();
     expect(find.byType(TopupScreen), findsOneWidget);
+  });
+
+  testWidgets('historique : filtres, page suivante, puis reçu partagé', (tester) async {
+    server.history = [
+      FakeServer.historyItem('w1', 'WITHDRAWAL', -1015, fee: 15, operator: 'AIRTEL', msisdn: '+243970000001', status: 'PENDING'),
+      FakeServer.historyItem('s1', 'TRANSFER_SENT', -2020, fee: 20, name: 'Béni Mukendi', phone: '+243 97• ••• 402', note: 'Loyer'),
+      for (var i = 0; i < 22; i++) FakeServer.historyItem('t$i', 'TOPUP', 1000, operator: 'MPESA'),
+    ];
+    final shared = <String>[];
+    app.share = (text, subject) async => shared.add('$subject\n$text');
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Historique'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Retrait vers Airtel Money'), findsOneWidget);
+    expect(find.textContaining('En cours'), findsOneWidget);
+    expect(find.text('-20,20\u00A0\$'), findsOneWidget);
+    await tester.ensureVisible(find.text('Voir plus'));
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // hors de la barre du bas
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Voir plus'));
+    await tester.pumpAndSettle();
+    // 20 opérations par page : la suite est demandée avec le curseur de la première.
+    final pages = server.requests.where((r) => r.url.path == '/v1/me/history' && r.url.queryParameters['limit'] == '20');
+    expect(pages.map((r) => r.url.queryParameters['cursor']).toList(), [null, '20']);
+    expect(find.text('Voir plus'), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('filter-TRANSFER')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-TRANSFER')));
+    await tester.pumpAndSettle();
+    expect(find.text('Recharge M-Pesa'), findsNothing);
+    await tester.tap(find.text('Envoi à Béni Mukendi'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('receipt-amount')), findsOneWidget);
+    expect(find.text('Total débité'), findsOneWidget);
+    expect(find.text('CI-20261118-0000S1'), findsOneWidget);
+    await tester.ensureVisible(find.text('Partager le reçu'));
+    await tester.tap(find.text('Partager le reçu'));
+    expect(shared.single, contains('Reçu Capital Invest CI-20261118-0000S1'));
+    expect(shared.single, contains('Envoi à Béni Mukendi'));
+    expect(shared.single, contains('Frais : 0,20\u00A0\$'));
+    expect(shared.single, contains('Total débité : 20,20\u00A0\$'));
+    expect(shared.single, contains('Message : Loyer'));
+  });
+
+  testWidgets('un reçu introuvable affiche un message clair', (tester) async {
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(app: app, id: 'inconnu')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('introuvable'), findsOneWidget);
   });
 
   testWidgets('sans promotions, le bandeau disparaît sans erreur', (tester) async {
