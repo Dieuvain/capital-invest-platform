@@ -3,6 +3,8 @@ package cd.capitalinvest.platform.kyc
 import cd.capitalinvest.platform.auth.CUSTOMER_ID_ATTRIBUTE
 import cd.capitalinvest.platform.backoffice.AGENT_ATTRIBUTE
 import cd.capitalinvest.platform.backoffice.AgentPrincipal
+import cd.capitalinvest.platform.backoffice.AgentRole
+import cd.capitalinvest.platform.backoffice.ForbiddenException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
@@ -55,18 +57,30 @@ class MyKycController(private val kyc: KycService) {
         kyc.submit(customerId, b.idType, b.idNumber, b.birthDate)
 }
 
+/** Les pièces d'identité ne sont visibles que des agents KYC, de la conformité et des administrateurs. */
+private fun AgentPrincipal.requireKycAccess(): AgentPrincipal {
+    if (role !in setOf(AgentRole.KYC_AGENT, AgentRole.COMPLIANCE, AgentRole.ADMIN)) {
+        throw ForbiddenException("KYC_ONLY", "Réservé aux agents KYC, à la conformité et aux administrateurs")
+    }
+    return this
+}
+
 @RestController
 @RequestMapping("/v1/backoffice/kyc")
 class BackofficeKycController(private val kyc: KycService) {
 
     @GetMapping
     fun list(
+        @RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal,
         @RequestParam(defaultValue = "PENDING") status: KycStatus,
         @RequestParam(defaultValue = "50") limit: Int,
-    ): List<KycRequestView> = kyc.list(status, limit.coerceIn(1, 200))
+    ): List<KycRequestView> {
+        agent.requireKycAccess()
+        return kyc.list(status, limit.coerceIn(1, 200))
+    }
 
     @GetMapping("/{id}")
-    fun get(@RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal, @PathVariable id: UUID) = kyc.get(agent, id)
+    fun get(@RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal, @PathVariable id: UUID) = kyc.get(agent.requireKycAccess(), id)
 
     @GetMapping("/{id}/documents/{documentId}")
     fun document(
@@ -74,7 +88,7 @@ class BackofficeKycController(private val kyc: KycService) {
         @PathVariable id: UUID,
         @PathVariable documentId: UUID,
     ): ResponseEntity<ByteArray> {
-        val doc = kyc.document(agent, id, documentId)
+        val doc = kyc.document(agent.requireKycAccess(), id, documentId)
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(doc.contentType))
             .cacheControl(CacheControl.noStore()) // une pièce d'identité ne doit rester dans aucun cache
@@ -82,9 +96,9 @@ class BackofficeKycController(private val kyc: KycService) {
     }
 
     @PostMapping("/{id}/approve")
-    fun approve(@RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal, @PathVariable id: UUID) = kyc.approve(agent, id)
+    fun approve(@RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal, @PathVariable id: UUID) = kyc.approve(agent.requireKycAccess(), id)
 
     @PostMapping("/{id}/reject")
     fun reject(@RequestAttribute(AGENT_ATTRIBUTE) agent: AgentPrincipal, @PathVariable id: UUID, @Valid @RequestBody b: RejectRequest) =
-        kyc.reject(agent, id, b.reason)
+        kyc.reject(agent.requireKycAccess(), id, b.reason)
 }

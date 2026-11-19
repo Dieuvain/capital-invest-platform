@@ -4,6 +4,7 @@ import cd.capitalinvest.platform.auth.UnauthorizedException
 import cd.capitalinvest.platform.common.ActorType
 import cd.capitalinvest.platform.common.AuditLog
 import cd.capitalinvest.platform.common.BusinessException
+import cd.capitalinvest.platform.common.NotFoundException
 import cd.capitalinvest.platform.common.ConflictException
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -42,6 +43,8 @@ data class BackofficeProperties(
     val lockMinutes: Long = 15,
     val sessionIdleMinutes: Long = 15,
     val sessionMaxHours: Long = 8,
+    /** Origines web autorisées à appeler /v1/backoffice (l'écran back-office s'il est servi sur un autre domaine). */
+    val allowedOrigins: List<String> = emptyList(),
 )
 
 @Service
@@ -146,6 +149,35 @@ class AgentService(
         jdbc.sql("UPDATE agent_session SET last_seen_at = :now WHERE token_hash = :h").param("now", now).param("h", hash).update()
         return principal
     }
+
+    fun find(id: UUID): AgentView =
+        jdbc.sql("SELECT id, email, full_name, role, active FROM backoffice_agent WHERE id = :id").param("id", id)
+            .query { rs, _ -> view(rs) }.list().firstOrNull()
+            ?: throw NotFoundException("AGENT_NOT_FOUND", "Agent introuvable")
+
+    fun list(): List<AgentView> =
+        jdbc.sql("SELECT id, email, full_name, role, active FROM backoffice_agent ORDER BY active DESC, full_name")
+            .query { rs, _ -> view(rs) }.list()
+
+    /** Désactiver un agent ferme aussi toutes ses sessions ouvertes. On ne se désactive pas soi-même. */
+    @Transactional
+    fun setActive(by: AgentPrincipal, id: UUID, active: Boolean): AgentView {
+        if (by.role != AgentRole.ADMIN) throw ForbiddenException("ADMIN_ONLY", "Réservé aux administrateurs")
+        if (by.id == id && !active) throw BusinessException("AGENT_SELF_DISABLE", "Vous ne pouvez pas désactiver votre propre compte")
+        find(id)
+        jdbc.sql("UPDATE backoffice_agent SET active = :a WHERE id = :id").param("a", active).param("id", id).update()
+        if (!active) {
+            jdbc.sql("UPDATE agent_session SET revoked_at = :now WHERE agent_id = :id AND revoked_at IS NULL")
+                .param("now", now()).param("id", id).update()
+        }
+        audit.record(ActorType.AGENT, by.id, if (active) "AGENT_ENABLED" else "AGENT_DISABLED", "AGENT", id)
+        return find(id)
+    }
+
+    private fun view(rs: java.sql.ResultSet) = AgentView(
+        rs.getObject("id", UUID::class.java), rs.getString("email"), rs.getString("full_name"),
+        AgentRole.valueOf(rs.getString("role")), rs.getBoolean("active"),
+    )
 
     @Transactional
     fun logout(token: String) {

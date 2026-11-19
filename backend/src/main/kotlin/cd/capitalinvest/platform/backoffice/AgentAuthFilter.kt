@@ -17,6 +17,8 @@ class AgentAuthFilter(private val agents: AgentService, private val json: Object
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI
+        // La pré-vérification CORS du navigateur (OPTIONS) n'a jamais de jeton.
+        if (request.method == "OPTIONS") return true
         return !path.startsWith("/v1/backoffice/") || path == "/v1/backoffice/auth/login"
     }
 

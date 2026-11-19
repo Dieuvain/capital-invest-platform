@@ -203,4 +203,17 @@ class KycApiTest : ApiTest() {
         login("faux").andExpect { status { isLocked() } }
         login(password).andExpect { status { isLocked() } }
     }
+
+    @Test
+    fun `un agent marketing n'a pas accès aux pièces d'identité`() {
+        val alice = register("+243970000799")
+        val requestId = pendingRequest(alice)
+        val token = agent("marketing@capitalinvest.cd", AgentRole.MARKETING)
+        mvc.get("/v1/backoffice/kyc") { header("Authorization", "Bearer $token") }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("KYC_ONLY") }
+        }
+        mvc.get("/v1/backoffice/kyc/$requestId") { header("Authorization", "Bearer $token") }.andExpect { status { isForbidden() } }
+        mvc.post("/v1/backoffice/kyc/$requestId/approve") { header("Authorization", "Bearer $token") }.andExpect { status { isForbidden() } }
+    }
 }
