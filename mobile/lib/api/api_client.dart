@@ -233,6 +233,38 @@ class ApiClient {
   Future<List<RecentBill>> recentBills() async =>
       (await _get('/v1/bills/recent') as List).map((j) => RecentBill.fromJson(j)).toList();
 
+  // ---- Envois programmés -------------------------------------------------------------------------
+
+  Future<List<ScheduledTransfer>> scheduledTransfers() async =>
+      (await _get('/v1/me/scheduled-transfers') as List).map((j) => ScheduledTransfer.fromJson(j)).toList();
+
+  /// Le PIN autorise toutes les échéances à venir.
+  Future<ScheduledTransfer> scheduleTransfer({
+    required String toPhone,
+    required int amountMinor,
+    required String frequency,
+    required int day,
+    required String pin,
+    String? note,
+  }) async => ScheduledTransfer.fromJson(
+    await _post('/v1/me/scheduled-transfers', {
+      'toPhone': toPhone,
+      'amountMinor': amountMinor,
+      'frequency': frequency,
+      'day': day,
+      'pin': pin,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }),
+  );
+
+  Future<ScheduledTransfer> pauseScheduledTransfer(String id) async =>
+      ScheduledTransfer.fromJson(await _post('/v1/me/scheduled-transfers/$id/pause', null));
+
+  Future<ScheduledTransfer> resumeScheduledTransfer(String id) async =>
+      ScheduledTransfer.fromJson(await _post('/v1/me/scheduled-transfers/$id/resume', null));
+
+  Future<void> cancelScheduledTransfer(String id) => _delete('/v1/me/scheduled-transfers/$id');
+
   // ---- Réclamations -----------------------------------------------------------------------------
 
   /// Sur une opération (depuis son reçu) ou, sans [transactionId], sur le compte.

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Api, CustomerSummary, HistoryCategory, HistoryItem, MonitoringAlert, Receipt } from '../api'
-import { formatDateTime, formatSigned, formatUsd, historyStatus, historyTitle, operatorLabel } from '../format'
+import { formatDateTime, formatSigned, formatUsd, historyStatus, historyTitle, operatorLabel, scheduleLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
 const filters: { value: HistoryCategory | null; label: string }[] = [
@@ -128,6 +128,7 @@ function CustomerFile({ api, customer, notify, changed }: {
         </div>
       </div>
       <AccountStatus api={api} customer={customer} notify={notify} changed={changed} />
+      <Recurring api={api} customerId={customer.id} />
       <div className={selected ? 'history-split' : undefined}>
         <section className="card table-wrap" aria-labelledby="t-history">
           <div className="card-head row">
@@ -327,5 +328,70 @@ function AccountStatus({ api, customer, notify, changed }: {
         </ul>
       )}
     </section>
+  )
+}
+
+/** Envois programmés et réclamations du client : ce qu'on vérifie quand il dit « de l'argent part tout seul ». */
+function Recurring({ api, customerId }: { api: Api; customerId: string }) {
+  const scheduled = useLoad(() => api.customerScheduledTransfers(customerId), [customerId])
+  const complaints = useLoad(() => api.customerComplaints(customerId), [customerId])
+  return (
+    <>
+      <ErrorBanner error={scheduled.error ?? complaints.error} />
+      {scheduled.data && scheduled.data.length > 0 && (
+        <section className="card table-wrap" aria-labelledby="t-scheduled">
+          <div className="card-head">
+            <h3 id="t-scheduled">Envois programmés</h3>
+            <p className="muted small">Confirmés par le PIN du client, envoyés à 8 h. Seul le client peut les arrêter, depuis l'app.</p>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Destinataire</th><th>Montant</th><th>Rythme</th><th>État</th></tr>
+            </thead>
+            <tbody>
+              {scheduled.data.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{s.recipientName}</div>
+                    <div className="muted small mono">{s.recipientPhone}</div>
+                  </td>
+                  <td className="mono">{formatUsd(s.amountMinor)}<div className="muted small">+ {formatUsd(s.feeMinor)} de frais</div></td>
+                  <td>{scheduleLabel(s.frequency, s.day)}{s.note && <div className="muted small">{s.note}</div>}</td>
+                  <td className="small">
+                    {s.status === 'ACTIVE'
+                      ? <><span className="badge ok">Actif</span> <span className="muted">prochain le {formatDateTime(s.nextRunAt!)}</span></>
+                      : <span className="badge off">En pause</span>}
+                    {s.lastResult === 'FAILED' && <div className="muted" style={{ marginTop: 4 }}>Dernier échec : {s.lastFailure}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+      {complaints.data && complaints.data.length > 0 && (
+        <section className="card table-wrap" aria-labelledby="t-customer-complaints">
+          <div className="card-head"><h3 id="t-customer-complaints">Réclamations</h3></div>
+          <table>
+            <thead>
+              <tr><th>Numéro</th><th>Motif</th><th>État</th></tr>
+            </thead>
+            <tbody>
+              {complaints.data.map(({ complaint: c, overdue }) => (
+                <tr key={c.id}>
+                  <td className="mono">{c.reference}<div className="muted small">{formatDateTime(c.createdAt)}</div></td>
+                  <td>{c.categoryLabel}<div className="muted small">« {c.message} »</div></td>
+                  <td className="small">
+                    {c.status === 'OPEN'
+                      ? <span className={`badge ${overdue ? 'alert' : 'wait'}`}>{overdue ? 'En retard' : 'À traiter'}</span>
+                      : <span className={`badge ${c.outcome === 'FOUNDED' ? 'ok' : 'off'}`}>{c.outcome === 'FOUNDED' ? 'Fondée' : 'Non fondée'}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
   )
 }

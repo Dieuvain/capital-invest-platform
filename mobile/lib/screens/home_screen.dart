@@ -20,6 +20,7 @@ import 'kyc_screen.dart';
 import 'notifications_screen.dart';
 import 'pay_screen.dart';
 import 'request_screens.dart';
+import 'scheduled_screens.dart';
 import 'savings_screens.dart';
 import 'security_screen.dart';
 import 'statement_screens.dart';
@@ -114,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _airtime() => _open(AirtimeScreen(app: widget.app, limits: limits));
   void _savings() => _open(SavingsScreen(app: widget.app));
   void _complaints() => _open(ComplaintsScreen(app: widget.app));
+  void _scheduled() => _open(ScheduledTransfersScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
   void _promoAction(Promotion p) => switch (p.action) {
@@ -148,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 _SheetRow(Icons.phone_android_rounded, 'Acheter du crédit téléphone', () => go(_airtime)),
                 _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
                 _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
+                _SheetRow(Icons.event_repeat_rounded, 'Envois programmés', () => go(_scheduled)),
                 _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
                 _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
                 _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),

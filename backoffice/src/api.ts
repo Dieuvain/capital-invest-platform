@@ -378,6 +378,24 @@ export interface BackofficeComplaint {
   answeredByName: string | null
 }
 
+/** Envoi répété d'un client, vu depuis sa fiche. */
+export interface ScheduledTransfer {
+  id: string
+  recipientName: string
+  recipientPhone: string
+  amountMinor: number
+  feeMinor: number
+  note: string | null
+  frequency: 'WEEKLY' | 'MONTHLY'
+  day: number
+  status: 'ACTIVE' | 'PAUSED'
+  nextRunAt: string | null
+  lastRunAt: string | null
+  lastResult: 'SENT' | 'FAILED' | null
+  lastFailure: string | null
+  createdAt: string
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -486,6 +504,8 @@ export class Api {
     this.json<Agent>('POST', `/v1/backoffice/agents/${id}/${active ? 'enable' : 'disable'}`)
   // ---- Clients ----
   findCustomer = (phone: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers?phone=${encodeURIComponent(phone)}`)
+  customerScheduledTransfers = (id: string) => this.json<ScheduledTransfer[]>('GET', `/v1/backoffice/customers/${id}/scheduled-transfers`)
+  customerComplaints = (id: string) => this.json<BackofficeComplaint[]>('GET', `/v1/backoffice/customers/${id}/complaints`)
   customer = (id: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers/${id}`)
   /** Suspendre ou réactiver : un client suspendu ne peut plus se connecter ni faire bouger son argent. */
   setCustomerStatus = (id: string, status: 'ACTIVE' | 'SUSPENDED', reason: string) =>

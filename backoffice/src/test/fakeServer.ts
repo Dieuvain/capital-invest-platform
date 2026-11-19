@@ -1,4 +1,4 @@
-import type { Agent, BackofficeComplaint, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, BackofficeComplaint, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -60,6 +60,13 @@ export class FakeServer {
       id: 'w-review', type: 'WITHDRAWAL', operator: 'AIRTEL', provider: 'PAWAPAY', amountMinor: 3000, currency: 'USD',
       reason: 'Aucune réponse définitive après 24 h (toujours en cours chez l\'opérateur)', customerName: 'Esther Mbuyi',
       customerPhone: '+243970000005', checks: 12, createdAt: '2026-11-18T09:00:00Z',
+    },
+  ]
+  scheduled: ScheduledTransfer[] = [
+    {
+      id: 'st-1', recipientName: 'Béni Mukendi', recipientPhone: '+243970000402', amountMinor: 15000, feeMinor: 150, note: 'Loyer',
+      frequency: 'MONTHLY', day: 5, status: 'ACTIVE', nextRunAt: '2026-12-05T06:00:00Z', lastRunAt: '2026-11-05T06:00:00Z',
+      lastResult: 'FAILED', lastFailure: 'Solde insuffisant', createdAt: '2026-10-01T10:00:00Z',
     },
   ]
   complaints: BackofficeComplaint[] = [
@@ -267,6 +274,8 @@ export class FakeServer {
         const phone = u.searchParams.get('phone')!.replace(/[^+\d]/g, '')
         return phone === this.customer.phone ? json(this.customer) : problem(404, 'CUSTOMER_NOT_FOUND', 'Aucun client avec ce numéro')
       }
+      if (path.endsWith('/scheduled-transfers')) return json(this.scheduled)
+      if (path.endsWith('/complaints')) return json(this.complaints.filter((c) => path.includes(`/${c.customerId}/`)))
       if ((m = path.match(/^\/v1\/backoffice\/customers\/[^/]+\/history\/([^/]+)$/))) {
         const i = this.history.find((h) => h.id === m![1])
         return i ? json({ item: i, holderName: this.customer.fullName, holderPhone: this.customer.phone, issuedAt: '2026-11-19T10:00:00Z' })

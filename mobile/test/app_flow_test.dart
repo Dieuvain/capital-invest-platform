@@ -9,6 +9,7 @@ import 'package:capital_invest/screens/complaint_screens.dart';
 import 'package:capital_invest/screens/history_screens.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
 import 'package:capital_invest/screens/money_screens.dart';
+import 'package:capital_invest/screens/scheduled_screens.dart';
 import 'package:capital_invest/ui/chrome.dart';
 import 'package:capital_invest/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -531,6 +532,69 @@ void main() {
     await tester.tap(find.text('Télécharger le relevé (PDF)'));
     await tester.pumpAndSettle();
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
+  });
+
+  testWidgets('envoi programmé : loyer chaque mois après un envoi, puis pause et suppression', (tester) async {
+    server.scheduled = [
+      FakeServer.scheduledTransfer('st-0', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant'),
+    ];
+    await start(tester);
+    await login(tester);
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute<void>(builder: (_) => TransferScreen(app: app)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '0970000402');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '30');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 30,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Répéter cet envoi chaque mois'));
+    await tester.pumpAndSettle();
+
+    // Prérempli avec le même destinataire et le même montant.
+    await tester.ensureVisible(find.byKey(const ValueKey('month-day')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('month-day')));
+    await tester.pumpAndSettle();
+    // Le menu s'ouvre sur le jour d'aujourd'hui : on remonte jusqu'au 5.
+    await tester.scrollUntilVisible(find.text('5'), -60, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('scheduled-note')), 'Loyer');
+    await tester.ensureVisible(find.text('Continuer'));
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chaque mois, le 5'), findsOneWidget);
+    expect(find.text('30,30\u00A0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Programmer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Premier envoi le 5 déc. 2026'), findsOneWidget);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/me/scheduled-transfers' && r.method == 'POST');
+    expect(jsonDecode(sent.body), {
+      'toPhone': '+243970000402', 'amountMinor': 3000, 'frequency': 'MONTHLY', 'day': 5, 'pin': '2580', 'note': 'Loyer',
+    });
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => ScheduledTransfersScreen(app: app)));
+    await tester.pumpAndSettle();
+    expect(find.text('Dernier envoi non effectué : Solde insuffisant.'), findsOneWidget);
+    expect(find.text('Chaque vendredi'), findsOneWidget);
+    expect(find.text('Chaque mois, le 5 · Loyer'), findsOneWidget);
+    final rent = find.byKey(const ValueKey('scheduled-st-2'));
+    await tester.tap(find.descendant(of: rent, matching: find.text('Mettre en pause')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: rent, matching: find.text('En pause')), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('scheduled-st-0')), matching: find.text('Supprimer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Maman Chantal'), findsNothing);
+    expect(server.scheduled.map((s) => s['id']), ['st-2']);
   });
 
   testWidgets('réclamation depuis le reçu : motif, message, numéro et date de réponse, puis suivi', (tester) async {

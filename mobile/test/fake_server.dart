@@ -61,6 +61,18 @@ class FakeServer {
   /// Réclamations servies par /v1/me/complaints, la plus récente en tête.
   List<Map<String, dynamic>> complaints = [];
 
+  /// Envois programmés servis par /v1/me/scheduled-transfers.
+  List<Map<String, dynamic>> scheduled = [];
+
+  static Map<String, dynamic> scheduledTransfer(String id, String name, int amount, String frequency, int day,
+      {String status = 'ACTIVE', String? note, String? lastResult, String? lastFailure}) => {
+    'id': id, 'recipientName': name, 'recipientPhone': '+243 97• ••• 402', 'amountMinor': amount,
+    'feeMinor': ((amount * 100 + 5000) ~/ 10000).clamp(10, 500), 'note': note, 'frequency': frequency, 'day': day,
+    'status': status, 'nextRunAt': status == 'ACTIVE' ? '2026-12-05T06:00:00Z' : null,
+    'lastRunAt': lastResult == null ? null : '2026-11-05T06:00:00Z', 'lastResult': lastResult, 'lastFailure': lastFailure,
+    'createdAt': '2026-10-01T10:00:00Z',
+  };
+
   /// Comptes servis par /v1/bills/recent.
   List<Map<String, dynamic>> recentBills = [];
 
@@ -236,6 +248,25 @@ class FakeServer {
         'toPay': moneyRequests.where(toPay).toList().reversed.toList(),
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
+    }
+    if (path == '/v1/me/scheduled-transfers' && req.method == 'POST') {
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final s = scheduledTransfer('st-${scheduled.length + 1}', 'Béni Mukendi', b['amountMinor'], b['frequency'], b['day'], note: b['note']);
+      scheduled.add(s);
+      return _json(s, 201);
+    }
+    if (path == '/v1/me/scheduled-transfers') return _json(scheduled);
+    final st = RegExp(r'^/v1/me/scheduled-transfers/([^/]+)(?:/(pause|resume))?$').firstMatch(path);
+    if (st != null) {
+      final s = scheduled.firstWhere((x) => x['id'] == st.group(1));
+      if (req.method == 'DELETE') {
+        scheduled.remove(s);
+        return http.Response('', 204);
+      }
+      s['status'] = st.group(2) == 'pause' ? 'PAUSED' : 'ACTIVE';
+      s['nextRunAt'] = s['status'] == 'ACTIVE' ? '2026-12-05T06:00:00Z' : null;
+      return _json(s);
     }
     if (path == '/v1/me/complaints' && req.method == 'POST') {
       final b = body();
