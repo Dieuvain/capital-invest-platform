@@ -4,6 +4,7 @@ import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
 import 'package:capital_invest/screens/kyc_screen.dart';
+import 'package:capital_invest/ui/chrome.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -30,6 +31,13 @@ void main() {
     await tester.pumpWidget(CapitalInvestApp(app: app, photos: FakePhotos()));
   }
 
+  Future<void> pay(WidgetTester tester, String action) async {
+    await tester.tap(find.byKey(const ValueKey('pay-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(action));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> login(WidgetTester tester, {String pin = '2580'}) async {
     await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970000001');
     await tester.enterText(find.byKey(const ValueKey('pin-PIN')), pin);
@@ -41,8 +49,8 @@ void main() {
     await start(tester);
     await login(tester);
     expect(find.text('Bonjour Amani'), findsOneWidget);
-    expect(find.text('50,00 \$'), findsOneWidget);
-    expect(find.textContaining('Encore 500,00'), findsOneWidget);
+    expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
+    expect(find.byWidgetPredicate((w) => w is Amount && w.formatted == '500,00\u00A0\$'), findsOneWidget); // reste à envoyer aujourd'hui
     expect(find.text('Argent reçu'), findsOneWidget);
     expect(find.textContaining('Passez au niveau 2'), findsOneWidget);
   });
@@ -57,8 +65,7 @@ void main() {
   testWidgets('envoi : les frais sont montrés avant la confirmation par PIN', (tester) async {
     await start(tester);
     await login(tester);
-    await tester.tap(find.text('Envoyer'));
-    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
     await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
     await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
     await tester.tap(find.text('Continuer'));
@@ -79,8 +86,7 @@ void main() {
   testWidgets('un montant au-dessus du plafond est arrêté avant l\'envoi', (tester) async {
     await start(tester);
     await login(tester);
-    await tester.tap(find.text('Envoyer'));
-    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
     await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
     await tester.enterText(find.byKey(const ValueKey('amount')), '250');
     await tester.tap(find.text('Continuer'));
@@ -91,8 +97,7 @@ void main() {
   testWidgets('recharge : attente de la validation puis confirmation', (tester) async {
     await start(tester);
     await login(tester);
-    await tester.tap(find.text('Recharger'));
-    await tester.pumpAndSettle();
+    await pay(tester, 'Recharger');
     await tester.enterText(find.byKey(const ValueKey('amount')), '25');
     await tester.tap(find.widgetWithText(FilledButton, 'Recharger'));
     await tester.pump();
@@ -107,8 +112,7 @@ void main() {
     await start(tester);
     await login(tester);
     server.sessionExpired = true;
-    await tester.tap(find.text('Recharger'));
-    await tester.pumpAndSettle();
+    await pay(tester, 'Recharger');
     await tester.enterText(find.byKey(const ValueKey('amount')), '25');
     await tester.tap(find.widgetWithText(FilledButton, 'Recharger'));
     await tester.pumpAndSettle();
@@ -118,7 +122,7 @@ void main() {
   testWidgets('niveau 2 : photos, pièce, date, puis demande en attente', (tester) async {
     await start(tester);
     await login(tester);
-    await tester.tap(find.textContaining('Passez au niveau 2'));
+    await tester.tap(find.text('Passez au niveau 2'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Envoyer ma demande'));
     await tester.pumpAndSettle();

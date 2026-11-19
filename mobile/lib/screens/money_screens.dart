@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../app_state.dart';
+import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -195,11 +196,15 @@ class _TransferScreenState extends State<TransferScreen> with ApiAction {
     if (q != null) {
       return FormPage(title: 'Vérifier l\'envoi', children: [
         ErrorBanner(error),
-        _Row('Destinataire', toPhone!),
-        _Row('Montant reçu', formatUsd(q.amountMinor)),
-        _Row('Frais', formatUsd(q.feeMinor)),
-        const Divider(height: 32),
-        _Row('Total débité', formatUsd(q.totalMinor), strong: true),
+        SoftCard(
+          child: Column(children: [
+            _Row('Destinataire', toPhone!),
+            _Row('Montant reçu', formatUsd(q.amountMinor)),
+            _Row('Frais', formatUsd(q.feeMinor)),
+            const Divider(height: 28, color: Color(0xFFF0ECE7)),
+            _Row('Total débité', formatUsd(q.totalMinor), strong: true),
+          ]),
+        ),
         const SizedBox(height: 24),
         PinField(controller: pin, label: 'PIN pour confirmer', autofocus: true, onSubmitted: (_) => _send()),
         const SizedBox(height: 20),

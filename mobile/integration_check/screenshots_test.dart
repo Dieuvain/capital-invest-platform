@@ -58,13 +58,19 @@ void main() {
 
   testWidgets('captures', (tester) async {
     tester_ = tester;
+    debugDisableShadows = false; // vraies ombres douces, comme sur un téléphone
+    addTearDown(() => debugDisableShadows = true);
     await start(tester);
     await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970 000 001');
+    await tester.pumpAndSettle();
     await shot('1-connexion');
 
     await login(tester);
     await shot('2-accueil');
 
+    await tester.tap(find.byKey(const ValueKey('pay-button')));
+    await tester.pumpAndSettle();
+    await shot('2b-paiements');
     await tester.tap(find.text('Envoyer'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
@@ -74,9 +80,11 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
     await tester.pump();
     await shot('3-envoi-verification');
-    await tester.pageBack();
+    await tester.tap(find.byTooltip('Retour'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const ValueKey('pay-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Recharger'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('amount')), '25');
@@ -84,10 +92,15 @@ void main() {
     await tester.pump();
     await tester.pump();
     await shot('4-recharge-attente');
-    await tester.pageBack();
+    await tester.tap(find.byTooltip('Retour'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.textContaining('Passez au niveau 2'));
+    await tester.tap(find.text('Plafonds'));
+    await tester.pumpAndSettle();
+    await shot('2c-plafonds');
+    await tester.tap(find.text('Aperçu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Passez au niveau 2'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('idNumber')), 'CE 1234 5678');
     await tester.pump();

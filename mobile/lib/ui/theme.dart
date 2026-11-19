@@ -4,7 +4,28 @@ import 'package:material_ui/material_ui.dart';
 class Brand {
   static const ink = Color(0xFF231F20);
   static const ochre = Color(0xFFFBB03F);
-  static const paper = Color(0xFFFAF7F2);
+  static const paper = Color(0xFFF4F2EF);
+  static const ochreLight = Color(0xFFFDC56A);
+  static const ochreDeep = Color(0xFFF2921C);
+  static const card = Colors.white;
+
+  /// Dégradé de l'en-tête et des pastilles d'icônes.
+  static const headerGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [ochreLight, ochreDeep],
+  );
+  static const tileGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [ochreLight, ochreDeep],
+  );
+
+  /// Ombre douce des cartes.
+  static const softShadow = [
+    BoxShadow(color: Color(0x14231F20), blurRadius: 24, offset: Offset(0, 10)),
+    BoxShadow(color: Color(0x0A231F20), blurRadius: 4, offset: Offset(0, 1)),
+  ];
   static const muted = Color(0xFF6B6466);
   static const success = Color(0xFF1F7A4D);
   static const danger = Color(0xFFB3261E);

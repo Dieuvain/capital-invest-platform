@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
+import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -30,34 +31,55 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 40, 20, 32),
-            children: [
-              const _Logo(),
-              const SizedBox(height: 32),
-              const Text('Votre argent, partout à Kolwezi.',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Brand.ink, height: 1.15)),
-              const SizedBox(height: 8),
-              const Text('Recharge mobile money, envois entre clients, carte bientôt.',
-                  style: TextStyle(fontSize: 15, color: Brand.muted)),
-              const SizedBox(height: 32),
-              ErrorBanner(error),
-              PhoneField(controller: phone),
-              const SizedBox(height: 12),
-              PinField(controller: pin, onSubmitted: (_) => _login()),
-              const SizedBox(height: 20),
-              BusyButton(label: 'Se connecter', busy: busy, onPressed: _login),
-              TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForgotPinScreen(app: widget.app))),
-                child: const Text('PIN oublié ?'),
+        backgroundColor: Brand.ochreDeep,
+        body: Container(
+          decoration: const BoxDecoration(gradient: Brand.headerGradient),
+          child: SafeArea(
+            bottom: false,
+            child: Column(children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 28, 24, 28),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _Logo(),
+                  SizedBox(height: 28),
+                  Text('Votre argent, partout à Kolwezi.',
+                      style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Brand.ink, height: 1.12)),
+                  SizedBox(height: 8),
+                  Text('Recharge mobile money, envois entre clients, carte bientôt.',
+                      style: TextStyle(fontSize: 15, color: Color(0xCC231F20))),
+                ]),
               ),
-              const SizedBox(height: 24),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignupScreen(app: widget.app))),
-                child: const Text('Ouvrir un compte'),
+              Expanded(
+                child: ClipPath(
+                  clipper: NotchedSheetClipper(notchX: null, notchHeight: 0),
+                  child: Container(
+                    color: Brand.paper,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
+                      children: [
+                        ErrorBanner(error),
+                        PhoneField(controller: phone),
+                        const SizedBox(height: 12),
+                        PinField(controller: pin, onSubmitted: (_) => _login()),
+                        const SizedBox(height: 20),
+                        BusyButton(label: 'Se connecter', busy: busy, onPressed: _login),
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForgotPinScreen(app: widget.app))),
+                          child: const Text('PIN oublié ?'),
+                        ),
+                        const SizedBox(height: 20),
+                        OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignupScreen(app: widget.app))),
+                          child: const Text('Ouvrir un compte'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ],
+            ]),
           ),
         ),
       );

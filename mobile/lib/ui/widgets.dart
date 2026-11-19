@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
 import '../app_state.dart';
+import 'chrome.dart';
 import 'messages.dart';
 import 'theme.dart';
 
@@ -81,7 +82,7 @@ class BusyButton extends StatelessWidget {
       );
 }
 
-/// Écran à défilement avec marges, pour les formulaires.
+/// Écran de formulaire : en-tête ocre et feuille arrondie.
 class FormPage extends StatelessWidget {
   const FormPage({super.key, required this.title, required this.children, this.subtitle});
 
@@ -90,21 +91,7 @@ class FormPage extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(title)),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-            children: [
-              if (subtitle != null) ...[
-                Text(subtitle!, style: const TextStyle(color: Brand.muted, fontSize: 15, height: 1.4)),
-                const SizedBox(height: 24),
-              ],
-              ...children,
-            ],
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => BrandedPage(title: title, subtitle: subtitle, children: children);
 }
 
 /// Exécute un appel API : gère l'indicateur, le message d'erreur et l'expiration de session.
