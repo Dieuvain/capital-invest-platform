@@ -259,6 +259,28 @@ void main() {
       await tester.tap(find.text('Terminé'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Historique et reçus'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('history-bp-1')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Signaler un problème'));
+      await tester.tap(find.text('Signaler un problème'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('complaint-category-WRONG_AMOUNT')));
+      await tester.enterText(find.byKey(const ValueKey('complaint-message')), 'J\'ai payé 20 \$ mais le compteur n\'a reçu que 15 \$ d\'unités.');
+      await tester.pumpAndSettle();
+      await shot('13-reclamation$suffix');
+      await tester.ensureVisible(find.text('Envoyer la réclamation'));
+      await tester.tap(find.text('Envoyer la réclamation'));
+      await tester.pumpAndSettle();
+      await shot('13b-reclamation-envoyee$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Profil'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sécurité et PIN'));

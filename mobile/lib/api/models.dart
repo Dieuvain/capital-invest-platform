@@ -740,3 +740,55 @@ class RecentBill {
   factory RecentBill.fromJson(Map<String, dynamic> j) =>
       RecentBill(j['biller'], j['billerName'], j['reference'], j['holderName']);
 }
+
+/// Réclamation du client, sur une opération ou sur son compte.
+class Complaint {
+  Complaint({
+    required this.id,
+    required this.reference,
+    required this.category,
+    required this.categoryLabel,
+    required this.message,
+    required this.status,
+    required this.operation,
+    required this.dueAt,
+    required this.answer,
+    required this.outcome,
+    required this.answeredAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String reference;
+  final String category;
+  final String categoryLabel;
+  final String message;
+
+  /// OPEN, ANSWERED.
+  final String status;
+  final HistoryItem? operation;
+  final DateTime dueAt;
+  final String? answer;
+
+  /// FOUNDED (le client avait raison), UNFOUNDED.
+  final String? outcome;
+  final DateTime? answeredAt;
+  final DateTime createdAt;
+
+  bool get open => status == 'OPEN';
+
+  factory Complaint.fromJson(Map<String, dynamic> j) => Complaint(
+    id: j['id'],
+    reference: j['reference'],
+    category: j['category'],
+    categoryLabel: j['categoryLabel'],
+    message: j['message'],
+    status: j['status'],
+    operation: j['operation'] == null ? null : HistoryItem.fromJson(j['operation']),
+    dueAt: DateTime.parse(j['dueAt']),
+    answer: j['answer'],
+    outcome: j['outcome'],
+    answeredAt: j['answeredAt'] == null ? null : DateTime.parse(j['answeredAt']),
+    createdAt: DateTime.parse(j['createdAt']),
+  );
+}

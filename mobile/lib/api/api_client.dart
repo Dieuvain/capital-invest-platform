@@ -233,6 +233,17 @@ class ApiClient {
   Future<List<RecentBill>> recentBills() async =>
       (await _get('/v1/bills/recent') as List).map((j) => RecentBill.fromJson(j)).toList();
 
+  // ---- Réclamations -----------------------------------------------------------------------------
+
+  /// Sur une opération (depuis son reçu) ou, sans [transactionId], sur le compte.
+  Future<Complaint> openComplaint({String? transactionId, required String category, required String message}) async =>
+      Complaint.fromJson(
+        await _post('/v1/me/complaints', {'transactionId': ?transactionId, 'category': category, 'message': message}),
+      );
+
+  Future<List<Complaint>> complaints() async =>
+      (await _get('/v1/me/complaints') as List).map((j) => Complaint.fromJson(j)).toList();
+
   // ---- Épargne ---------------------------------------------------------------------------------
 
   Future<Savings> savings() async => Savings.fromJson(await _get('/v1/me/savings'));

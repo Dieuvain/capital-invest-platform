@@ -66,6 +66,12 @@ const auditLabels: Record<string, string> = {
   MERCHANT_PAYOUT_AUTOMATIC: 'Reversement automatique de nuit',
   MERCHANT_AUTO_PAYOUT_ON: 'Reversement automatique activé',
   MERCHANT_AUTO_PAYOUT_OFF: 'Reversement automatique coupé',
+  AIRTIME_REVIEW_DONE: 'Crédit téléphone noté envoyé',
+  AIRTIME_REVIEW_REFUND: 'Crédit téléphone remboursé',
+  BILL_REVIEW_DONE: 'Facture notée payée',
+  BILL_REVIEW_REFUND: 'Facture remboursée',
+  COMPLAINT_ANSWERED_FOUNDED: 'Réclamation fondée, réponse envoyée',
+  COMPLAINT_ANSWERED_UNFOUNDED: 'Réclamation non fondée, réponse envoyée',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 

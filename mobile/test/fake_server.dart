@@ -58,6 +58,9 @@ class FakeServer {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
 
+  /// Réclamations servies par /v1/me/complaints, la plus récente en tête.
+  List<Map<String, dynamic>> complaints = [];
+
   /// Comptes servis par /v1/bills/recent.
   List<Map<String, dynamic>> recentBills = [];
 
@@ -234,6 +237,24 @@ class FakeServer {
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
       });
     }
+    if (path == '/v1/me/complaints' && req.method == 'POST') {
+      final b = body();
+      final tx = b['transactionId'] as String?;
+      if (tx != null && complaints.any((c) => c['operation']?['id'] == tx && c['status'] == 'OPEN')) {
+        return _error(409, 'COMPLAINT_ALREADY_OPEN', 'Déjà ouverte');
+      }
+      final c = {
+        'id': 'cp-${complaints.length + 1}', 'reference': 'REC-20261119-3F9A2${complaints.length}', 'category': b['category'],
+        'categoryLabel': {'NOT_RECEIVED': 'L\'argent n\'est pas arrivé', 'WRONG_AMOUNT': 'Mauvais montant ou frais',
+          'NOT_ME': 'Je n\'ai pas fait cette opération', 'OTHER': 'Autre problème'}[b['category']],
+        'message': b['message'], 'status': 'OPEN',
+        'operation': tx == null ? null : history.firstWhere((h) => h['id'] == tx),
+        'dueAt': '2026-11-26T10:00:00Z', 'answer': null, 'outcome': null, 'answeredAt': null, 'createdAt': '2026-11-19T10:00:00Z',
+      };
+      complaints.insert(0, c);
+      return _json(c, 201);
+    }
+    if (path == '/v1/me/complaints') return _json(complaints);
     if (path == '/v1/bills/billers') return _json(billers);
     if (path == '/v1/bills/recent') return _json(recentBills);
     if (path == '/v1/bills/lookup') {

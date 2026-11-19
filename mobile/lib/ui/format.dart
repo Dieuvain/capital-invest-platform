@@ -45,9 +45,16 @@ String? pinProblem(String pin) {
   return null;
 }
 
+const _months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
 /// « 14:05 · 19 nov. 2026 », à l'heure du téléphone.
 String formatDateTime(DateTime at) {
   final d = at.toLocal();
-  const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} · ${d.day} ${months[d.month - 1]} ${d.year}';
+  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} · ${formatDay(d)}';
+}
+
+/// « 19 nov. 2026 », à l'heure du téléphone.
+String formatDay(DateTime at) {
+  final d = at.toLocal();
+  return '${d.day} ${_months[d.month - 1]} ${d.year}';
 }

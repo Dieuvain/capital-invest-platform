@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, BackofficeComplaint, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -60,6 +60,25 @@ export class FakeServer {
       id: 'w-review', type: 'WITHDRAWAL', operator: 'AIRTEL', provider: 'PAWAPAY', amountMinor: 3000, currency: 'USD',
       reason: 'Aucune réponse définitive après 24 h (toujours en cours chez l\'opérateur)', customerName: 'Esther Mbuyi',
       customerPhone: '+243970000005', checks: 12, createdAt: '2026-11-18T09:00:00Z',
+    },
+  ]
+  complaints: BackofficeComplaint[] = [
+    {
+      complaint: {
+        id: 'cp-1', reference: 'REC-20261119-9C41D0', category: 'NOT_ME', categoryLabel: "Je n'ai pas fait cette opération",
+        message: "Je n'ai jamais envoyé cet argent, quelqu'un a mon téléphone", status: 'OPEN',
+        operation: item('s1', 'TRANSFER_SENT', -2020, 20, { counterpartyName: 'Béni Mukendi', counterpartyPhone: '+243970000402' }),
+        dueAt: '2026-11-26T09:00:00Z', answer: null, outcome: null, answeredAt: null, createdAt: '2026-11-19T09:00:00Z',
+      },
+      customerId: 'c-1', customerName: 'Amani Kabeya', customerPhone: '+243970000001', overdue: false, urgent: true, answeredByName: null,
+    },
+    {
+      complaint: {
+        id: 'cp-2', reference: 'REC-20261110-1A2B3C', category: 'NOT_RECEIVED', categoryLabel: "L'argent n'est pas arrivé",
+        message: 'Mon frère dit ne rien avoir reçu', status: 'OPEN', operation: null,
+        dueAt: '2026-11-17T09:00:00Z', answer: null, outcome: null, answeredAt: null, createdAt: '2026-11-10T09:00:00Z',
+      },
+      customerId: 'c-5', customerName: 'Esther Mbuyi', customerPhone: '+243970000005', overdue: true, urgent: false, answeredByName: null,
     },
   ]
   purchases: PendingPurchase[] = [
@@ -396,6 +415,17 @@ export class FakeServer {
         Object.assign(i, { resolvedAt: '2026-11-19T10:00:00Z', resolvedByName: me.fullName, resolution: body.note })
         return json(i)
       }
+    }
+    if (path.startsWith('/v1/backoffice/complaints')) {
+      if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
+      if ((m = path.match(/^\/v1\/backoffice\/complaints\/([^/]+)\/answer$/))) {
+        const c = this.complaints.find((x) => x.complaint.id === m![1])!
+        Object.assign(c.complaint, { status: 'ANSWERED', answer: body.answer, outcome: body.outcome, answeredAt: '2026-11-19T11:00:00Z' })
+        Object.assign(c, { overdue: false, answeredByName: me.fullName })
+        return json(c)
+      }
+      const status = u.searchParams.get('status') ?? 'OPEN'
+      return json(this.complaints.filter((c) => c.complaint.status === status))
     }
     if (path === '/v1/backoffice/audit') {
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')

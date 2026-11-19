@@ -346,6 +346,38 @@ export interface PendingPurchase {
   createdAt: string
 }
 
+export type ComplaintCategory = 'NOT_RECEIVED' | 'WRONG_AMOUNT' | 'NOT_ME' | 'OTHER'
+export type ComplaintOutcome = 'FOUNDED' | 'UNFOUNDED'
+
+/** Réclamation d'un client, avec l'opération visée telle que son reçu la montre. */
+export interface Complaint {
+  id: string
+  /** REC-20261119-3F9A2C : le numéro que le client rappelle. */
+  reference: string
+  category: ComplaintCategory
+  categoryLabel: string
+  message: string
+  status: 'OPEN' | 'ANSWERED'
+  operation: HistoryItem | null
+  dueAt: string
+  answer: string | null
+  outcome: ComplaintOutcome | null
+  answeredAt: string | null
+  createdAt: string
+}
+
+export interface BackofficeComplaint {
+  complaint: Complaint
+  customerId: string
+  customerName: string
+  customerPhone: string
+  /** Échéance passée sans réponse. */
+  overdue: boolean
+  /** « Je n'ai pas fait cette opération » : peut-être un vol de compte. */
+  urgent: boolean
+  answeredByName: string | null
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -499,6 +531,9 @@ export class Api {
     this.json<unknown>('POST', `/v1/backoffice/topups/${id}/resolve`, { action, note })
   resolveWithdrawal = (id: string, action: WithdrawalDecision, note: string) =>
     this.json<unknown>('POST', `/v1/backoffice/withdrawals/${id}/resolve`, { action, note })
+  complaints = (status: Complaint['status']) => this.json<BackofficeComplaint[]>('GET', `/v1/backoffice/complaints?status=${status}`)
+  answerComplaint = (id: string, outcome: ComplaintOutcome, answer: string) =>
+    this.json<BackofficeComplaint>('POST', `/v1/backoffice/complaints/${id}/answer`, { outcome, answer })
   pendingPurchases = () => this.json<PendingPurchase[]>('GET', '/v1/backoffice/purchases/review')
   resolvePurchase = (p: Pick<PendingPurchase, 'type' | 'id'>, action: 'DONE' | 'REFUND', note: string, token?: string) =>
     this.json<unknown>('POST', `/v1/backoffice/${p.type === 'AIRTIME' ? 'airtime' : 'bills'}/${p.id}/resolve`,

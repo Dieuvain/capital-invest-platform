@@ -291,6 +291,23 @@ Un client demande un montant à un autre client (menu « Demander de l'argent »
 - Contre le harcèlement : 10 demandes par client en 24 h, et 3 demandes en attente au plus vers un même client (`capital-invest.money-requests`).
 - API : `POST /v1/money-requests` (`payerPhone`, `amountMinor`, `note`, en-tête `Idempotency-Key`), `GET /v1/money-requests` (`toPay`, `recent`), `POST /v1/money-requests/{id}/pay` (`pin`), `/decline`, `/cancel`.
 
+## Réclamations
+
+Depuis le reçu d'une opération, le client touche **Signaler un problème**, choisit ce qui ne va pas (argent non arrivé, mauvais montant ou frais, opération qu'il n'a pas faite, autre) et explique en quelques mots. Il reçoit aussitôt un numéro (REC-AAAAMMJJ-XXXXXX) et la date de réponse promise, dans l'app et par SMS. **Plus** → **Mes réclamations** montre celles en attente et les réponses.
+
+| Signaler depuis le reçu | Réclamation enregistrée |
+|---|---|
+| ![](docs/captures-app/13-reclamation.png) | ![](docs/captures-app/13b-reclamation-envoyee.png) |
+
+Dans le back-office, **Réclamations** (conformité et administrateurs) liste les réclamations à traiter avec l'opération telle que le reçu la montre, numéros en clair. Les « opération que je n'ai pas faite » passent en tête (vol de compte possible : l'app propose aussi au client de changer son PIN), puis les plus proches de l'échéance ; celles en retard sont signalées.
+
+![Réclamations dans le back-office](docs/captures-backoffice/14-reclamations.png)
+
+- L'agent conclut **fondée** ou **non fondée** et écrit la réponse que le client lira telle quelle. Elle part par SMS et dans l'app ; la décision entre au journal d'audit. Une correction d'argent se fait ensuite par les outils existants (rapprochement).
+- Une seule réclamation ouverte par client et par opération, et au plus 5 ouvertes en même temps (`capital-invest.complaints.max-open-per-customer`). Une opération qui ne touche pas le portefeuille du client n'existe pas pour lui.
+- Délai de réponse : 7 jours par défaut (`capital-invest.complaints.response-time`). **À confirmer avec la conformité** selon l'exigence de la BCC sur le traitement des réclamations.
+- API client : `POST /v1/me/complaints` (`{"transactionId"?, "category", "message"}`), `GET /v1/me/complaints`, `GET /v1/me/complaints/{id}`. Back-office : `GET /v1/backoffice/complaints?status=OPEN|ANSWERED`, `GET /v1/backoffice/customers/{id}/complaints`, `POST /v1/backoffice/complaints/{id}/answer` (`{"outcome", "answer"}`).
+
 ## Surveillance des opérations (anti-blanchiment)
 
 Après chaque mouvement d'argent, le serveur regarde le comportement récent des clients concernés. Une règle franchie ouvre une alerte pour la conformité, dans le menu **Surveillance** du back-office. Rien n'est bloqué automatiquement, et le client n'est jamais prévenu : il ne doit pas savoir qu'il est surveillé.
