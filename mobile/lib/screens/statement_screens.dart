@@ -128,8 +128,9 @@ class _StatementScreenState extends State<StatementScreen> with ApiAction {
     setState(() => downloading = true);
     try {
       final bytes = await run(widget.app, () => widget.app.api.statementPdf(widget.month));
-      if (bytes != null)
+      if (bytes != null) {
         await widget.app.shareFile(bytes, 'releve-capital-invest-${widget.month}.pdf', 'application/pdf');
+      }
     } finally {
       if (mounted) setState(() => downloading = false);
     }
