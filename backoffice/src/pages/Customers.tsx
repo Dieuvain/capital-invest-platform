@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Api, CustomerSummary, HistoryCategory, HistoryItem, Receipt } from '../api'
+import type { Api, CustomerSummary, HistoryCategory, HistoryItem, MonitoringAlert, Receipt } from '../api'
 import { formatDateTime, formatSigned, formatUsd, historyStatus, historyTitle, operatorLabel } from '../format'
-import { ErrorBanner, Icon, PageHead } from '../ui'
+import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
 const filters: { value: HistoryCategory | null; label: string }[] = [
   { value: null, label: 'Tout' },
@@ -15,7 +15,12 @@ const filters: { value: HistoryCategory | null; label: string }[] = [
  * Fiche client pour le service client et la conformité : on retrouve le client par son numéro,
  * on lit ses opérations et on ouvre le reçu dont il parle. Chaque recherche est tracée.
  */
-export function Customers({ api, id, open }: { api: Api; id: string | null; open: (id: string | null) => void }) {
+export function Customers({ api, id, open, notify }: {
+  api: Api
+  id: string | null
+  open: (id: string | null) => void
+  notify: (m: string) => void
+}) {
   const [phone, setPhone] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -62,13 +67,18 @@ export function Customers({ api, id, open }: { api: Api; id: string | null; open
         {!customer && !searchError && (
           <div className="card empty">Entrez le numéro du client, au format +243… ou 0970….</div>
         )}
-        {customer && <CustomerFile api={api} customer={customer} />}
+        {customer && <CustomerFile api={api} customer={customer} notify={notify} changed={setCustomer} />}
       </div>
     </>
   )
 }
 
-function CustomerFile({ api, customer }: { api: Api; customer: CustomerSummary }) {
+function CustomerFile({ api, customer, notify, changed }: {
+  api: Api
+  customer: CustomerSummary
+  notify: (m: string) => void
+  changed: (c: CustomerSummary) => void
+}) {
   const [category, setCategory] = useState<HistoryCategory | null>(null)
   const [items, setItems] = useState<HistoryItem[] | null>(null)
   const [next, setNext] = useState<string | null>(null)
@@ -113,9 +123,10 @@ function CustomerFile({ api, customer }: { api: Api; customer: CustomerSummary }
         <div className="card stat">
           <span className="lbl">Niveau</span>
           <span className="val mono">{customer.kycLevel}</span>
-          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : `compte ${customer.status.toLowerCase()}`}</span>
+          <span className="sub">{customer.status === 'ACTIVE' ? 'compte actif' : customer.status === 'SUSPENDED' ? 'compte suspendu' : `compte ${customer.status.toLowerCase()}`}</span>
         </div>
       </div>
+      <AccountStatus api={api} customer={customer} notify={notify} changed={changed} />
       <div className={selected ? 'history-split' : undefined}>
         <section className="card table-wrap" aria-labelledby="t-history">
           <div className="card-head row">
@@ -222,5 +233,98 @@ function ReceiptPanel({ api, customerId, id, close }: { api: Api; customerId: st
         </>
       )}
     </aside>
+  )
+}
+
+const ruleStatus: Record<MonitoringAlert['status'], string> = { OPEN: 'à traiter', DISMISSED: 'sans suite', ESCALATED: 'compte suspendu' }
+
+/** Suspendre ou réactiver le compte, avec une note pour le dossier ; et les alertes de surveillance du client. */
+function AccountStatus({ api, customer, notify, changed }: {
+  api: Api
+  customer: CustomerSummary
+  notify: (m: string) => void
+  changed: (c: CustomerSummary) => void
+}) {
+  const alerts = useLoad(() => api.alerts('ALL', customer.id), [customer.id, customer.status])
+  const [editing, setEditing] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const suspended = customer.status === 'SUSPENDED'
+
+  useEffect(() => {
+    setEditing(false)
+    setError(null)
+  }, [customer.id])
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.setCustomerStatus(customer.id, suspended ? 'ACTIVE' : 'SUSPENDED', reason.trim())
+      changed({ ...customer, status: r.status })
+      setEditing(false)
+      notify(r.status === 'SUSPENDED' ? `Compte de ${customer.fullName} suspendu` : `Compte de ${customer.fullName} réactivé`)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (customer.status === 'CLOSED') return null
+  const list = alerts.data ?? []
+  return (
+    <section className={`card pad stack${suspended ? ' suspended' : ''}`} aria-label="Compte" style={{ gap: 10 }}>
+      <div className="row">
+        <div>
+          <b>{suspended ? 'Compte suspendu' : 'Compte actif'}</b>
+          <div className="muted small">
+            {suspended
+              ? 'Le client ne peut ni se connecter ni faire bouger son argent.'
+              : list.some((a) => a.status === 'OPEN')
+                ? `${list.filter((a) => a.status === 'OPEN').length} alerte de surveillance à traiter`
+                : 'Aucune alerte de surveillance à traiter.'}
+          </div>
+        </div>
+        <span className="spacer" />
+        {!editing && (
+          <button type="button" className="btn ghost small" onClick={() => { setEditing(true); setReason('') }}>
+            {suspended ? 'Réactiver' : 'Suspendre le compte'}
+          </button>
+        )}
+      </div>
+      {editing && (
+        <form className="decision" onSubmit={save}>
+          <ErrorBanner error={error} />
+          <label className="field">
+            {suspended ? 'Pourquoi réactiver ?' : 'Pourquoi suspendre ? Le client ne sera pas prévenu de la raison.'}
+            <input type="text" required minLength={5} maxLength={500} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+          <div className="row">
+            <span className="spacer" />
+            <button type="button" className="btn ghost small" onClick={() => setEditing(false)} disabled={busy}>Annuler</button>
+            <button className={`btn small${suspended ? ' success' : ' danger'}`} disabled={busy || reason.trim().length < 5}>
+              {suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
+            </button>
+          </div>
+        </form>
+      )}
+      {list.length > 0 && (
+        <ul className="pay-list" aria-label="Alertes de surveillance du client">
+          {list.map((a) => (
+            <li key={a.id}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{a.ruleLabel}</div>
+                <div className="muted">{a.detail}</div>
+                <div className="muted">{formatDateTime(a.createdAt)}{a.resolutionNote && ` · ${a.resolutionNote}`}</div>
+              </div>
+              <div><span className={`badge ${a.status === 'OPEN' ? 'wait' : a.status === 'ESCALATED' ? 'alert' : 'off'}`}>{ruleStatus[a.status]}</span></div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

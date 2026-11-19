@@ -43,8 +43,8 @@ describe('connexion', () => {
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Marchands', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Marchands', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -252,6 +252,52 @@ describe('clients', () => {
     expect(within(receipt).getByText('+243970000402')).toBeInTheDocument()
     expect(within(receipt).getByText('Loyer')).toBeInTheDocument()
     expect(window.location.hash).toBe('#/clients/c-1')
+  })
+})
+
+describe('surveillance', () => {
+  it("la conformité suspend le compte d'une alerte avec une note, puis le retrouve sur la fiche client", async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Surveillance')
+    const open = await screen.findByRole('region', { name: 'Alertes à traiter' })
+    expect(await within(open).findByText('Argent reçu de nombreux clients')).toBeInTheDocument()
+    expect(within(open).getByText('7 expéditeurs différents en 24 h, pour 640,00 $')).toBeInTheDocument()
+    expect(within(open).queryByText("Rafale d'opérations")).not.toBeInTheDocument()
+
+    await user.click(within(open).getByRole('button', { name: 'Suspendre' }))
+    const confirm = within(open).getByRole('button', { name: 'Suspendre le compte' })
+    expect(confirm).toBeDisabled()
+    await user.type(within(open).getByLabelText(/Pourquoi suspendre/), 'Collecte pour des tiers, déclaration à la CENAREF')
+    await user.click(confirm)
+    expect(await screen.findByRole('status')).toHaveTextContent('Compte de Amani Kabeya suspendu')
+    expect(await within(open).findByText('Aucune alerte à traiter.')).toBeInTheDocument()
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/monitoring/alerts/al-1/resolve')?.body)
+      .toEqual({ action: 'SUSPEND', note: 'Collecte pour des tiers, déclaration à la CENAREF' })
+
+    await user.click(screen.getByRole('button', { name: 'Traitées' }))
+    const closed = await screen.findByRole('region', { name: 'Alertes traitées' })
+    expect(await within(closed).findByText('Compte suspendu')).toBeInTheDocument()
+    expect(within(closed).getByText('Commerçant connu, paie ses fournisseurs')).toBeInTheDocument()
+
+    await user.click(within(closed).getAllByRole('button', { name: 'Amani Kabeya' })[0])
+    expect(window.location.hash).toBe('#/clients/c-1')
+    const account = await screen.findByRole('region', { name: 'Compte' })
+    expect(within(account).getByText('Compte suspendu')).toBeInTheDocument()
+    expect(await within(account).findByText(/CENAREF/)).toBeInTheDocument()
+  })
+
+  it('la conformité réactive un compte suspendu depuis la fiche client', async () => {
+    server.customer.status = 'SUSPENDED'
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const account = await screen.findByRole('region', { name: 'Compte' })
+    await user.click(within(account).getByRole('button', { name: 'Réactiver' }))
+    await user.type(within(account).getByLabelText('Pourquoi réactiver ?'), 'Justificatifs reçus')
+    await user.click(within(account).getByRole('button', { name: 'Réactiver le compte' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Compte de Amani Kabeya réactivé')
+    expect(await within(account).findByText('Compte actif')).toBeInTheDocument()
+    expect(server.requests.find((r) => r.path === '/v1/backoffice/customers/c-1/status')?.body)
+      .toEqual({ status: 'ACTIVE', reason: 'Justificatifs reçus' })
   })
 })
 

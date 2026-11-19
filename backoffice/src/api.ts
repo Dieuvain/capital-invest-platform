@@ -77,6 +77,27 @@ export interface AuditEntry {
 export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
 
 /** Fiche client, pour répondre à une réclamation. */
+/** Alerte de surveillance des opérations (lutte contre le blanchiment). */
+export type MonitoringRule = 'VELOCITY' | 'STRUCTURING' | 'FAN_IN' | 'RAPID_CASH_OUT'
+export interface MonitoringAlert {
+  id: string
+  rule: MonitoringRule
+  ruleLabel: string
+  /** Ce qui a déclenché l'alerte, en clair. */
+  detail: string
+  transactionId: string
+  status: 'OPEN' | 'DISMISSED' | 'ESCALATED'
+  createdAt: string
+  customerId: string
+  customerName: string
+  customerPhone: string
+  customerStatus: string
+  kycLevel: number
+  resolvedByName?: string | null
+  resolvedAt?: string | null
+  resolutionNote?: string | null
+}
+
 export interface CustomerSummary {
   id: string
   phone: string
@@ -356,6 +377,14 @@ export class Api {
   // ---- Clients ----
   findCustomer = (phone: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers?phone=${encodeURIComponent(phone)}`)
   customer = (id: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers/${id}`)
+  /** Suspendre ou réactiver : un client suspendu ne peut plus se connecter ni faire bouger son argent. */
+  setCustomerStatus = (id: string, status: 'ACTIVE' | 'SUSPENDED', reason: string) =>
+    this.json<{ customerId: string; status: string }>('POST', `/v1/backoffice/customers/${id}/status`, { status, reason })
+  // ---- Surveillance des opérations ----
+  alerts = (status: 'OPEN' | 'CLOSED' | 'ALL' = 'OPEN', customerId?: string) =>
+    this.json<MonitoringAlert[]>('GET', `/v1/backoffice/monitoring/alerts?status=${status}${customerId ? `&customerId=${customerId}` : ''}`)
+  resolveAlert = (id: string, action: 'DISMISS' | 'SUSPEND', note: string) =>
+    this.json<MonitoringAlert>('POST', `/v1/backoffice/monitoring/alerts/${id}/resolve`, { action, note })
   customerHistory = (id: string, category: HistoryCategory | null, cursor: string | null = null) => {
     const q = new URLSearchParams({ limit: '25' })
     if (category) q.set('category', category)
