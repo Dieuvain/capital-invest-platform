@@ -141,6 +141,11 @@ export interface Merchant {
   /** Contenu du QR à imprimer. */
   qrPayload: string
   createdAt: string
+  /** Compte mobile money des reversements, s'il est renseigné. */
+  payoutOperator?: Operator | null
+  payoutPhone?: string | null
+  /** Reversements bloqués jusqu'à cette heure, après un changement du compte. */
+  payoutBlockedUntil?: string | null
 }
 
 export interface MerchantInput {
@@ -149,6 +154,20 @@ export interface MerchantInput {
   city: string | null
   phone: string
   commissionBps: number
+  payoutOperator: Operator | null
+  payoutPhone: string | null
+}
+
+/** Un reversement au marchand. */
+export interface MerchantPayout {
+  id: string
+  amountMinor: number
+  operator: Operator
+  phone: string
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVIEW'
+  failureMessage?: string | null
+  reviewReason?: string | null
+  createdAt: string
 }
 
 export interface MerchantPayment {
@@ -164,6 +183,7 @@ export interface MerchantPayment {
 export interface MerchantDetail {
   merchant: Merchant
   payments: MerchantPayment[]
+  payouts: MerchantPayout[]
 }
 
 export type DiscrepancyKind =
@@ -344,6 +364,11 @@ export class Api {
   merchants = () => this.json<Merchant[]>('GET', '/v1/backoffice/merchants')
   merchant = (id: string) => this.json<MerchantDetail>('GET', `/v1/backoffice/merchants/${id}`)
   createMerchant = (m: MerchantInput) => this.json<Merchant>('POST', '/v1/backoffice/merchants', m)
+  setPayoutAccount = (id: string, operator: Operator, phone: string) =>
+    this.json<Merchant>('POST', `/v1/backoffice/merchants/${id}/payout-account`, { operator, phone })
+  /** requestId : un double clic ne reverse pas deux fois. */
+  payoutMerchant = (id: string, amountMinor: number, requestId: string) =>
+    this.json<MerchantPayout>('POST', `/v1/backoffice/merchants/${id}/payouts`, { amountMinor, requestId })
   setMerchantStatus = (id: string, status: MerchantStatus, reason: string) =>
     this.json<Merchant>('POST', `/v1/backoffice/merchants/${id}/status`, { status, reason })
   // ---- Recharges et rapprochement ----

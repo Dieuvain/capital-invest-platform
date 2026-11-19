@@ -1,4 +1,4 @@
-import type { Agent, HistoryItem, AuditEntry, Merchant, MerchantPayment, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
+import type { Agent, HistoryItem, AuditEntry, Merchant, MerchantPayment, MerchantPayout, KycRequest, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -70,12 +70,18 @@ export class FakeServer {
       id: 'm-1', code: 'K7P2QX', name: 'Alimentation Mama Nzuzi', category: 'Alimentation', city: 'Lubumbashi',
       phone: '+243990000101', commissionBps: 100, status: 'ACTIVE', balanceMinor: 1237,
       qrPayload: 'capitalinvest://pay?m=K7P2QX', createdAt: '2026-11-18T08:00:00Z',
+      payoutOperator: 'AIRTEL', payoutPhone: '+243990000101', payoutBlockedUntil: null,
     },
   ]
   merchantPayments: Record<string, MerchantPayment[]> = {
     'm-1': [{
       transactionId: 'tx-m1', receiptNumber: 'CI-20261119-0000M1', customerName: 'Amani Kabeya', customerPhone: '+243970000001',
       amountMinor: 1250, commissionMinor: 13, createdAt: '2026-11-19T09:00:00Z',
+    }],
+  }
+  merchantPayouts: Record<string, MerchantPayout[]> = {
+    'm-1': [{
+      id: 'po-0', amountMinor: 5000, operator: 'AIRTEL', phone: '+243990000101', status: 'CONFIRMED', createdAt: '2026-11-18T18:00:00Z',
     }],
   }
   requests: { method: string; path: string; body: unknown }[] = []
@@ -173,10 +179,30 @@ export class FakeServer {
         const created: Merchant = {
           id: `m-${n}`, code, name: body.name, category: body.category, city: body.city, phone: `+243${digits.slice(-9)}`,
           commissionBps: body.commissionBps, status: 'ACTIVE', balanceMinor: 0, qrPayload: `capitalinvest://pay?m=${code}`,
-          createdAt: '2026-11-19T10:00:00Z',
+          createdAt: '2026-11-19T10:00:00Z', payoutOperator: body.payoutOperator, payoutPhone: body.payoutPhone, payoutBlockedUntil: null,
         }
         this.merchants.push(created)
         return json(created, 201)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/payout-account$/))) {
+        const found = this.merchants.find((x) => x.id === m![1])!
+        const first = !found.payoutPhone
+        Object.assign(found, {
+          payoutOperator: body.operator, payoutPhone: `+243${String(body.phone).replace(/\D/g, '').slice(-9)}`,
+          payoutBlockedUntil: first ? null : '2026-11-20T10:00:00Z',
+        })
+        return json(found)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/payouts$/))) {
+        const found = this.merchants.find((x) => x.id === m![1])!
+        if (body.amountMinor > found.balanceMinor) return problem(422, 'INSUFFICIENT_FUNDS', 'Le marchand n\'a pas assez à reverser')
+        found.balanceMinor -= body.amountMinor
+        const p: MerchantPayout = {
+          id: `po-${body.requestId}`, amountMinor: body.amountMinor, operator: found.payoutOperator!, phone: found.payoutPhone!,
+          status: 'PENDING', createdAt: '2026-11-19T10:05:00Z',
+        }
+        this.merchantPayouts[found.id] = [p, ...(this.merchantPayouts[found.id] ?? [])]
+        return json(p, 202)
       }
       if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)\/status$/))) {
         const found = this.merchants.find((x) => x.id === m![1])!
@@ -185,7 +211,7 @@ export class FakeServer {
       }
       if ((m = path.match(/^\/v1\/backoffice\/merchants\/([^/]+)$/))) {
         const found = this.merchants.find((x) => x.id === m![1])
-        return found ? json({ merchant: found, payments: this.merchantPayments[found.id] ?? [] }) : problem(404, 'MERCHANT_NOT_FOUND', 'Marchand introuvable')
+        return found ? json({ merchant: found, payments: this.merchantPayments[found.id] ?? [], payouts: this.merchantPayouts[found.id] ?? [] }) : problem(404, 'MERCHANT_NOT_FOUND', 'Marchand introuvable')
       }
     }
     if (path.startsWith('/v1/backoffice/promotions')) {
