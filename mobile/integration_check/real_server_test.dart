@@ -29,9 +29,11 @@ Future<ApiClient> newCustomer(String phone, String name) async {
   return api;
 }
 
-Future<void> confirmTopup(String id) =>
-    http.post(Uri.parse('$base/v1/simulators/mobile-money/callbacks'),
-        headers: {'Content-Type': 'application/json'}, body: jsonEncode({'topupId': id, 'success': true}));
+Future<void> confirmTopup(String id) => http.post(
+  Uri.parse('$base/v1/simulators/mobile-money/callbacks'),
+  headers: {'Content-Type': 'application/json'},
+  body: jsonEncode({'topupId': id, 'success': true}),
+);
 
 void main() {
   test('parcours complet de l\'app contre le vrai serveur', () async {
@@ -52,7 +54,12 @@ void main() {
 
     final quote = await alice.transferFee(1250);
     expect(quote.feeMinor, 13);
-    final sent = await alice.transfer(toPhone: bobPhone, amountMinor: 1250, pin: '2580', idempotencyKey: newIdempotencyKey());
+    final sent = await alice.transfer(
+      toPhone: bobPhone,
+      amountMinor: 1250,
+      pin: '2580',
+      idempotencyKey: newIdempotencyKey(),
+    );
     expect(sent.totalDebitedMinor, 1263);
     expect(await alice.balance(), 3737);
     final entries = await alice.entries();

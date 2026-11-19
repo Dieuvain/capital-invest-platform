@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'api/api_client.dart';
 import 'api/models.dart';
@@ -13,6 +13,14 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
   final String deviceId;
   Customer? customer;
+
+  /// Clair, sombre, ou comme le téléphone (par défaut).
+  ThemeMode themeMode = ThemeMode.system;
+
+  void setThemeMode(ThemeMode mode) {
+    themeMode = mode;
+    notifyListeners();
+  }
 
   /// Numéro du dernier client connecté, pour pré-remplir l'écran PIN.
   String? lastPhone;

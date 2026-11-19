@@ -11,18 +11,36 @@ class FakeServer {
   String? kycStatus;
   bool sessionExpired = false;
   final uploads = <String>[];
+  List<Map<String, dynamic>> promotions = [
+    {
+      'id': 'p-1',
+      'title': 'Passez au niveau 2',
+      'body': 'Envoyez jusqu\'à 4 000 \$ par opération.',
+      'ctaLabel': 'Vérifier mon identité',
+      'action': 'KYC',
+      'style': 'OCHRE',
+    },
+    {
+      'id': 'p-2',
+      'title': 'Recharge M-Pesa offerte',
+      'body': 'Aucun frais sur vos recharges ce mois-ci.',
+      'ctaLabel': 'Recharger',
+      'action': 'TOPUP',
+      'style': 'GREEN',
+    },
+  ];
   List<(int, String, int, String)> entries = [(1, 'CREDIT', 5000, '2026-11-18T10:00:00Z')];
 
   static const token = 'jeton-test';
 
   Map<String, dynamic> get _customer => {
-        'id': 'c-1',
-        'phone': '+243970000001',
-        'fullName': 'Amani Kabeya',
-        'language': 'fr',
-        'kycLevel': kycLevel,
-        'status': 'ACTIVE',
-      };
+    'id': 'c-1',
+    'phone': '+243970000001',
+    'fullName': 'Amani Kabeya',
+    'language': 'fr',
+    'kycLevel': kycLevel,
+    'status': 'ACTIVE',
+  };
 
   late final client = MockClient((req) async {
     requests.add(req);
@@ -30,14 +48,21 @@ class FakeServer {
     final authed = req.headers['Authorization'] == 'Bearer $token';
     Map<String, dynamic> body() => req.body.isEmpty ? {} : jsonDecode(req.body);
 
-    if (path.startsWith('/v1/me') || path.startsWith('/v1/topups') || path.startsWith('/v1/transfers')) {
+    if (path.startsWith('/v1/me') ||
+        path.startsWith('/v1/promotions') ||
+        path.startsWith('/v1/topups') ||
+        path.startsWith('/v1/transfers')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
     switch ((req.method, path)) {
       case ('POST', '/v1/auth/login'):
         final b = body();
         if (b['pin'] != '2580') return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
-        return _json({'accessToken': token, 'expiresInSeconds': 900, 'customer': {'customer': _customer, 'walletAccountId': 'w-1'}});
+        return _json({
+          'accessToken': token,
+          'expiresInSeconds': 900,
+          'customer': {'customer': _customer, 'walletAccountId': 'w-1'},
+        });
       case ('GET', '/v1/me'):
         return _json({'customer': _customer, 'walletAccountId': 'w-1'});
       case ('GET', '/v1/me/balance'):
@@ -54,7 +79,15 @@ class FakeServer {
       case ('GET', '/v1/me/entries'):
         return _json([
           for (final (i, d, a, at) in entries)
-            {'id': 'e-$i', 'transactionId': 't-$i', 'accountId': 'w-1', 'direction': d, 'amountMinor': a, 'currency': 'USD', 'createdAt': at},
+            {
+              'id': 'e-$i',
+              'transactionId': 't-$i',
+              'accountId': 'w-1',
+              'direction': d,
+              'amountMinor': a,
+              'currency': 'USD',
+              'createdAt': at,
+            },
         ]);
       case ('GET', '/v1/transfers/fee'):
         final a = int.parse(req.url.queryParameters['amountMinor']!);
@@ -67,20 +100,40 @@ class FakeServer {
         final fee = ((a * 100 + 5000) ~/ 10000).clamp(10, 500);
         if (a + fee > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
         balance -= a + fee;
-        return _json({'transaction': {}, 'replayed': false, 'amountMinor': a, 'feeMinor': fee, 'totalDebitedMinor': a + fee}, 201);
+        return _json({
+          'transaction': {},
+          'replayed': false,
+          'amountMinor': a,
+          'feeMinor': fee,
+          'totalDebitedMinor': a + fee,
+        }, 201);
       case ('POST', '/v1/topups'):
         return _json({'id': 'top-1', 'status': 'PENDING', 'amountMinor': body()['amountMinor']}, 202);
       case ('GET', '/v1/topups/top-1'):
         return _json({'id': 'top-1', 'status': 'CONFIRMED', 'amountMinor': 2500});
+      case ('GET', '/v1/promotions'):
+        return _json(promotions);
       case ('GET', '/v1/me/kyc'):
-        return _json({'kycLevel': kycLevel, if (kycStatus != null) 'request': {'id': 'k-1', 'status': kycStatus, 'createdAt': '2026-11-18T10:00:00Z'}});
+        return _json({
+          'kycLevel': kycLevel,
+          if (kycStatus != null) 'request': {'id': 'k-1', 'status': kycStatus, 'createdAt': '2026-11-18T10:00:00Z'},
+        });
       case ('POST', '/v1/me/kyc/submission'):
         kycStatus = 'PENDING';
-        return _json({'kycLevel': kycLevel, 'request': {'id': 'k-1', 'status': 'PENDING', 'createdAt': '2026-11-18T10:00:00Z'}}, 201);
+        return _json({
+          'kycLevel': kycLevel,
+          'request': {'id': 'k-1', 'status': 'PENDING', 'createdAt': '2026-11-18T10:00:00Z'},
+        }, 201);
     }
     if (req.method == 'POST' && path.startsWith('/v1/me/kyc/documents/')) {
       uploads.add(path.split('/').last);
-      return _json({'id': 'd-${uploads.length}', 'kind': path.split('/').last, 'contentType': 'image/jpeg', 'sizeBytes': 10, 'createdAt': '2026-11-18T10:00:00Z'}, 201);
+      return _json({
+        'id': 'd-${uploads.length}',
+        'kind': path.split('/').last,
+        'contentType': 'image/jpeg',
+        'sizeBytes': 10,
+        'createdAt': '2026-11-18T10:00:00Z',
+      }, 201);
     }
     return _error(404, 'NOT_FOUND', 'Route inconnue ${req.method} $path');
   });

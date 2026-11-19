@@ -12,7 +12,8 @@ import 'fake_server.dart';
 
 class FakePhotos implements PhotoSource {
   @override
-  Future<Photo?> take({required bool selfie}) async => Photo(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]), png: false);
+  Future<Photo?> take({required bool selfie}) async =>
+      Photo(Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]), png: false);
 }
 
 void main() {
@@ -21,7 +22,10 @@ void main() {
 
   setUp(() {
     server = FakeServer();
-    app = AppState(ApiClient(baseUrl: 'http://test', httpClient: server.client), deviceId: 'test');
+    app = AppState(
+      ApiClient(baseUrl: 'http://test', httpClient: server.client),
+      deviceId: 'test',
+    );
   });
 
   Future<void> start(WidgetTester tester) async {
@@ -32,9 +36,7 @@ void main() {
   }
 
   Future<void> pay(WidgetTester tester, String action) async {
-    await tester.tap(find.byKey(const ValueKey('pay-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(action));
+    await tester.tap(find.byKey(ValueKey('quick-$action')));
     await tester.pumpAndSettle();
   }
 
@@ -45,14 +47,41 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('connexion puis accueil avec solde et plafond du jour', (tester) async {
+  testWidgets('connexion puis accueil avec solde, actions rapides et promotions', (tester) async {
     await start(tester);
     await login(tester);
-    expect(find.text('Bonjour Amani'), findsOneWidget);
+    expect(find.text('Bonjour Amani !'), findsOneWidget);
     expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
-    expect(find.byWidgetPredicate((w) => w is Amount && w.formatted == '500,00\u00A0\$'), findsOneWidget); // reste à envoyer aujourd'hui
+    for (final a in ['Envoyer', 'Recharger', 'Plafonds', 'Plus']) {
+      expect(find.byKey(ValueKey('quick-$a')), findsOneWidget);
+    }
     expect(find.text('Argent reçu'), findsOneWidget);
-    expect(find.textContaining('Passez au niveau 2'), findsOneWidget);
+    expect(find.text('Passez au niveau 2'), findsOneWidget);
+  });
+
+  testWidgets('les promotions défilent seules et ouvrent la bonne action', (tester) async {
+    await start(tester);
+    await login(tester);
+    final pages = find.byKey(const ValueKey('promos'));
+    await tester.ensureVisible(pages);
+    expect(tester.widget<PageView>(pages).controller!.page, 0);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(tester.widget<PageView>(pages).controller!.page, 1);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(tester.widget<PageView>(pages).controller!.page, 0); // retour au début
+    await tester.tap(find.text('Passez au niveau 2'));
+    await tester.pumpAndSettle();
+    expect(find.byType(KycScreen), findsOneWidget);
+  });
+
+  testWidgets('sans promotions, le bandeau disparaît sans erreur', (tester) async {
+    server.promotions = [];
+    await start(tester);
+    await login(tester);
+    expect(find.byKey(const ValueKey('promos')), findsNothing);
+    expect(find.byKey(const ValueKey('balance')), findsOneWidget);
   });
 
   testWidgets('un mauvais PIN affiche un message clair', (tester) async {
@@ -122,6 +151,7 @@ void main() {
   testWidgets('niveau 2 : photos, pièce, date, puis demande en attente', (tester) async {
     await start(tester);
     await login(tester);
+    await tester.ensureVisible(find.text('Passez au niveau 2'));
     await tester.tap(find.text('Passez au niveau 2'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Envoyer ma demande'));

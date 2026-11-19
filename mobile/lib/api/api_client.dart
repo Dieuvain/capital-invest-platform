@@ -36,11 +36,11 @@ class ApiClient {
   String? token;
 
   Map<String, String> _headers({String? idempotencyKey, bool json = true}) => {
-        if (json) 'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': ?(token == null ? null : 'Bearer $token'),
-        'Idempotency-Key': ?idempotencyKey,
-      };
+    if (json) 'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': ?(token == null ? null : 'Bearer $token'),
+    'Idempotency-Key': ?idempotencyKey,
+  };
 
   Uri _uri(String path, [Map<String, String>? query]) => Uri.parse('$baseUrl$path').replace(queryParameters: query);
 
@@ -54,15 +54,25 @@ class ApiClient {
     final body = res.body.isEmpty ? null : jsonDecode(utf8.decode(res.bodyBytes));
     if (res.statusCode >= 400) {
       final map = body is Map<String, dynamic> ? body : const <String, dynamic>{};
-      throw ApiException(res.statusCode, map['code'] ?? 'HTTP_${res.statusCode}', map['detail'] ?? 'Erreur ${res.statusCode}');
+      throw ApiException(
+        res.statusCode,
+        map['code'] ?? 'HTTP_${res.statusCode}',
+        map['detail'] ?? 'Erreur ${res.statusCode}',
+      );
     }
     return body;
   }
 
-  Future<dynamic> _get(String path, [Map<String, String>? query]) => _send(_http.get(_uri(path, query), headers: _headers()));
+  Future<dynamic> _get(String path, [Map<String, String>? query]) =>
+      _send(_http.get(_uri(path, query), headers: _headers()));
 
-  Future<dynamic> _post(String path, Object? body, {String? idempotencyKey}) =>
-      _send(_http.post(_uri(path), headers: _headers(idempotencyKey: idempotencyKey), body: jsonEncode(body)));
+  Future<dynamic> _post(String path, Object? body, {String? idempotencyKey}) => _send(
+    _http.post(
+      _uri(path),
+      headers: _headers(idempotencyKey: idempotencyKey),
+      body: jsonEncode(body),
+    ),
+  );
 
   // ---- Connexion -----------------------------------------------------------------------------
 
@@ -97,9 +107,11 @@ class ApiClient {
     required String code,
     required String newPin,
     required String deviceId,
-  }) async =>
-      _keep(SessionTokens.fromJson(
-          await _post('/v1/auth/pin-reset', {'phone': phone, 'code': code, 'newPin': newPin, 'deviceId': deviceId})));
+  }) async => _keep(
+    SessionTokens.fromJson(
+      await _post('/v1/auth/pin-reset', {'phone': phone, 'code': code, 'newPin': newPin, 'deviceId': deviceId}),
+    ),
+  );
 
   Future<void> logout() async {
     if (token == null) return;
@@ -128,8 +140,9 @@ class ApiClient {
 
   // ---- Argent --------------------------------------------------------------------------------
 
-  Future<Topup> startTopup(Operator op, int amountMinor, String idempotencyKey) async =>
-      Topup.fromJson(await _post('/v1/topups', {'operator': op.apiName, 'amountMinor': amountMinor}, idempotencyKey: idempotencyKey));
+  Future<Topup> startTopup(Operator op, int amountMinor, String idempotencyKey) async => Topup.fromJson(
+    await _post('/v1/topups', {'operator': op.apiName, 'amountMinor': amountMinor}, idempotencyKey: idempotencyKey),
+  );
 
   Future<Topup> topup(String id) async => Topup.fromJson(await _get('/v1/topups/$id'));
 
@@ -142,12 +155,19 @@ class ApiClient {
     required String pin,
     required String idempotencyKey,
     String? note,
-  }) async =>
-      TransferResult.fromJson(await _post(
-        '/v1/transfers',
-        {'toPhone': toPhone, 'amountMinor': amountMinor, 'pin': pin, if (note != null && note.isNotEmpty) 'note': note},
-        idempotencyKey: idempotencyKey,
-      ));
+  }) async => TransferResult.fromJson(
+    await _post('/v1/transfers', {
+      'toPhone': toPhone,
+      'amountMinor': amountMinor,
+      'pin': pin,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  // ---- Promotions ---------------------------------------------------------------------------
+
+  Future<List<Promotion>> promotions() async =>
+      ((await _get('/v1/promotions')) as List).map((e) => Promotion.fromJson(e)).toList();
 
   // ---- KYC 2 ---------------------------------------------------------------------------------
 
@@ -156,15 +176,23 @@ class ApiClient {
   Future<void> uploadKycDocument(String kind, Uint8List bytes, {required bool png}) async {
     final req = http.MultipartRequest('POST', _uri('/v1/me/kyc/documents/$kind'))
       ..headers.addAll(_headers(json: false))
-      ..files.add(http.MultipartFile.fromBytes('file', bytes,
-          filename: png ? 'photo.png' : 'photo.jpg', contentType: MediaType('image', png ? 'png' : 'jpeg')));
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: png ? 'photo.png' : 'photo.jpg',
+          contentType: MediaType('image', png ? 'png' : 'jpeg'),
+        ),
+      );
     await _send(_http.send(req).then(http.Response.fromStream));
   }
 
   Future<KycState> submitKyc({required String idType, required String idNumber, required DateTime birthDate}) async =>
-      KycState.fromJson(await _post('/v1/me/kyc/submission', {
-        'idType': idType,
-        'idNumber': idNumber,
-        'birthDate': birthDate.toIso8601String().substring(0, 10),
-      }));
+      KycState.fromJson(
+        await _post('/v1/me/kyc/submission', {
+          'idType': idType,
+          'idNumber': idNumber,
+          'birthDate': birthDate.toIso8601String().substring(0, 10),
+        }),
+      );
 }

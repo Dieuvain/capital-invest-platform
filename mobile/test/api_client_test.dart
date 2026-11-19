@@ -17,7 +17,11 @@ void main() {
     final api = ApiClient(baseUrl: 'http://test', httpClient: FakeServer().client);
     await expectLater(
       api.login(phone: '+243970000001', pin: '9999', deviceId: 'd'),
-      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'INVALID_CREDENTIALS').having((e) => e.needsLogin, 'needsLogin', false)),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.code, 'code', 'INVALID_CREDENTIALS')
+            .having((e) => e.needsLogin, 'needsLogin', false),
+      ),
     );
   });
 

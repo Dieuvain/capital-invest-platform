@@ -18,16 +18,16 @@ class PinField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextField(
-        key: ValueKey('pin-$label'),
-        controller: controller,
-        autofocus: autofocus,
-        obscureText: true,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
-        style: const TextStyle(fontSize: 24, letterSpacing: 12),
-        decoration: InputDecoration(labelText: label),
-        onSubmitted: onSubmitted,
-      );
+    key: ValueKey('pin-$label'),
+    controller: controller,
+    autofocus: autofocus,
+    obscureText: true,
+    keyboardType: TextInputType.number,
+    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+    style: const TextStyle(fontSize: 24, letterSpacing: 12),
+    decoration: InputDecoration(labelText: label),
+    onSubmitted: onSubmitted,
+  );
 }
 
 class PhoneField extends StatelessWidget {
@@ -38,11 +38,11 @@ class PhoneField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TextField(
-        key: ValueKey('phone-$label'),
-        controller: controller,
-        keyboardType: TextInputType.phone,
-        decoration: InputDecoration(labelText: label, prefixText: '+243 ', hintText: '970 000 001'),
-      );
+    key: ValueKey('phone-$label'),
+    controller: controller,
+    keyboardType: TextInputType.phone,
+    decoration: InputDecoration(labelText: label, prefixText: '+243 ', hintText: '970 000 001'),
+  );
 }
 
 class ErrorBanner extends StatelessWidget {
@@ -56,12 +56,16 @@ class ErrorBanner extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFFFBE9E7), borderRadius: BorderRadius.circular(12)),
-      child: Row(children: [
-        const Icon(Icons.error_outline, color: Brand.danger),
-        const SizedBox(width: 8),
-        Expanded(child: Text(message!, style: const TextStyle(color: Brand.danger))),
-      ]),
+      decoration: BoxDecoration(color: Brand.danger.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Brand.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message!, style: const TextStyle(color: Brand.danger)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -75,11 +79,15 @@ class BusyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FilledButton(
-        onPressed: busy ? null : onPressed,
-        child: busy
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-            : Text(label),
-      );
+    onPressed: busy ? null : onPressed,
+    child: busy
+        ? SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: Theme.of(context).colorScheme.onPrimary),
+          )
+        : Text(label),
+  );
 }
 
 /// Écran de formulaire : en-tête ocre et feuille arrondie.

@@ -4,79 +4,148 @@ import 'package:material_ui/material_ui.dart';
 class Brand {
   static const ink = Color(0xFF231F20);
   static const ochre = Color(0xFFFBB03F);
-  static const paper = Color(0xFFF4F2EF);
   static const ochreLight = Color(0xFFFDC56A);
   static const ochreDeep = Color(0xFFF2921C);
-  static const card = Colors.white;
+  static const success = Color(0xFF1F9D5C);
+  static const danger = Color(0xFFD93025);
 
-  /// Dégradé de l'en-tête et des pastilles d'icônes.
-  static const headerGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [ochreLight, ochreDeep],
-  );
-  static const tileGradient = LinearGradient(
+  static const ochreGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [ochreLight, ochreDeep],
   );
-
-  /// Ombre douce des cartes.
-  static const softShadow = [
-    BoxShadow(color: Color(0x14231F20), blurRadius: 24, offset: Offset(0, 10)),
-    BoxShadow(color: Color(0x0A231F20), blurRadius: 4, offset: Offset(0, 1)),
-  ];
-  static const muted = Color(0xFF6B6466);
-  static const success = Color(0xFF1F7A4D);
-  static const danger = Color(0xFFB3261E);
 }
 
-ThemeData buildTheme() {
+/// Couleurs qui changent entre le mode clair et le mode sombre.
+@immutable
+class Palette extends ThemeExtension<Palette> {
+  const Palette({
+    required this.bg,
+    required this.surface,
+    required this.surfaceAlt,
+    required this.text,
+    required this.muted,
+    required this.divider,
+    required this.nav,
+    required this.frontCard,
+    required this.backCard,
+  });
+
+  final Color bg;
+  final Color surface;
+  final Color surfaceAlt;
+  final Color text;
+  final Color muted;
+  final Color divider;
+  final Color nav;
+  final Gradient frontCard;
+  final Color backCard;
+
+  static const light = Palette(
+    bg: Color(0xFFEFEEEC),
+    surface: Colors.white,
+    surfaceAlt: Color(0xFFF1F0EE),
+    text: Brand.ink,
+    muted: Color(0xFF7A7476),
+    divider: Color(0xFFECE9E6),
+    nav: Color(0xFF151213),
+    frontCard: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFF3A3233), Brand.ink],
+    ),
+    backCard: Brand.ochre,
+  );
+
+  static const dark = Palette(
+    bg: Colors.black,
+    surface: Color(0xFF161616),
+    surfaceAlt: Color(0xFF0B0B0B),
+    text: Colors.white,
+    muted: Color(0xFF8E8A8B),
+    divider: Color(0xFF262626),
+    nav: Color(0xFF1C1C1C),
+    frontCard: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFF4A4041), Color(0xFF2A2425)],
+    ),
+    backCard: Brand.ochre,
+  );
+
+  @override
+  Palette copyWith() => this;
+
+  @override
+  Palette lerp(Palette? other, double t) => t < 0.5 ? this : (other ?? this);
+}
+
+extension PaletteOf on BuildContext {
+  Palette get pal => Theme.of(this).extension<Palette>()!;
+}
+
+ThemeData buildTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final p = dark ? Palette.dark : Palette.light;
   final scheme = ColorScheme.fromSeed(
     seedColor: Brand.ochre,
-    primary: Brand.ink,
-    onPrimary: Colors.white,
+    brightness: brightness,
+    primary: dark ? Colors.white : Brand.ink,
+    onPrimary: dark ? Colors.black : Colors.white,
     secondary: Brand.ochre,
     onSecondary: Brand.ink,
-    surface: Brand.paper,
+    surface: p.bg,
+    onSurface: p.text,
     error: Brand.danger,
   );
-  final base = ThemeData(useMaterial3: true, colorScheme: scheme, fontFamily: 'HankenGrotesk');
-  final border = OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD9D3CC)));
+  final base = ThemeData(useMaterial3: true, colorScheme: scheme, fontFamily: 'HankenGrotesk', brightness: brightness);
+  final border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(16),
+    borderSide: BorderSide(color: p.divider),
+  );
   return base.copyWith(
-    scaffoldBackgroundColor: Brand.paper,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Brand.paper,
-      foregroundColor: Brand.ink,
-      elevation: 0,
-      centerTitle: false,
-      titleTextStyle: TextStyle(fontFamily: 'HankenGrotesk', fontSize: 20, fontWeight: FontWeight.w700, color: Brand.ink),
-    ),
+    extensions: [p],
+    scaffoldBackgroundColor: p.bg,
+    textTheme: base.textTheme.apply(bodyColor: p.text, displayColor: p.text, fontFamily: 'HankenGrotesk'),
+    iconTheme: IconThemeData(color: p.text),
+    dividerColor: p.divider,
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: Brand.ink,
-        foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        backgroundColor: dark ? Colors.white : Brand.ink,
+        foregroundColor: dark ? Colors.black : Colors.white,
+        minimumSize: const Size.fromHeight(54),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
         textStyle: const TextStyle(fontFamily: 'HankenGrotesk', fontSize: 16, fontWeight: FontWeight.w700),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: Brand.ink,
-        minimumSize: const Size.fromHeight(52),
-        side: const BorderSide(color: Brand.ink, width: 1.5),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        foregroundColor: p.text,
+        minimumSize: const Size.fromHeight(54),
+        side: BorderSide(color: p.text, width: 1.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
         textStyle: const TextStyle(fontFamily: 'HankenGrotesk', fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: p.text)),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
+      fillColor: p.surface,
       border: border,
       enabledBorder: border,
-      focusedBorder: border.copyWith(borderSide: const BorderSide(color: Brand.ink, width: 1.5)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      focusedBorder: border.copyWith(borderSide: BorderSide(color: p.text, width: 1.5)),
+      labelStyle: TextStyle(color: p.muted),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: p.surface,
+      selectedColor: Brand.ochre,
+      labelStyle: TextStyle(color: p.text, fontFamily: 'HankenGrotesk', fontWeight: FontWeight.w600),
+      secondaryLabelStyle: const TextStyle(color: Brand.ink, fontFamily: 'HankenGrotesk', fontWeight: FontWeight.w700),
+      side: BorderSide(color: p.divider),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: p.surface, modalBackgroundColor: p.surface),
+    datePickerTheme: DatePickerThemeData(backgroundColor: p.surface),
   );
 }

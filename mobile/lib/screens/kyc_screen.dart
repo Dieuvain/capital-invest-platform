@@ -65,10 +65,10 @@ class _KycScreenState extends State<KycScreen> with ApiAction {
   }
 
   List<(String, String)> get _needed => [
-        ('ID_FRONT', 'Recto de la pièce'),
-        if (idType == 'VOTER_CARD') ('ID_BACK', 'Verso de la carte'),
-        ('SELFIE', 'Selfie, visage bien éclairé'),
-      ];
+    ('ID_FRONT', 'Recto de la pièce'),
+    if (idType == 'VOTER_CARD') ('ID_BACK', 'Verso de la carte'),
+    ('SELFIE', 'Selfie, visage bien éclairé'),
+  ];
 
   Future<void> _take(String kind) async {
     final p = await widget.photos.take(selfie: kind == 'SELFIE');
@@ -107,14 +107,24 @@ class _KycScreenState extends State<KycScreen> with ApiAction {
   Widget build(BuildContext context) {
     final s = state;
     if (s == null) {
-      return FormPage(title: 'Niveau 2', children: [ErrorBanner(error), if (busy) const Center(child: CircularProgressIndicator())]);
+      return FormPage(
+        title: 'Niveau 2',
+        children: [
+          ErrorBanner(error),
+          if (busy) const Center(child: CircularProgressIndicator()),
+        ],
+      );
     }
     if (s.kycLevel >= 2) {
       return _done(Icons.verified, Brand.success, 'Vous êtes au niveau 2', 'Vos plafonds sont relevés.');
     }
     if (s.requestStatus == 'PENDING') {
-      return _done(Icons.hourglass_top, Brand.ochre, 'Demande en cours d\'examen',
-          'Un agent Capital Invest vérifie vos pièces. Vous recevrez un SMS dès la décision.');
+      return _done(
+        Icons.hourglass_top,
+        Brand.ochre,
+        'Demande en cours d\'examen',
+        'Un agent Capital Invest vérifie vos pièces. Vous recevrez un SMS dès la décision.',
+      );
     }
     final dateText = birthDate == null
         ? 'Date de naissance'
@@ -124,7 +134,9 @@ class _KycScreenState extends State<KycScreen> with ApiAction {
       subtitle: 'Avec votre pièce d\'identité et un selfie. Vos photos sont chiffrées et vues seulement par un agent habilité.',
       children: [
         if (s.requestStatus == 'REJECTED')
-          ErrorBanner('Demande précédente refusée : ${s.rejectionReason ?? 'motif non précisé'}. Vous pouvez recommencer.'),
+          ErrorBanner(
+            'Demande précédente refusée : ${s.rejectionReason ?? 'motif non précisé'}. Vous pouvez recommencer.',
+          ),
         ErrorBanner(error),
         SegmentedButton<String>(
           segments: const [
@@ -159,16 +171,27 @@ class _KycScreenState extends State<KycScreen> with ApiAction {
     );
   }
 
-  Widget _done(IconData icon, Color color, String title, String text) => FormPage(title: 'Niveau 2', children: [
-        const SizedBox(height: 24),
-        Icon(icon, size: 72, color: color),
-        const SizedBox(height: 16),
-        Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Brand.muted, fontSize: 15)),
-        const SizedBox(height: 24),
-        FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Retour')),
-      ]);
+  Widget _done(IconData icon, Color color, String title, String text) => FormPage(
+    title: 'Niveau 2',
+    children: [
+      const SizedBox(height: 24),
+      Icon(icon, size: 72, color: color),
+      const SizedBox(height: 16),
+      Text(
+        title,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(color: context.pal.muted, fontSize: 15),
+      ),
+      const SizedBox(height: 24),
+      FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Retour')),
+    ],
+  );
 }
 
 class _PhotoTile extends StatelessWidget {
@@ -180,29 +203,36 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: photo == null
-                      ? Container(color: const Color(0xFFF1ECE7), child: const Icon(Icons.photo_camera_outlined))
-                      : Image.memory(photo!.bytes, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.image)),
-                ),
+    color: context.pal.surface,
+    borderRadius: BorderRadius.circular(18),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: photo == null
+                    ? Container(color: context.pal.surfaceAlt, child: const Icon(Icons.photo_camera_outlined))
+                    : Image.memory(photo!.bytes, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.image)),
               ),
-              const SizedBox(width: 14),
-              Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-              Icon(photo == null ? Icons.add_a_photo_outlined : Icons.check_circle, color: photo == null ? Brand.ink : Brand.success),
-            ]),
-          ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            Icon(
+              photo == null ? Icons.add_a_photo_outlined : Icons.check_circle,
+              color: photo == null ? context.pal.text : Brand.success,
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }

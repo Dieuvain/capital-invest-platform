@@ -1,7 +1,6 @@
 @Tags(['captures'])
 library;
 
-
 import 'package:capital_invest/api/api_client.dart';
 import 'package:capital_invest/app_state.dart';
 import 'package:capital_invest/main.dart';
@@ -33,7 +32,10 @@ void main() {
         (4, 'CREDIT', 100000, '2026-11-17T09:05:00Z'),
         (5, 'CREDIT', 40000, '2026-11-16T18:30:00Z'),
       ];
-    app = AppState(ApiClient(baseUrl: 'http://test', httpClient: server.client), deviceId: 'test');
+    app = AppState(
+      ApiClient(baseUrl: 'http://test', httpClient: server.client),
+      deviceId: 'test',
+    );
   });
 
   Future<void> start(WidgetTester tester) async {
@@ -56,54 +58,68 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('captures', (tester) async {
-    tester_ = tester;
-    debugDisableShadows = false; // vraies ombres douces, comme sur un téléphone
-    addTearDown(() => debugDisableShadows = true);
-    await start(tester);
-    await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970 000 001');
+  Future<void> nav(WidgetTester tester, String tab) async {
+    await tester.tap(find.byTooltip(tab));
     await tester.pumpAndSettle();
-    await shot('1-connexion');
+  }
 
-    await login(tester);
-    await shot('2-accueil');
+  for (final dark in [false, true]) {
+    final suffix = dark ? '-sombre' : '';
+    testWidgets('captures${dark ? ' (mode sombre)' : ''}', (tester) async {
+      tester_ = tester;
+      debugDisableShadows = false; // vraies ombres douces, comme sur un téléphone
+      addTearDown(() => debugDisableShadows = true);
+      if (dark) app.setThemeMode(ThemeMode.dark);
+      await start(tester);
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970 000 001');
+      await tester.pumpAndSettle();
+      await shot('1-connexion$suffix');
 
-    await tester.tap(find.byKey(const ValueKey('pay-button')));
-    await tester.pumpAndSettle();
-    await shot('2b-paiements');
-    await tester.tap(find.text('Envoyer'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
-    await tester.enterText(find.byKey(const ValueKey('amount')), '150');
-    await tester.tap(find.text('Continuer'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
-    await tester.pump();
-    await shot('3-envoi-verification');
-    await tester.tap(find.byTooltip('Retour'));
-    await tester.pumpAndSettle();
+      await login(tester);
+      await shot('2-accueil$suffix');
+      await tester.drag(find.byType(ListView).first, const Offset(0, -420));
+      await tester.pumpAndSettle();
+      await shot('2a-accueil-promotions$suffix');
+      await tester.drag(find.byType(ListView).first, const Offset(0, 420));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('pay-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Recharger'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('amount')), '25');
-    await tester.tap(find.widgetWithText(FilledButton, 'Recharger'));
-    await tester.pump();
-    await tester.pump();
-    await shot('4-recharge-attente');
-    await tester.tap(find.byTooltip('Retour'));
-    await tester.pumpAndSettle();
+      await nav(tester, 'Mouvements');
+      await shot('2b-mouvements$suffix');
+      await nav(tester, 'Plafonds');
+      await shot('2c-plafonds$suffix');
+      await nav(tester, 'Profil');
+      await shot('2d-profil$suffix');
+      await nav(tester, 'Accueil');
 
-    await tester.tap(find.text('Plafonds'));
-    await tester.pumpAndSettle();
-    await shot('2c-plafonds');
-    await tester.tap(find.text('Aperçu'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Passez au niveau 2'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('idNumber')), 'CE 1234 5678');
-    await tester.pump();
-    await shot('5-niveau-2');
-  });
+      await tester.tap(find.byKey(const ValueKey('quick-Envoyer')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000002');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '150');
+      await tester.tap(find.text('Continuer'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
+      await tester.pump();
+      await shot('3-envoi-verification$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('quick-Recharger')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+      await tester.tap(find.widgetWithText(FilledButton, 'Recharger'));
+      await tester.pump();
+      await tester.pump();
+      await shot('4-recharge-attente$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('quick-Plus')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Passer au niveau 2'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('idNumber')), 'CE 1234 5678');
+      await tester.pump();
+      await shot('5-niveau-2$suffix');
+    });
+  }
 }

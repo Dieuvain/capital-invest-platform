@@ -41,13 +41,13 @@ class Limits {
   final DateTime? outgoingBlockedUntil;
 
   factory Limits.fromJson(Map<String, dynamic> j) => Limits(
-        kycLevel: j['kycLevel'],
-        perTransactionMinor: j['perTransactionMinor'],
-        dailyOutMinor: j['dailyOutMinor'],
-        dailyOutRemainingMinor: j['dailyOutRemainingMinor'],
-        maxBalanceMinor: j['maxBalanceMinor'],
-        outgoingBlockedUntil: j['outgoingBlockedUntil'] == null ? null : DateTime.parse(j['outgoingBlockedUntil']),
-      );
+    kycLevel: j['kycLevel'],
+    perTransactionMinor: j['perTransactionMinor'],
+    dailyOutMinor: j['dailyOutMinor'],
+    dailyOutRemainingMinor: j['dailyOutRemainingMinor'],
+    maxBalanceMinor: j['maxBalanceMinor'],
+    outgoingBlockedUntil: j['outgoingBlockedUntil'] == null ? null : DateTime.parse(j['outgoingBlockedUntil']),
+  );
 }
 
 class Entry {
@@ -63,11 +63,11 @@ class Entry {
   bool get isCredit => direction == 'CREDIT';
 
   factory Entry.fromJson(Map<String, dynamic> j) => Entry(
-        id: j['id'],
-        direction: j['direction'],
-        amountMinor: j['amountMinor'],
-        createdAt: DateTime.parse(j['createdAt']),
-      );
+    id: j['id'],
+    direction: j['direction'],
+    amountMinor: j['amountMinor'],
+    createdAt: DateTime.parse(j['createdAt']),
+  );
 }
 
 class FeeQuote {
@@ -102,7 +102,8 @@ class Topup {
   final String status;
   final int amountMinor;
 
-  factory Topup.fromJson(Map<String, dynamic> j) => Topup(id: j['id'], status: j['status'], amountMinor: j['amountMinor']);
+  factory Topup.fromJson(Map<String, dynamic> j) =>
+      Topup(id: j['id'], status: j['status'], amountMinor: j['amountMinor']);
 }
 
 class TransferResult {
@@ -126,8 +127,40 @@ class KycState {
   final String? rejectionReason;
 
   factory KycState.fromJson(Map<String, dynamic> j) => KycState(
-        kycLevel: j['kycLevel'],
-        requestStatus: j['request']?['status'],
-        rejectionReason: j['request']?['rejectionReason'],
-      );
+    kycLevel: j['kycLevel'],
+    requestStatus: j['request']?['status'],
+    rejectionReason: j['request']?['rejectionReason'],
+  );
+}
+
+/// Promotion affichée dans le bandeau défilant du tableau de bord, gérée depuis le back-office.
+class Promotion {
+  Promotion({
+    required this.id,
+    required this.title,
+    required this.body,
+    this.ctaLabel,
+    this.action,
+    this.style = 'OCHRE',
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final String? ctaLabel;
+
+  /// Action au toucher : KYC, TOPUP, TRANSFER, LIMITS, ou null.
+  final String? action;
+
+  /// Habillage : OCHRE, INK, GREEN ou SKY.
+  final String style;
+
+  factory Promotion.fromJson(Map<String, dynamic> j) => Promotion(
+    id: j['id'],
+    title: j['title'],
+    body: j['body'],
+    ctaLabel: j['ctaLabel'],
+    action: j['action'],
+    style: j['style'] ?? 'OCHRE',
+  );
 }

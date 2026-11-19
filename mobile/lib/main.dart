@@ -22,15 +22,17 @@ class CapitalInvestApp extends StatelessWidget {
   final PhotoSource? photos;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Capital Invest',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        home: ListenableBuilder(
-          listenable: app,
-          builder: (context, _) => app.signedIn
-              ? HomeScreen(key: ValueKey(app.customer!.id), app: app, photos: photos ?? ImagePickerPhotoSource())
-              : WelcomeScreen(app: app),
-        ),
-      );
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: app,
+    builder: (context, _) => MaterialApp(
+      title: 'Capital Invest',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: app.themeMode,
+      home: app.signedIn
+          ? HomeScreen(key: ValueKey(app.customer!.id), app: app, photos: photos ?? ImagePickerPhotoSource())
+          : WelcomeScreen(app: app),
+    ),
+  );
 }

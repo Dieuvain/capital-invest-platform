@@ -24,82 +24,78 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
     final p = normalizePhone(phone.text);
     if (p == null) return setState(() => error = 'Numéro congolais attendu (9 chiffres après +243).');
     if (pin.text.length != 4) return setState(() => error = 'Entrez vos 4 chiffres de PIN.');
-    final tokens = await run(widget.app, () => widget.app.api.login(phone: p, pin: pin.text, deviceId: widget.app.deviceId));
+    final tokens = await run(
+      widget.app,
+      () => widget.app.api.login(phone: p, pin: pin.text, deviceId: widget.app.deviceId),
+    );
     pin.clear();
     if (tokens != null) widget.app.signedInAs(tokens);
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Brand.ochreDeep,
-        body: Container(
-          decoration: const BoxDecoration(gradient: Brand.headerGradient),
-          child: SafeArea(
-            bottom: false,
-            child: Column(children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(24, 28, 24, 28),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _Logo(),
-                  SizedBox(height: 28),
-                  Text('Votre argent, partout à Kolwezi.',
-                      style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Brand.ink, height: 1.12)),
-                  SizedBox(height: 8),
-                  Text('Recharge mobile money, envois entre clients, carte bientôt.',
-                      style: TextStyle(fontSize: 15, color: Color(0xCC231F20))),
-                ]),
-              ),
-              Expanded(
-                child: ClipPath(
-                  clipper: NotchedSheetClipper(notchX: null, notchHeight: 0),
-                  child: Container(
-                    color: Brand.paper,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
-                      children: [
-                        ErrorBanner(error),
-                        PhoneField(controller: phone),
-                        const SizedBox(height: 12),
-                        PinField(controller: pin, onSubmitted: (_) => _login()),
-                        const SizedBox(height: 20),
-                        BusyButton(label: 'Se connecter', busy: busy, onPressed: _login),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForgotPinScreen(app: widget.app))),
-                          child: const Text('PIN oublié ?'),
-                        ),
-                        const SizedBox(height: 20),
-                        OutlinedButton(
-                          onPressed: () =>
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignupScreen(app: widget.app))),
-                          child: const Text('Ouvrir un compte'),
-                        ),
-                      ],
-                    ),
-                  ),
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          const _Logo(),
+          const SizedBox(height: 36),
+          const Text('Bonjour !', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+          const SizedBox(height: 4),
+          Text('Votre argent, partout à Kolwezi.', style: TextStyle(fontSize: 16, color: context.pal.muted)),
+          const SizedBox(height: 28),
+          SoftCard(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ErrorBanner(error),
+                PhoneField(controller: phone),
+                const SizedBox(height: 12),
+                PinField(controller: pin, onSubmitted: (_) => _login()),
+                const SizedBox(height: 20),
+                BusyButton(label: 'Se connecter', busy: busy, onPressed: _login),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ForgotPinScreen(app: widget.app))),
+                  child: const Text('PIN oublié ?'),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
-        ),
-      );
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: () =>
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignupScreen(app: widget.app))),
+            child: const Text('Ouvrir un compte'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _Logo extends StatelessWidget {
   const _Logo();
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(color: Brand.ink, borderRadius: BorderRadius.circular(12)),
-          alignment: Alignment.center,
-          child: const Text('CI', style: TextStyle(color: Brand.ochre, fontWeight: FontWeight.w900, fontSize: 18)),
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(color: Brand.ochre, borderRadius: BorderRadius.circular(14)),
+        alignment: Alignment.center,
+        child: const Text(
+          'CI',
+          style: TextStyle(color: Brand.ink, fontWeight: FontWeight.w900, fontSize: 18),
         ),
-        const SizedBox(width: 12),
-        const Text('Capital Invest', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Brand.ink)),
-      ]);
+      ),
+      const SizedBox(width: 12),
+      const Text('Capital Invest', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+    ],
+  );
 }
 
 /// Ouverture de compte en deux étapes : code SMS, puis nom et PIN.
@@ -139,7 +135,12 @@ class _SignupScreenState extends State<SignupScreen> with ApiAction {
     final tokens = await run(
       widget.app,
       () => widget.app.api.register(
-          phone: sentTo!, code: code.text, fullName: name.text.trim(), pin: pin.text, deviceId: widget.app.deviceId),
+        phone: sentTo!,
+        code: code.text,
+        fullName: name.text.trim(),
+        pin: pin.text,
+        deviceId: widget.app.deviceId,
+      ),
     );
     if (tokens != null && mounted) {
       widget.app.signedInAs(tokens);
@@ -183,8 +184,10 @@ class _SignupScreenState extends State<SignupScreen> with ApiAction {
             const SizedBox(height: 12),
             PinField(controller: pin2, label: 'Confirmez le PIN'),
             const SizedBox(height: 8),
-            const Text('Ni 1111, ni 1234. Ne le donnez à personne, même à un agent.',
-                style: TextStyle(color: Brand.muted, fontSize: 13)),
+            Text(
+              'Ni 1111, ni 1234. Ne le donnez à personne, même à un agent.',
+              style: TextStyle(color: context.pal.muted, fontSize: 13),
+            ),
             const SizedBox(height: 20),
             BusyButton(label: 'Créer mon compte', busy: busy, onPressed: _register),
           ],
@@ -221,8 +224,10 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
     final problem = pinProblem(pin.text);
     if (problem != null) return setState(() => error = problem);
     if (pin.text != pin2.text) return setState(() => error = 'Les deux PIN sont différents.');
-    final tokens = await run(widget.app,
-        () => widget.app.api.resetPin(phone: sentTo!, code: code.text, newPin: pin.text, deviceId: widget.app.deviceId));
+    final tokens = await run(
+      widget.app,
+      () => widget.app.api.resetPin(phone: sentTo!, code: code.text, newPin: pin.text, deviceId: widget.app.deviceId),
+    );
     if (tokens != null && mounted) {
       widget.app.signedInAs(tokens);
       Navigator.of(context).popUntil((r) => r.isFirst);
@@ -233,7 +238,8 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
   Widget build(BuildContext context) => sentTo == null
       ? FormPage(
           title: 'PIN oublié',
-          subtitle: 'Nous envoyons un code par SMS. Par sécurité, les envois seront suspendus 24 heures après le changement.',
+          subtitle:
+              'Nous envoyons un code par SMS. Par sécurité, les envois seront suspendus 24 heures après le changement.',
           children: [
             ErrorBanner(error),
             PhoneField(controller: phone),
