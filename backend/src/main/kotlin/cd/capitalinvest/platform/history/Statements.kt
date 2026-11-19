@@ -294,6 +294,8 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.MERCHANT_PAYMENT -> "Paiement à ${i.counterpartyName ?: "un marchand"}"
             HistoryKind.AIRTIME -> "Crédit ${networkLabel(i.network)}"
             HistoryKind.AIRTIME_REFUND -> "Crédit non envoyé, remboursé"
+            HistoryKind.BILL_PAYMENT -> "Facture ${i.counterpartyName ?: ""} ${i.billReference ?: ""}".trimEnd()
+            HistoryKind.BILL_REFUND -> "Facture non payée, remboursée"
             HistoryKind.SAVINGS_DEPOSIT -> "Mis de côté (épargne)"
             HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
             HistoryKind.ADJUSTMENT -> "Correction de solde"

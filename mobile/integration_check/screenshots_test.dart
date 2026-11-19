@@ -25,6 +25,9 @@ void main() {
   setUp(() {
     server = FakeServer()
       ..balance = 123750
+      ..recentBills = [
+        {'biller': 'SNEL_PREPAID', 'billerName': 'SNEL prépayé', 'reference': '01234567891', 'holderName': 'KABEYA AMANI'},
+      ]
       ..savings = 18500
       ..savingsGoal = {'label': 'Rentrée scolaire', 'targetMinor': 30000}
       ..savingsMoves = [
@@ -235,6 +238,24 @@ void main() {
       await tester.tap(find.text('Acheter 5,00\u00A0\$'));
       await tester.pumpAndSettle();
       await shot('11b-credit-envoye$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Payer une facture'));
+      await tester.pumpAndSettle();
+      await shot('12-factures$suffix');
+      await tester.tap(find.byKey(const ValueKey('recent-bill-01234567891')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20 \$'));
+      await tester.pumpAndSettle();
+      await shot('12b-facture-snel$suffix');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.ensureVisible(find.text('Payer 20,00\u00A0\$'));
+      await tester.tap(find.text('Payer 20,00\u00A0\$'));
+      await tester.pumpAndSettle();
+      await shot('12c-code-compteur$suffix');
       await tester.tap(find.text('Terminé'));
       await tester.pumpAndSettle();
 

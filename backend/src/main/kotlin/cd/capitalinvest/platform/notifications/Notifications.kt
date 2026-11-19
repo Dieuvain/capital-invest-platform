@@ -53,7 +53,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED
 }
 
 data class NotificationView(
@@ -235,6 +235,21 @@ class NotificationService(
         )
     }
 
+    /** Facture payée. Pour un compteur prépayé, le SMS porte le code à taper : le client l'a même sans l'app. */
+    fun billPaid(customerId: UUID, paymentId: UUID, transactionId: UUID, biller: String, reference: String, amountMinor: Long, token: String?) {
+        queue(
+            customerId, "bill:$paymentId",
+            Draft(
+                NotificationKind.BILL_PAID, "Facture payée",
+                "${money(amountMinor)} payés à $biller pour le $reference." +
+                    (token?.let { " Code à taper sur le compteur : $it." } ?: ""),
+                token?.let { "Capital Invest: ${ascii(biller)} compteur $reference, ${money(amountMinor)}. Code: $it" }
+                    ?: "Capital Invest: ${money(amountMinor)} payes a ${ascii(biller)} pour le $reference.",
+            ),
+            transactionId,
+        )
+    }
+
     private fun balance(customerId: UUID): Long =
         ledger.findCustomerWallet(customerId, Currency.USD)?.let { ledger.balance(it.id) } ?: 0
 
@@ -283,6 +298,14 @@ class NotificationService(
             HistoryKind.SAVINGS_DEPOSIT, HistoryKind.SAVINGS_WITHDRAWAL -> null
             // Le client voit le résultat de l'achat dans l'app ; seul un remboursement arrive après coup.
             HistoryKind.AIRTIME -> null
+            // Le paiement est notifié quand le facturier confirme (billPaid), avec le code du compteur.
+            HistoryKind.BILL_PAYMENT -> null
+            HistoryKind.BILL_REFUND -> Draft(
+                NotificationKind.BILL_REFUNDED, "Facture non payée",
+                "Votre paiement ${i.counterpartyName ?: ""} n'a pas abouti" + (i.failureMessage?.let { " : $it" } ?: "") +
+                    ". ${money(i.amountMinor)} sont revenus sur votre compte.",
+                "Capital Invest: paiement ${ascii(i.counterpartyName ?: "")} non abouti. ${money(i.amountMinor)} rendus. $solde. $ref",
+            )
             HistoryKind.AIRTIME_REFUND -> Draft(
                 NotificationKind.AIRTIME_REFUNDED, "Crédit non envoyé",
                 "Le crédit pour ${i.msisdn ?: "ce numéro"} n'a pas pu être envoyé" + (i.failureMessage?.let { " : $it" } ?: "") +

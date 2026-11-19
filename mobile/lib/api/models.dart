@@ -352,6 +352,8 @@ class HistoryItem {
     this.msisdn,
     this.merchantCode,
     this.network,
+    this.billReference,
+    this.token,
     this.note,
     this.failureMessage,
   });
@@ -360,7 +362,7 @@ class HistoryItem {
   final String receiptNumber;
 
   /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
-  /// AIRTIME, AIRTIME_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
+  /// AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -381,6 +383,10 @@ class HistoryItem {
 
   /// Réseau du numéro rechargé (achat de crédit).
   final MobileNetwork? network;
+
+  /// Facture : n° de compteur, d'abonné ou de décodeur ; code du compteur prépayé.
+  final String? billReference;
+  final String? token;
   final String? note;
   final String? failureMessage;
 
@@ -404,6 +410,8 @@ class HistoryItem {
     msisdn: j['msisdn'],
     merchantCode: j['merchantCode'],
     network: MobileNetwork.fromApi(j['network']),
+    billReference: j['billReference'],
+    token: j['token'],
     note: j['note'],
     failureMessage: j['failureMessage'],
   );
@@ -656,4 +664,79 @@ class RecentAirtimeNumber {
 
   factory RecentAirtimeNumber.fromJson(Map<String, dynamic> j) =>
       RecentAirtimeNumber(j['phone'], MobileNetwork.fromApi(j['network']));
+}
+
+/// Facturier : SNEL (compteur prépayé), REGIDESO, Canal+, DStv.
+class Biller {
+  Biller(this.code, this.label, this.category, this.prepaid, this.referenceLabel);
+
+  final String code;
+  final String label;
+  final String category;
+
+  /// Compteur prépayé : on achète de l'énergie et on reçoit un code à taper sur le compteur.
+  final bool prepaid;
+  final String referenceLabel;
+
+  factory Biller.fromJson(Map<String, dynamic> j) =>
+      Biller(j['code'], j['label'], j['category'], j['kind'] == 'PREPAID', j['referenceLabel']);
+}
+
+/// Compte chez le facturier, vérifié avant de payer.
+class BillAccount {
+  BillAccount(this.reference, this.holderName, this.amountDueMinor);
+
+  final String reference;
+  final String holderName;
+  final int? amountDueMinor;
+
+  factory BillAccount.fromJson(Map<String, dynamic> j) =>
+      BillAccount(j['reference'], j['holderName'], j['amountDueMinor']);
+}
+
+/// Paiement d'une facture : PAID, FAILED (remboursé) ou PENDING.
+class BillPayment {
+  BillPayment({
+    required this.id,
+    required this.billerName,
+    required this.reference,
+    required this.holderName,
+    required this.amountMinor,
+    required this.status,
+    required this.token,
+    required this.failureMessage,
+  });
+
+  final String id;
+  final String billerName;
+  final String reference;
+  final String holderName;
+  final int amountMinor;
+  final String status;
+  final String? token;
+  final String? failureMessage;
+
+  factory BillPayment.fromJson(Map<String, dynamic> j) => BillPayment(
+    id: j['id'],
+    billerName: j['billerName'],
+    reference: j['reference'],
+    holderName: j['holderName'],
+    amountMinor: j['amountMinor'],
+    status: j['status'],
+    token: j['token'],
+    failureMessage: j['failureMessage'],
+  );
+}
+
+/// Compte déjà payé, à repayer en un geste.
+class RecentBill {
+  RecentBill(this.biller, this.billerName, this.reference, this.holderName);
+
+  final String biller;
+  final String billerName;
+  final String reference;
+  final String holderName;
+
+  factory RecentBill.fromJson(Map<String, dynamic> j) =>
+      RecentBill(j['biller'], j['billerName'], j['reference'], j['holderName']);
 }

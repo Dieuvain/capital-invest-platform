@@ -94,6 +94,10 @@ capital-invest:
   airtime:
     min-amount-minor: 50
     max-amount-minor: 5000
+  # Factures : montant par paiement, en centimes de dollar. L'agrégateur de factures est encore simulé.
+  bills:
+    min-amount-minor: 100
+    max-amount-minor: 50000
   # Opérateurs mobile money. Chaque opérateur passe par un prestataire : PAWAPAY (agrégateur),
   # SIMULATOR (développement), ou plus tard un connecteur direct. En production, les trois routes
   # sont obligatoires puisque le simulateur est désactivé.

@@ -166,6 +166,8 @@ export function historyTitle(i: HistoryItem): string {
     case 'MERCHANT_PAYMENT': return `Paiement à ${i.counterpartyName ?? 'un marchand'}`
     case 'AIRTIME': return `Crédit téléphone ${i.msisdn ?? ''}`.trim()
     case 'AIRTIME_REFUND': return 'Crédit non envoyé, remboursé'
+    case 'BILL_PAYMENT': return `Facture ${i.counterpartyName ?? ''} ${i.billReference ?? ''}`.replace(/\s+/g, ' ').trim()
+    case 'BILL_REFUND': return 'Facture non payée, remboursée'
     case 'SAVINGS_DEPOSIT': return 'Mis de côté (épargne)'
     case 'SAVINGS_WITHDRAWAL': return 'Repris de l\'épargne'
     default: return 'Correction de solde'
