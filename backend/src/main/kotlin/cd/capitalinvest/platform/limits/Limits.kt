@@ -63,7 +63,7 @@ class LimitsService(
     fun tier(customer: Customer): KycTier =
         props.tiers[customer.kycLevel] ?: error("Aucun plafond configuré pour le niveau KYC ${customer.kycLevel}")
 
-    /** Envoi d'argent : délai après reset du PIN, plafond par opération, plafond journalier. */
+    /** Envoi d'argent, retrait ou paiement marchand : délai après reset du PIN, plafond par opération, plafond journalier. */
     fun checkOutgoing(customer: Customer, walletId: UUID, amountMinor: Long) {
         outgoingBlockedUntil(customer.id)?.let {
             throw BusinessException(
@@ -126,8 +126,17 @@ class LimitsService(
                WHERE t.type = 'TRANSFER'
                  AND t.id IN (SELECT d.transaction_id FROM ledger_entry d
                               WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
-        ).param("w", walletId).param("since", dayStart).query(Long::class.java).single() + withdrawnSince(walletId, dayStart)
+        ).param("w", walletId).param("since", dayStart).query(Long::class.java).single() +
+            withdrawnSince(walletId, dayStart) + paidToMerchantsSince(walletId, dayStart)
     }
+
+    /** Paiements chez les marchands du jour : ce que le client a payé (il n'y a pas de frais). */
+    private fun paidToMerchantsSince(walletId: UUID, since: OffsetDateTime): Long =
+        jdbc.sql(
+            """SELECT COALESCE(SUM(d.amount_minor), 0) FROM ledger_entry d
+               JOIN ledger_transaction t ON t.id = d.transaction_id AND t.type = 'MERCHANT_PAYMENT'
+               WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since""",
+        ).param("w", walletId).param("since", since).query(Long::class.java).single()
 
     /** Retraits vers mobile money du jour, sans les frais ; un retrait échoué et remboursé ne compte pas. */
     private fun withdrawnSince(walletId: UUID, since: OffsetDateTime): Long =

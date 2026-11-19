@@ -16,6 +16,10 @@ class AppState extends ChangeNotifier {
 
   /// Ouvre le partage du téléphone (WhatsApp, SMS…). Remplacé dans les tests.
   Future<void> Function(String text, String subject) share = _systemShare;
+
+  /// Ouvre l'appareil photo et renvoie le texte du QR lu, ou null si le client abandonne.
+  /// Remplacé dans les tests, qui n'ont pas de caméra.
+  Future<String?> Function(BuildContext context)? scanQr;
   Customer? customer;
 
   /// Clair, sombre, ou comme le téléphone (par défaut).

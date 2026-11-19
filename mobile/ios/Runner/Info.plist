@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Photographier votre pièce d'identité et prendre un selfie pour le niveau 2.</string>
+	<string>Scanner le QR d'un marchand pour payer, photographier votre pièce d'identité et prendre un selfie pour le niveau 2.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choisir une photo de votre pièce d'identité.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

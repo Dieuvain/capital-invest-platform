@@ -51,7 +51,7 @@ void main() {
     app = AppState(
       ApiClient(baseUrl: 'http://test', httpClient: server.client),
       deviceId: 'test',
-    );
+    )..scanQr = (_) async => 'capitalinvest://pay?m=K7P2QX';
   });
 
   Future<void> start(WidgetTester tester) async {
@@ -130,6 +130,20 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const ValueKey('quick-Payer')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('amount')), '18,75');
+      await tester.pump();
+      await shot('6-paiement-marchand$suffix');
+      await tester.tap(find.text('Continuer'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.tap(find.textContaining('Payer 18,75'));
+      await tester.pumpAndSettle();
+      await shot('6b-paiement-preuve$suffix');
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byKey(const ValueKey('quick-Recharger')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('amount')), '25');
@@ -140,7 +154,7 @@ void main() {
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('quick-Plus')));
+      await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Passer au niveau 2'));
       await tester.pumpAndSettle();

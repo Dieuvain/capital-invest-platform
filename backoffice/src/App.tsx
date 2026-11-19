@@ -10,6 +10,7 @@ import { PromotionEditor } from './pages/PromotionEditor'
 import { Agents } from './pages/Agents'
 import { Audit } from './pages/Audit'
 import { Customers } from './pages/Customers'
+import { Merchants } from './pages/Merchants'
 import { Reconciliation } from './pages/Reconciliation'
 import { Dashboard } from './pages/Dashboard'
 import { ago, buildNotices } from './notifications'
@@ -24,6 +25,7 @@ export const sections: { path: string; label: string; icon: string; roles: Role[
   { path: 'kyc', label: 'Demandes KYC 2', icon: 'id', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN'] },
   { path: 'promotions', label: 'Promotions', icon: 'promo', roles: ['MARKETING', 'ADMIN'] },
   { path: 'clients', label: 'Clients', icon: 'search', roles: ['COMPLIANCE', 'ADMIN'] },
+  { path: 'marchands', label: 'Marchands', icon: 'shop', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'rapprochement', label: 'Rapprochement', icon: 'scale', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'agents', label: 'Agents', icon: 'agents', roles: ['ADMIN'] },
   { path: 'journal', label: "Journal d'audit", icon: 'journal', roles: ['COMPLIANCE', 'ADMIN'], other: true },
@@ -136,6 +138,9 @@ export function App({ api }: { api: Api }) {
       break
     case 'clients':
       page = <Customers api={api} id={id ?? null} open={(cid) => go(cid ? `clients/${cid}` : 'clients')} />
+      break
+    case 'marchands':
+      page = <Merchants api={api} me={agent} id={id ?? null} open={(mid) => go(mid ? `marchands/${mid}` : 'marchands')} notify={notify} />
       break
     case 'rapprochement':
       page = <Reconciliation api={api} notify={notify} />

@@ -44,6 +44,12 @@ class FakeServer {
   /// Notifications servies par /v1/me/notifications ; « read » passe à vrai à la lecture.
   List<Map<String, dynamic>> notifications = [];
 
+  /// Marchands connus, par code.
+  Map<String, Map<String, dynamic>> merchants = {
+    'K7P2QX': {'code': 'K7P2QX', 'name': 'Alimentation Mama Nzuzi', 'category': 'Alimentation', 'city': 'Lubumbashi'},
+    'SUSP22': {'code': 'SUSP22', 'name': 'Boutique fermée', 'suspended': true},
+  };
+
   /// Historique servi par /v1/me/history, du plus récent au plus ancien.
   List<Map<String, dynamic>> history = [historyItem('h-1', 'TOPUP', 5000, at: '2026-11-18T10:00:00Z', operator: 'MPESA')];
 
@@ -97,7 +103,8 @@ class FakeServer {
         path.startsWith('/v1/promotions') ||
         path.startsWith('/v1/topups') ||
         path.startsWith('/v1/transfers') ||
-        path.startsWith('/v1/withdrawals')) {
+        path.startsWith('/v1/withdrawals') ||
+        path.startsWith('/v1/merchant')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
     final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);
@@ -111,6 +118,13 @@ class FakeServer {
       final item = history.where((h) => h['id'] == receipt.group(1)).firstOrNull;
       if (item == null) return _error(404, 'OPERATION_NOT_FOUND', 'Opération introuvable');
       return _json({'item': item, 'holderName': 'Amani Kabeya', 'holderPhone': '+243970000001', 'issuedAt': '2026-11-19T10:00:00Z'});
+    }
+    final shop = RegExp(r'^/v1/merchants/([^/]+)$').firstMatch(path);
+    if (shop != null) {
+      final m = merchants[shop.group(1)];
+      if (m == null) return _error(404, 'MERCHANT_NOT_FOUND', 'Aucun marchand avec ce code');
+      if (m['suspended'] == true) return _error(422, 'MERCHANT_NOT_ACTIVE', 'Ce marchand n\'accepte pas de paiement');
+      return _json(m);
     }
     if (path == '/v1/me/notifications') {
       return _json({'items': notifications, 'unread': notifications.where((n) => n['read'] != true).length});
@@ -149,6 +163,7 @@ class FakeServer {
           'TOPUP' => ['TOPUP'],
           'TRANSFER' => ['TRANSFER_SENT', 'TRANSFER_RECEIVED'],
           'WITHDRAWAL' => ['WITHDRAWAL', 'WITHDRAWAL_REFUND'],
+          'PAYMENT' => ['MERCHANT_PAYMENT'],
           _ => null,
         };
         final all = history.where((h) => kinds == null || kinds.contains(h['kind'])).toList();
@@ -173,6 +188,24 @@ class FakeServer {
           'amountMinor': a,
           'feeMinor': fee,
           'totalDebitedMinor': a + fee,
+        }, 201);
+      case ('POST', '/v1/merchant-payments'):
+        final b = body();
+        if (b['pin'] != '2580') return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+        final a = b['amountMinor'] as int;
+        if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+        balance -= a;
+        final m = merchants[b['merchantCode']]!;
+        history.insert(0, historyItem('mp-1', 'MERCHANT_PAYMENT', -a, at: '2026-11-19T09:30:00Z', name: m['name']));
+        return _json({
+          'transactionId': 'mp-1',
+          'receiptNumber': 'CI-20261119-00MP01',
+          'merchantCode': m['code'],
+          'merchantName': m['name'],
+          'amountMinor': a,
+          'currency': 'USD',
+          'createdAt': '2026-11-19T09:30:00Z',
+          'replayed': false,
         }, 201);
       case ('GET', '/v1/withdrawals/fee'):
         final a = int.parse(req.url.queryParameters['amountMinor']!);

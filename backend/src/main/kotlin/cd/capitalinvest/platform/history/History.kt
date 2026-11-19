@@ -10,6 +10,7 @@ import cd.capitalinvest.platform.common.AuditLog
 import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.common.Currency
 import cd.capitalinvest.platform.common.NotFoundException
+import cd.capitalinvest.platform.common.normalizeDrcPhone
 import cd.capitalinvest.platform.customers.Customer
 import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.ledger.LedgerRepository
@@ -33,13 +34,14 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
     TRANSFER(listOf("TRANSFER")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
+    PAYMENT(listOf("MERCHANT_PAYMENT")),
 }
 
 enum class HistoryDirection { IN, OUT }
@@ -61,14 +63,16 @@ data class HistoryItem(
     val netMinor: Long,
     val currency: Currency,
     val createdAt: OffsetDateTime,
-    /** L'autre client, pour un envoi. Numéro masqué côté app. */
+    /** L'autre client pour un envoi (numéro masqué côté app), ou le commerce pour un paiement marchand. */
     val counterpartyName: String?,
     val counterpartyPhone: String?,
     /** Opérateur mobile money (recharge, retrait). */
     val operator: String?,
     /** Numéro mobile money qui a reçu un retrait (+243…). */
     val msisdn: String?,
-    /** Message joint à un envoi. */
+    /** Code du commerce payé. */
+    val merchantCode: String? = null,
+    /** Message joint à un envoi ou à un paiement. */
     val note: String?,
     val failureMessage: String?,
 )
@@ -168,6 +172,7 @@ class HistoryService(
                   FROM ledger_entry fe JOIN ledger_account fa ON fa.id = fe.account_id
                  WHERE fe.transaction_id = tx.id AND fa.type = 'FEES_REVENUE') AS fee,
                other.full_name AS other_name, other.phone AS other_phone,
+               shop.name AS merchant_name, shop.code AS merchant_code,
                tp.operator AS topup_operator,
                w.operator AS withdrawal_operator, w.msisdn, w.status AS withdrawal_status,
                w.failure_message, w.hold_transaction_id
@@ -180,6 +185,12 @@ class HistoryService(
              WHERE oe.transaction_id = tx.id AND oa.type = 'CUSTOMER_WALLET' AND oa.id <> :wallet
              LIMIT 1
         ) other ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT m.name, m.code
+              FROM ledger_entry me JOIN merchant m ON m.wallet_account_id = me.account_id
+             WHERE me.transaction_id = tx.id
+             LIMIT 1
+        ) shop ON TRUE
         -- Par la clé aussi : juste après l'écriture (notifications), la recharge n'est pas encore liée à sa transaction.
         LEFT JOIN topup tp ON tp.ledger_transaction_id = tx.id OR tx.idempotency_key = 'topup:' || tp.id
         LEFT JOIN withdrawal w ON w.hold_transaction_id = tx.id OR w.final_transaction_id = tx.id
@@ -198,9 +209,11 @@ class HistoryService(
             "TRANSFER" -> if (net < 0) HistoryKind.TRANSFER_SENT else HistoryKind.TRANSFER_RECEIVED
             "WITHDRAWAL" -> HistoryKind.WITHDRAWAL
             "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND" -> HistoryKind.WITHDRAWAL_REFUND
+            "MERCHANT_PAYMENT" -> HistoryKind.MERCHANT_PAYMENT
             else -> HistoryKind.ADJUSTMENT
         }
         // Les frais d'un envoi sont ceux de l'expéditeur : le destinataire ne les voit pas.
+        // Un paiement marchand n'a pas de frais pour le client : la commission est payée par le marchand.
         val shownFee = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.WITHDRAWAL -> fee
             HistoryKind.WITHDRAWAL_REFUND -> -fee // frais rendus
@@ -232,16 +245,17 @@ class HistoryService(
             netMinor = net,
             currency = Currency.valueOf(rs.getString("currency")),
             createdAt = createdAt,
-            counterpartyName = rs.getString("other_name"),
+            counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name"),
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
             operator = rs.getString("topup_operator") ?: rs.getString("withdrawal_operator"),
             msisdn = rs.getString("msisdn")?.let { "+$it" },
-            note = if (type == "TRANSFER") rs.getString("description") else null,
+            merchantCode = rs.getString("merchant_code"),
+            note = if (type == "TRANSFER" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
             failureMessage = if (status == HistoryStatus.FAILED) rs.getString("failure_message") else null,
         )
     }
 
-    private fun receiptNumber(id: UUID, at: OffsetDateTime): String =
+    fun receiptNumber(id: UUID, at: OffsetDateTime): String =
         "CI-" + at.atZoneSameInstant(zone).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE) + "-" +
             id.toString().replace("-", "").take(6).uppercase()
 
@@ -312,7 +326,7 @@ class BackofficeCustomerController(
     @GetMapping
     fun find(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @RequestParam phone: String): CustomerSummary {
         requireAccess(me)
-        val c = normalizePhone(phone)?.let(customers::findByPhone)
+        val c = normalizeDrcPhone(phone)?.let(customers::findByPhone)
             ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Aucun client avec ce numéro")
         audit.record(ActorType.AGENT, me.id, "CUSTOMER_VIEWED", "CUSTOMER", c.id)
         return summary(c)
@@ -343,17 +357,6 @@ class BackofficeCustomerController(
     fun receipt(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @PathVariable transactionId: UUID): Receipt {
         requireAccess(me)
         return history.receipt(customer(id).id, transactionId, maskPhones = false)
-    }
-
-    /** « +243 970 000 001 », « 243970000001 », « 0970000001 » ou « 970000001 » vers +243970000001. */
-    private fun normalizePhone(input: String): String? {
-        val digits = input.filter { it.isDigit() }
-        return when {
-            digits.length == 12 && digits.startsWith("243") -> "+$digits"
-            digits.length == 10 && digits.startsWith("0") -> "+243${digits.drop(1)}"
-            digits.length == 9 -> "+243$digits"
-            else -> null
-        }
     }
 
     private fun summary(c: Customer): CustomerSummary {

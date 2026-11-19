@@ -86,8 +86,9 @@ export interface CustomerSummary {
   balanceMinor: number
 }
 
-export type HistoryKind = 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'ADJUSTMENT'
-export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL'
+export type HistoryKind =
+  | 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'MERCHANT_PAYMENT' | 'ADJUSTMENT'
+export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL' | 'PAYMENT'
 
 /** Une opération du client : une ligne par opération, montants en centimes. */
 export interface HistoryItem {
@@ -105,6 +106,7 @@ export interface HistoryItem {
   counterpartyPhone?: string | null
   operator?: Operator | null
   msisdn?: string | null
+  merchantCode?: string | null
   note?: string | null
   failureMessage?: string | null
 }
@@ -120,6 +122,50 @@ export interface Receipt {
   holderPhone: string
   issuedAt: string
 }
+export type MerchantStatus = 'ACTIVE' | 'SUSPENDED'
+
+/** Un commerce qui accepte le paiement par QR. */
+export interface Merchant {
+  id: string
+  code: string
+  name: string
+  category?: string | null
+  city?: string | null
+  /** Numéro qui reçoit un SMS à chaque paiement. */
+  phone: string
+  /** Points de base : 100 = 1 %. */
+  commissionBps: number
+  status: MerchantStatus
+  /** Ce que Capital Invest doit au marchand. */
+  balanceMinor: number
+  /** Contenu du QR à imprimer. */
+  qrPayload: string
+  createdAt: string
+}
+
+export interface MerchantInput {
+  name: string
+  category: string | null
+  city: string | null
+  phone: string
+  commissionBps: number
+}
+
+export interface MerchantPayment {
+  transactionId: string
+  receiptNumber: string
+  customerName: string
+  customerPhone: string
+  amountMinor: number
+  commissionMinor: number
+  createdAt: string
+}
+
+export interface MerchantDetail {
+  merchant: Merchant
+  payments: MerchantPayment[]
+}
+
 export type DiscrepancyKind =
   | 'CONFIRMED_NOT_CREDITED'
   | 'CREDITED_NOT_CONFIRMED'
@@ -294,6 +340,12 @@ export class Api {
   }
   customerReceipt = (id: string, transactionId: string) =>
     this.json<Receipt>('GET', `/v1/backoffice/customers/${id}/history/${transactionId}`)
+  // ---- Marchands ----
+  merchants = () => this.json<Merchant[]>('GET', '/v1/backoffice/merchants')
+  merchant = (id: string) => this.json<MerchantDetail>('GET', `/v1/backoffice/merchants/${id}`)
+  createMerchant = (m: MerchantInput) => this.json<Merchant>('POST', '/v1/backoffice/merchants', m)
+  setMerchantStatus = (id: string, status: MerchantStatus, reason: string) =>
+    this.json<Merchant>('POST', `/v1/backoffice/merchants/${id}/status`, { status, reason })
   // ---- Recharges et rapprochement ----
   reviewTopups = () => this.json<ReviewTopup[]>('GET', '/v1/backoffice/topups/review')
   resolveTopup = (id: string, action: ResolveAction, note: string) =>

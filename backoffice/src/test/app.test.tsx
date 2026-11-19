@@ -43,8 +43,8 @@ describe('connexion', () => {
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Clients', 'Marchands', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Clients', 'Marchands', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -252,6 +252,49 @@ describe('clients', () => {
     expect(within(receipt).getByText('+243970000402')).toBeInTheDocument()
     expect(within(receipt).getByText('Loyer')).toBeInTheDocument()
     expect(window.location.hash).toBe('#/clients/c-1')
+  })
+})
+
+describe('marchands', () => {
+  it("l'administrateur crée un marchand, voit son QR à imprimer, puis le suspend avec un motif", async () => {
+    const user = await signIn('admin@capitalinvest.cd', 'Marchands')
+    expect(await screen.findByText('Alimentation Mama Nzuzi')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Nouveau marchand/ }))
+    await user.type(screen.getByLabelText(/^Nom du commerce/), 'Pharmacie du Centre')
+    await user.type(screen.getByLabelText(/^Numéro qui reçoit les SMS/), '0990000202')
+    await user.type(screen.getByLabelText('Ville'), 'Kolwezi')
+    await user.clear(screen.getByLabelText(/^Commission/))
+    await user.type(screen.getByLabelText(/^Commission/), '1,5')
+    await user.click(screen.getByRole('button', { name: 'Créer le marchand' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Pharmacie du Centre peut maintenant être payé')
+    expect(server.requests.find((r) => r.method === 'POST' && r.path === '/v1/backoffice/merchants')?.body)
+      .toMatchObject({ name: 'Pharmacie du Centre', city: 'Kolwezi', phone: '0990000202', commissionBps: 150, category: null })
+
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    expect(window.location.hash).toBe('#/marchands/m-2')
+    await waitFor(() => expect(within(panel).getByRole('img', { name: 'QR de paiement de Pharmacie du Centre' }).innerHTML).toContain('<svg'))
+    expect(within(panel).getByLabelText('Code marchand')).toHaveTextContent('NEW 2AB')
+    expect(within(panel).getByText('1,5 %')).toBeInTheDocument()
+    window.print = vi.fn()
+    await user.click(within(panel).getByRole('button', { name: /Imprimer l'affiche/ }))
+    expect(window.print).toHaveBeenCalled()
+
+    await user.click(within(panel).getByRole('button', { name: 'Suspendre le marchand' }))
+    await user.type(within(panel).getByLabelText('Motif de la suspension'), 'Plainte client')
+    await user.click(within(panel).getByRole('button', { name: 'Suspendre' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Pharmacie du Centre est suspendu')
+    expect(server.merchants[1].status).toBe('SUSPENDED')
+  })
+
+  it('la conformité consulte les paiements reçus sans pouvoir créer ni suspendre', async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Marchands')
+    expect(screen.queryByRole('button', { name: /Nouveau marchand/ })).not.toBeInTheDocument()
+    await user.click(await screen.findByText('Alimentation Mama Nzuzi'))
+    const panel = await screen.findByRole('complementary', { name: 'Fiche marchand' })
+    expect(await within(panel).findByText('Amani Kabeya')).toBeInTheDocument()
+    expect(within(panel).getByText(/CI-20261119-0000M1/)).toBeInTheDocument()
+    expect(within(panel).getByText('commission 0,13 $')).toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /Suspendre/ })).not.toBeInTheDocument()
   })
 })
 

@@ -194,6 +194,20 @@ Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçu
 - **App** : la cloche de l'accueil porte une pastille tant qu'il reste des notifications non lues. `GET /v1/me/notifications` (avec `unread`) et `POST /v1/me/notifications/read` (toutes, ou `{"ids": [...]}`). Une notification liée à une opération ouvre son reçu.
 - La passerelle SMS est encore le simulateur : il faudra brancher un fournisseur (agrégateur SMS ou opérateur) avant la mise en service. Les notifications push viendront plus tard.
 
+## Paiement chez un marchand (QR)
+
+Le client paie en caisse depuis son solde : il touche **Payer**, scanne le QR affiché par le commerce (ou tape le code de 6 caractères écrit dessous), vérifie le nom du commerce, tape le montant et confirme par son PIN. L'app affiche alors une preuve à montrer au caissier (montant, commerce, heure, numéro de reçu).
+
+- **Pas de frais pour le client.** Le marchand reçoit le montant moins sa commission (1 % par défaut, `capital-invest.merchants.default-commission-bps`, **provisoire**, réglable par marchand de 0 à 10 %). La commission va au compte de revenus, comme les frais d'envoi.
+- **Le caissier reçoit un SMS** à chaque paiement, sur le numéro du marchand : montant, client (numéro masqué), net après commission, numéro de reçu.
+- Le paiement compte dans le plafond journalier de sortie du client, avec les envois et les retraits. Rejouer la demande (même `Idempotency-Key`) ne débite jamais deux fois.
+- L'argent reçu reste sur le compte du marchand chez Capital Invest (`MERCHANT_WALLET`, une dette envers lui). **Le reversement vers sa banque ou son mobile money n'est pas encore fait** : c'est la prochaine étape avant d'ouvrir à de vrais commerces.
+- Le QR contient `capitalinvest://pay?m=CODE`. Le code n'a ni `0`/`O` ni `1`/`I`, pour être lu et tapé sans erreur.
+
+API client : `GET /v1/merchants/{code}` (le commerce avant de payer ; un marchand suspendu répond `MERCHANT_NOT_ACTIVE`) et `POST /v1/merchant-payments` (`merchantCode`, `amountMinor`, `pin`, `note` facultative, en-tête `Idempotency-Key`). Dans l'historique, le paiement apparaît en `MERCHANT_PAYMENT` (filtre `category=PAYMENT`).
+
+Back-office, écran « Marchands » : l'administrateur crée le marchand, imprime son affiche QR et peut le suspendre avec un motif (`POST /v1/backoffice/merchants`, `POST /v1/backoffice/merchants/{id}/status`) ; la conformité consulte la liste, le dû à chaque marchand et ses derniers paiements. Création et suspension sont inscrites au journal d'audit.
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.

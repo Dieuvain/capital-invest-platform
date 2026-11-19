@@ -145,6 +145,54 @@ class TransferResult {
       TransferResult(amountMinor: j['amountMinor'], feeMinor: j['feeMinor'], totalDebitedMinor: j['totalDebitedMinor']);
 }
 
+/// Le commerce derrière un QR scanné : ce que le client vérifie avant de payer.
+class MerchantInfo {
+  MerchantInfo({required this.code, required this.name, this.category, this.city});
+
+  final String code;
+  final String name;
+  final String? category;
+  final String? city;
+
+  factory MerchantInfo.fromJson(Map<String, dynamic> j) =>
+      MerchantInfo(code: j['code'], name: j['name'], category: j['category'], city: j['city']);
+}
+
+class MerchantPaymentResult {
+  MerchantPaymentResult({
+    required this.transactionId,
+    required this.receiptNumber,
+    required this.merchantName,
+    required this.amountMinor,
+    required this.createdAt,
+  });
+
+  final String transactionId;
+  final String receiptNumber;
+  final String merchantName;
+  final int amountMinor;
+  final DateTime createdAt;
+
+  factory MerchantPaymentResult.fromJson(Map<String, dynamic> j) => MerchantPaymentResult(
+    transactionId: j['transactionId'],
+    receiptNumber: j['receiptNumber'],
+    merchantName: j['merchantName'],
+    amountMinor: j['amountMinor'],
+    createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+/// Code marchand lu dans un QR Capital Invest (capitalinvest://pay?m=K7P2QX) ou tapé à la main
+/// (« k7p 2qx »). Null si ce n'est pas un code marchand.
+String? merchantCodeFrom(String raw) {
+  final text = raw.trim();
+  final uri = Uri.tryParse(text);
+  final fromQr = (uri != null && uri.scheme == 'capitalinvest') ? uri.queryParameters['m'] : null;
+  if (uri != null && uri.hasScheme && fromQr == null) return null; // un autre QR (site web, Wi-Fi…)
+  final code = (fromQr ?? text).toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  return RegExp(r'^[A-Z2-9]{6}$').hasMatch(code) ? code : null;
+}
+
 class KycState {
   KycState({required this.kycLevel, this.requestStatus, this.rejectionReason});
 
@@ -217,6 +265,7 @@ class HistoryItem {
     this.counterpartyPhone,
     this.operator,
     this.msisdn,
+    this.merchantCode,
     this.note,
     this.failureMessage,
   });
@@ -224,7 +273,7 @@ class HistoryItem {
   final String id;
   final String receiptNumber;
 
-  /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, ADJUSTMENT.
+  /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -239,6 +288,9 @@ class HistoryItem {
   final String? counterpartyPhone;
   final String? operator;
   final String? msisdn;
+
+  /// Code du commerce payé (paiement marchand).
+  final String? merchantCode;
   final String? note;
   final String? failureMessage;
 
@@ -260,6 +312,7 @@ class HistoryItem {
     counterpartyPhone: j['counterpartyPhone'],
     operator: j['operator'],
     msisdn: j['msisdn'],
+    merchantCode: j['merchantCode'],
     note: j['note'],
     failureMessage: j['failureMessage'],
   );

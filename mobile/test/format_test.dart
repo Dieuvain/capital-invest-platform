@@ -1,3 +1,4 @@
+import 'package:capital_invest/api/models.dart';
 import 'package:capital_invest/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,5 +31,14 @@ void main() {
     expect(pinProblem('1234'), isNotNull);
     expect(pinProblem('4321'), isNotNull);
     expect(pinProblem('12a4'), isNotNull);
+  });
+
+  test('code marchand lu dans un QR ou tapé à la main', () {
+    expect(merchantCodeFrom('capitalinvest://pay?m=K7P2QX'), 'K7P2QX');
+    expect(merchantCodeFrom(' k7p 2qx '), 'K7P2QX');
+    expect(merchantCodeFrom('K7P-2QX'), 'K7P2QX');
+    expect(merchantCodeFrom('https://exemple.com/?m=K7P2QX'), isNull);
+    expect(merchantCodeFrom('K7P2Q'), isNull);
+    expect(merchantCodeFrom('K7P2Q0'), isNull, reason: 'pas de 0 ni de O, pour éviter les confusions');
   });
 }
