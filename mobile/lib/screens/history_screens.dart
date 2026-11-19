@@ -15,6 +15,8 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'WITHDRAWAL' => 'Retrait vers ${i.operatorLabel ?? 'mobile money'}',
   'WITHDRAWAL_REFUND' => 'Retrait remboursé',
   'MERCHANT_PAYMENT' => 'Paiement à ${i.counterpartyName ?? 'un marchand'}',
+  'SAVINGS_DEPOSIT' => 'Mis de côté',
+  'SAVINGS_WITHDRAWAL' => 'Repris de l\'épargne',
   _ => 'Correction de solde',
 };
 
@@ -33,6 +35,7 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'WITHDRAWAL' => Icons.south_east_rounded,
   'WITHDRAWAL_REFUND' => Icons.undo_rounded,
   'MERCHANT_PAYMENT' => Icons.storefront_rounded,
+  'SAVINGS_DEPOSIT' || 'SAVINGS_WITHDRAWAL' => Icons.savings_outlined,
   _ => Icons.tune_rounded,
 };
 
@@ -127,7 +130,7 @@ class HistoryView extends StatefulWidget {
 }
 
 class _HistoryViewState extends State<HistoryView> with ApiAction {
-  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits', 'PAYMENT': 'Paiements'};
+  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits', 'PAYMENT': 'Paiements', 'SAVINGS': 'Épargne'};
 
   String? category;
   List<HistoryItem>? items;

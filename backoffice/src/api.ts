@@ -157,11 +157,14 @@ export interface CustomerSummary {
   kycLevel: number
   status: string
   balanceMinor: number
+  /** Épargne du client, en plus du solde du portefeuille. */
+  savingsMinor?: number
 }
 
 export type HistoryKind =
-  | 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'MERCHANT_PAYMENT' | 'ADJUSTMENT'
-export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL' | 'PAYMENT'
+  | 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'MERCHANT_PAYMENT'
+  | 'SAVINGS_DEPOSIT' | 'SAVINGS_WITHDRAWAL' | 'ADJUSTMENT'
+export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL' | 'PAYMENT' | 'SAVINGS'
 
 /** Une opération du client : une ligne par opération, montants en centimes. */
 export interface HistoryItem {

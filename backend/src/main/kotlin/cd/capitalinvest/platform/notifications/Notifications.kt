@@ -279,6 +279,8 @@ class NotificationService(
             )
             // Demande de retrait : l'app suit déjà son état, le client est prévenu au versement ou au remboursement.
             HistoryKind.WITHDRAWAL -> null
+            // Le client vient de le faire lui-même dans l'app, et l'argent ne quitte pas son compte.
+            HistoryKind.SAVINGS_DEPOSIT, HistoryKind.SAVINGS_WITHDRAWAL -> null
         }
     }
 

@@ -25,6 +25,14 @@ void main() {
   setUp(() {
     server = FakeServer()
       ..balance = 123750
+      ..savings = 18500
+      ..savingsGoal = {'label': 'Rentrée scolaire', 'targetMinor': 30000}
+      ..savingsMoves = [
+        {'id': 'sv-3', 'kind': 'DEPOSIT', 'amountMinor': 5000, 'createdAt': '2026-11-18T17:05:00Z'},
+        {'id': 'sv-2', 'kind': 'WITHDRAWAL', 'amountMinor': 1500, 'createdAt': '2026-11-09T11:20:00Z'},
+        {'id': 'sv-1', 'kind': 'DEPOSIT', 'amountMinor': 2000, 'createdAt': '2026-11-02T08:00:00Z'},
+        {'id': 'sv-0', 'kind': 'DEPOSIT', 'amountMinor': 13000, 'createdAt': '2026-10-28T19:45:00Z'},
+      ]
       ..notifications = [
         {
           'id': 'n3', 'kind': 'TRANSFER_RECEIVED', 'title': 'Argent reçu', 'transactionId': 'd4e5f6', 'read': false,
@@ -191,6 +199,22 @@ void main() {
       await tester.tap(find.text('Octobre 2026'));
       await tester.pumpAndSettle();
       await shot('9-releve$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Accueil'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('home-savings')));
+      await tester.tap(find.byKey(const ValueKey('home-savings')));
+      await tester.pumpAndSettle();
+      await shot('10-epargne$suffix');
+      await tester.tap(find.byKey(const ValueKey('savings-deposit')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('amount')), '20');
+      await tester.pump();
+      await shot('10b-mettre-de-cote$suffix');
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));

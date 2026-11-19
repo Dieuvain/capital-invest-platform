@@ -87,14 +87,14 @@ class LimitsService(
         if (amountMinor > tier.perTransactionMinor) {
             throw LimitExceededException("LIMIT_PER_TRANSACTION", "Montant supérieur au plafond par opération de votre niveau")
         }
-        if (ledger.balance(walletId) + pendingTopups(customer.id) + amountMinor > tier.maxBalanceMinor) {
+        if (holdings(customer.id, walletId) + pendingTopups(customer.id) + amountMinor > tier.maxBalanceMinor) {
             throw LimitExceededException("LIMIT_MAX_BALANCE", "Cette recharge dépasserait le solde maximal de votre niveau")
         }
     }
 
     /** Réception d'un envoi : le solde du destinataire ne doit pas dépasser son plafond. */
     fun checkIncoming(recipient: Customer, walletId: UUID, amountMinor: Long) {
-        if (ledger.balance(walletId) + pendingTopups(recipient.id) + amountMinor > tier(recipient).maxBalanceMinor) {
+        if (holdings(recipient.id, walletId) + pendingTopups(recipient.id) + amountMinor > tier(recipient).maxBalanceMinor) {
             // On ne révèle pas le solde du destinataire.
             throw LimitExceededException("RECIPIENT_LIMIT_REACHED", "Le destinataire ne peut pas recevoir ce montant")
         }
@@ -145,6 +145,14 @@ class LimitsService(
                JOIN ledger_account a ON a.customer_id = w.customer_id AND a.id = :w
                WHERE w.created_at >= :since AND w.status <> 'FAILED'""",
         ).param("w", walletId).param("since", since).query(Long::class.java).single()
+
+    /** Portefeuille plus épargne : mettre de l'argent de côté ne permet pas de dépasser le solde maximal du niveau. */
+    private fun holdings(customerId: UUID, walletId: UUID): Long =
+        ledger.balance(walletId) + jdbc.sql(
+            """SELECT COALESCE(SUM(CASE WHEN e.direction = 'CREDIT' THEN e.amount_minor ELSE -e.amount_minor END), 0)
+               FROM ledger_account a JOIN ledger_entry e ON e.account_id = a.id
+               WHERE a.customer_id = :c AND a.type = 'CUSTOMER_SAVINGS'""",
+        ).param("c", customerId).query(Long::class.java).single()
 
     private fun pendingTopups(customerId: UUID): Long =
         jdbc.sql("SELECT COALESCE(SUM(amount_minor), 0) FROM topup WHERE customer_id = :c AND status = 'PENDING'")

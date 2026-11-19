@@ -9,6 +9,7 @@ const filters: { value: HistoryCategory | null; label: string }[] = [
   { value: 'TRANSFER', label: 'Envois' },
   { value: 'WITHDRAWAL', label: 'Retraits' },
   { value: 'PAYMENT', label: 'Paiements' },
+  { value: 'SAVINGS', label: 'Épargne' },
 ]
 
 /**
@@ -118,7 +119,7 @@ function CustomerFile({ api, customer, notify, changed }: {
         <div className="card stat">
           <span className="lbl">Solde</span>
           <span className="val mono">{formatUsd(customer.balanceMinor)}</span>
-          <span className="sub">au moment de la recherche</span>
+          <span className="sub">{customer.savingsMinor ? `+ ${formatUsd(customer.savingsMinor)} d'épargne` : 'au moment de la recherche'}</span>
         </div>
         <div className="card stat">
           <span className="lbl">Niveau</span>

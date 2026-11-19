@@ -531,6 +531,48 @@ void main() {
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
   });
 
+  testWidgets('épargne : mettre de côté, fixer un objectif, reprendre', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.ensureVisible(find.byKey(const ValueKey('home-savings')));
+    await tester.tap(find.byKey(const ValueKey('home-savings')));
+    await tester.pumpAndSettle();
+    expect(find.text('Fixer un objectif'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('savings-deposit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Disponible sur votre solde : 50,00\u00A0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('amount')), '80');
+    await tester.tap(find.widgetWithText(FilledButton, 'Mettre de côté'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vous avez 50,00\u00A0\$ sur votre solde.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('amount')), '30');
+    await tester.tap(find.widgetWithText(FilledButton, 'Mettre de côté'));
+    await tester.pumpAndSettle();
+    expect(server.savings, 3000);
+    expect(server.balance, 2000);
+    expect(find.text('Ce mois-ci : +30,00\u00A0\$'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('savings-goal')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('goal-label')), 'Rentrée scolaire');
+    await tester.enterText(find.byKey(const ValueKey('goal-target')), '120');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rentrée scolaire'), findsOneWidget);
+    expect(find.text('25 %'), findsOneWidget);
+    expect(find.text('Encore 90,00\u00A0\$ pour atteindre 120,00\u00A0\$'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('savings-withdraw')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tout'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Reprendre'));
+    await tester.pumpAndSettle();
+    expect(server.savings, 0);
+    expect(server.balance, 5000);
+    expect(find.text('Repris vers le solde'), findsOneWidget);
+  });
+
   testWidgets('une session expirée ramène à l\'écran de connexion', (tester) async {
     await start(tester);
     await login(tester);

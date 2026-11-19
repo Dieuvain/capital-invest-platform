@@ -87,7 +87,7 @@ Valeurs **provisoires**, à valider par la conformité (fichier `application.yml
 | KYC 2 | 4 000 $ | 10 000 $ | 20 000 $ |
 
 - La journée se compte à l'heure de Lubumbashi.
-- Le solde maximal compte aussi les recharges en attente, et s'applique au destinataire d'un envoi sans révéler son solde.
+- Le solde maximal compte aussi les recharges en attente et l'épargne, et s'applique au destinataire d'un envoi sans révéler son solde.
 - Les contrôles se font sous verrou du portefeuille : deux opérations simultanées ne peuvent pas dépasser un plafond ensemble.
 
 ## Frais d'envoi
@@ -196,6 +196,18 @@ Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l
 - Les montants viennent du grand livre, comme l'historique : le solde de fin d'un mois est le solde d'ouverture du suivant. Les numéros des autres clients restent masqués.
 - API : `GET /v1/me/statements` (mois disponibles), `GET /v1/me/statements/{AAAA-MM}`, `GET /v1/me/statements/{AAAA-MM}/pdf`.
 - PDF produit par OpenPDF (LGPL/MPL). Exemple : `docs/captures-app/9b-releve-octobre.pdf`.
+
+## Épargne
+
+Le client met de l'argent de côté depuis l'accueil (carte **Épargne**) ou le menu : **Mettre de côté** fait passer l'argent du solde à l'épargne, **Reprendre** le ramène sur le solde, à tout moment. Il peut fixer un objectif (un nom comme « Rentrée scolaire » et un montant) et voit où il en est.
+
+![Épargne](docs/captures-app/10-epargne.png)
+
+- Dans le grand livre, l'épargne est un second compte du client (`CUSTOMER_SAVINGS`), ouvert au premier dépôt. L'argent ne quitte pas Capital Invest : pas de frais, pas de PIN (l'argent ne peut aller que sur le solde du même client), pas de plafond d'envoi, pas de notification.
+- Le **solde maximal** du niveau KYC compte le solde et l'épargne ensemble : mettre de côté ne permet pas de recevoir plus.
+- Les mouvements apparaissent dans l'historique et le relevé (« Mis de côté », « Repris de l'épargne »), avec un filtre Épargne. Le back-office montre l'épargne du client à côté de son solde.
+- Pas d'intérêts pour l'instant : en verser demande l'avis de la BCC et un placement de l'argent correspondant.
+- API : `GET /v1/me/savings`, `POST /v1/me/savings/deposits` et `/withdrawals` (`{"amountMinor"}`, en-tête `Idempotency-Key`), `PUT` et `DELETE /v1/me/savings/goal`.
 
 ## Notifications au client
 

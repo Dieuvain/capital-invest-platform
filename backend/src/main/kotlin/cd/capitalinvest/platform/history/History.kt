@@ -34,7 +34,7 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
@@ -42,6 +42,7 @@ enum class HistoryCategory(val ledgerTypes: List<String>) {
     TRANSFER(listOf("TRANSFER")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
     PAYMENT(listOf("MERCHANT_PAYMENT")),
+    SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
 }
 
 enum class HistoryDirection { IN, OUT }
@@ -210,6 +211,8 @@ class HistoryService(
             "WITHDRAWAL" -> HistoryKind.WITHDRAWAL
             "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND" -> HistoryKind.WITHDRAWAL_REFUND
             "MERCHANT_PAYMENT" -> HistoryKind.MERCHANT_PAYMENT
+            "SAVINGS_DEPOSIT" -> HistoryKind.SAVINGS_DEPOSIT
+            "SAVINGS_WITHDRAWAL" -> HistoryKind.SAVINGS_WITHDRAWAL
             else -> HistoryKind.ADJUSTMENT
         }
         // Les frais d'un envoi sont ceux de l'expéditeur : le destinataire ne les voit pas.
@@ -303,11 +306,14 @@ data class CustomerSummary(
     val kycLevel: Int,
     val status: String,
     val balanceMinor: Long,
+    /** Épargne du client, en plus du solde du portefeuille. */
+    val savingsMinor: Long = 0,
 )
 
 @RestController
 @RequestMapping("/v1/backoffice/customers")
 class BackofficeCustomerController(
+    private val jdbc: JdbcClient,
     private val customers: CustomerRepository,
     private val ledger: LedgerRepository,
     private val history: HistoryService,
@@ -361,6 +367,8 @@ class BackofficeCustomerController(
 
     private fun summary(c: Customer): CustomerSummary {
         val wallet = ledger.findCustomerWallet(c.id, Currency.USD)
-        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0)
+        val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
+            .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
+        return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings)
     }
 }

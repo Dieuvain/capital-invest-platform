@@ -164,6 +164,8 @@ export function historyTitle(i: HistoryItem): string {
     case 'WITHDRAWAL': return `Retrait vers ${op ?? 'mobile money'}`
     case 'WITHDRAWAL_REFUND': return 'Retrait remboursé'
     case 'MERCHANT_PAYMENT': return `Paiement à ${i.counterpartyName ?? 'un marchand'}`
+    case 'SAVINGS_DEPOSIT': return 'Mis de côté (épargne)'
+    case 'SAVINGS_WITHDRAWAL': return 'Repris de l\'épargne'
     default: return 'Correction de solde'
   }
 }

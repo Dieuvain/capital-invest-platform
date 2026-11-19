@@ -17,6 +17,7 @@ import 'kyc_screen.dart';
 import 'notifications_screen.dart';
 import 'pay_screen.dart';
 import 'request_screens.dart';
+import 'savings_screens.dart';
 import 'security_screen.dart';
 import 'statement_screens.dart';
 import 'money_screens.dart';
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   List<Promotion> promos = const [];
   int unread = 0;
   List<MoneyRequest> toPay = const [];
+  Savings? savings;
   int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
@@ -78,6 +80,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       // Pas de bandeau des demandes.
     }
     try {
+      final s = await api.savings();
+      if (mounted) setState(() => savings = s);
+    } on ApiException {
+      // Pas de carte Épargne.
+    }
+    try {
       final p = await api.promotions();
       if (mounted) setState(() => promos = p);
     } on ApiException {
@@ -99,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _payMerchant() => _open(PayMerchantScreen(app: widget.app, limits: limits));
   void _requests() => _open(MoneyRequestsScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
+  void _savings() => _open(SavingsScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
   void _promoAction(Promotion p) => switch (p.action) {
@@ -129,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
               const SizedBox(height: 8),
               _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
               _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
+              _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
               _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
               _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
               _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
@@ -258,6 +268,10 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ],
                 ),
               ),
+              if (savings != null) ...[
+                const SizedBox(height: 16),
+                _SavingsCard(savings: savings!, onTap: _savings),
+              ],
               if (toPay.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 RequestsBanner(toPay: toPay, onTap: _requests),
@@ -406,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ),
                   _SheetRow(Icons.lock_outline_rounded, 'Sécurité et PIN', _security),
                   _SheetRow(Icons.credit_card_outlined, 'Carte prépayée Visa · bientôt', null),
-                  _SheetRow(Icons.savings_outlined, 'Épargne · bientôt', null),
+                  _SheetRow(Icons.savings_outlined, 'Épargne', _savings),
                 ],
               ),
             ),
@@ -857,4 +871,45 @@ class _NavPill extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Carte Épargne du tableau de bord : montant mis de côté et progrès de l'objectif.
+class _SavingsCard extends StatelessWidget {
+  const _SavingsCard({required this.savings, required this.onTap});
+
+  final Savings savings;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = savings.goal;
+    final line = savings.balanceMinor == 0 && g == null
+        ? 'Mettez de l\'argent de côté, sans frais'
+        : g == null
+        ? 'Mis de côté'
+        : '${g.label} · ${g.progressPercent} %';
+    return SoftCard(
+      key: const ValueKey('home-savings'),
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: Row(
+        children: [
+          const IconTile(Icons.savings_outlined, size: 42, accent: true),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Épargne', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text(line, style: TextStyle(color: context.pal.muted, fontSize: 13), overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          if (savings.balanceMinor > 0)
+            Text(formatUsd(savings.balanceMinor), style: const TextStyle(fontWeight: FontWeight.w700)),
+          const Icon(Icons.chevron_right_rounded),
+        ],
+      ),
+    );
+  }
 }

@@ -292,6 +292,8 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.WITHDRAWAL -> "Retrait vers ${op ?: "mobile money"}"
             HistoryKind.WITHDRAWAL_REFUND -> "Retrait remboursé"
             HistoryKind.MERCHANT_PAYMENT -> "Paiement à ${i.counterpartyName ?: "un marchand"}"
+            HistoryKind.SAVINGS_DEPOSIT -> "Mis de côté (épargne)"
+            HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }
