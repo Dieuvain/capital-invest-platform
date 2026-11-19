@@ -18,6 +18,7 @@ import 'notifications_screen.dart';
 import 'pay_screen.dart';
 import 'request_screens.dart';
 import 'security_screen.dart';
+import 'statement_screens.dart';
 import 'money_screens.dart';
 
 /// Tableau de bord : cartes empilées, actions rapides, promotions, mouvements ; barre du bas flottante.
@@ -290,7 +291,19 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       _header(widget.app.customer!, 'Historique', 'Toutes vos opérations. Touchez-en une pour voir son reçu.'),
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-        child: HistoryView(app: widget.app, onOpen: _receipt),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              key: const ValueKey('statements'),
+              onPressed: () => _open(StatementsScreen(app: widget.app)),
+              icon: const Icon(Icons.receipt_long_rounded),
+              label: const Text('Relevés de compte'),
+            ),
+            const SizedBox(height: 16),
+            HistoryView(app: widget.app, onOpen: _receipt),
+          ],
+        ),
       ),
     ],
   );

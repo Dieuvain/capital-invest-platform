@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -18,6 +20,9 @@ class AppState extends ChangeNotifier {
 
   /// Ouvre le partage du téléphone (WhatsApp, SMS…). Remplacé dans les tests.
   Future<void> Function(String text, String subject) share = _systemShare;
+
+  /// Partage un fichier (relevé PDF) : WhatsApp, e-mail, Fichiers… Remplacé dans les tests.
+  Future<void> Function(Uint8List bytes, String fileName, String mimeType) shareFile = _systemShareFile;
 
   /// Ouvre l'appareil photo et renvoie le texte du QR lu, ou null si le client abandonne.
   /// Remplacé dans les tests, qui n'ont pas de caméra.
@@ -61,6 +66,12 @@ class AppState extends ChangeNotifier {
     customer = null;
     notifyListeners();
   }
+}
+
+Future<void> _systemShareFile(Uint8List bytes, String fileName, String mimeType) async {
+  await SharePlus.instance.share(
+    ShareParams(files: [XFile.fromData(bytes, mimeType: mimeType, name: fileName)], fileNameOverrides: [fileName]),
+  );
 }
 
 Future<void> _systemShare(String text, String subject) async {

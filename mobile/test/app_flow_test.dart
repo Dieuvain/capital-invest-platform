@@ -509,6 +509,28 @@ void main() {
     expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));
   });
 
+  testWidgets('relevé de compte : choisir le mois, lire le résumé, partager le PDF', (tester) async {
+    final shared = <(int, String, String)>[];
+    app.shareFile = (bytes, name, type) async => shared.add((bytes.length, name, type));
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Historique'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('statements')));
+    await tester.pumpAndSettle();
+    expect(find.text('Novembre 2026'), findsOneWidget);
+    expect(find.text('Mois en cours, jusqu\'à aujourd\'hui'), findsOneWidget);
+    await tester.tap(find.text('Octobre 2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('Du 1er octobre au 31 octobre'), findsOneWidget);
+    expect(find.text('Solde au 1er octobre'), findsOneWidget);
+    expect(find.text('140,80\u00A0\$'), findsOneWidget);
+    expect(find.text('5 opérations'), findsOneWidget);
+    await tester.tap(find.text('Télécharger le relevé (PDF)'));
+    await tester.pumpAndSettle();
+    expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
+  });
+
   testWidgets('une session expirée ramène à l\'écran de connexion', (tester) async {
     await start(tester);
     await login(tester);

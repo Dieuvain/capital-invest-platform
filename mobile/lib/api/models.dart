@@ -23,6 +23,59 @@ class SessionTokens {
       SessionTokens(accessToken: j['accessToken'], customer: Customer.fromJson(j['customer']['customer']));
 }
 
+/// Un mois de relevé disponible. [partial] : le mois en cours, arrêté à aujourd'hui.
+class StatementMonth {
+  StatementMonth(this.month, this.partial);
+
+  /// « 2026-11 ».
+  final String month;
+  final bool partial;
+
+  factory StatementMonth.fromJson(Map<String, dynamic> j) => StatementMonth(j['month'], j['partial'] == true);
+}
+
+/// Relevé d'un mois : solde d'ouverture, opérations du plus ancien au plus récent, solde de clôture.
+class Statement {
+  Statement({
+    required this.month,
+    required this.from,
+    required this.to,
+    required this.partial,
+    required this.openingBalanceMinor,
+    required this.totalInMinor,
+    required this.totalOutMinor,
+    required this.feesMinor,
+    required this.closingBalanceMinor,
+    required this.items,
+  });
+
+  final String month;
+  final DateTime from;
+  final DateTime to;
+  final bool partial;
+  final int openingBalanceMinor;
+  final int totalInMinor;
+
+  /// Sorties, frais compris (nombre positif).
+  final int totalOutMinor;
+  final int feesMinor;
+  final int closingBalanceMinor;
+  final List<HistoryItem> items;
+
+  factory Statement.fromJson(Map<String, dynamic> j) => Statement(
+    month: j['month'],
+    from: DateTime.parse(j['from']),
+    to: DateTime.parse(j['to']),
+    partial: j['partial'] == true,
+    openingBalanceMinor: j['openingBalanceMinor'],
+    totalInMinor: j['totalInMinor'],
+    totalOutMinor: j['totalOutMinor'],
+    feesMinor: j['feesMinor'],
+    closingBalanceMinor: j['closingBalanceMinor'],
+    items: (j['items'] as List).map((e) => HistoryItem.fromJson(e)).toList(),
+  );
+}
+
 /// Une connexion à ce compte, pour l'écran Sécurité.
 class DeviceSession {
   DeviceSession({

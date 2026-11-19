@@ -58,6 +58,9 @@ class FakeServer {
     'id': id, 'deviceName': name, 'createdAt': at, 'lastSeenAt': at, 'current': current, 'active': current || active,
   };
 
+  /// Fichiers PDF servis par /v1/me/statements/{mois}/pdf.
+  static final pdf = utf8.encode('%PDF-1.4 relevé');
+
   /// Demandes d'argent, plus récentes d'abord.
   List<Map<String, dynamic>> moneyRequests = [];
 
@@ -188,6 +191,30 @@ class FakeServer {
       return _json({
         'toPay': moneyRequests.where(toPay).toList().reversed.toList(),
         'recent': moneyRequests.where((r) => !toPay(r)).toList(),
+      });
+    }
+    if (path == '/v1/me/statements') {
+      return _json([
+        {'month': '2026-11', 'partial': true},
+        {'month': '2026-10', 'partial': false},
+      ]);
+    }
+    final statement = RegExp(r'^/v1/me/statements/(\d{4}-\d{2})(/pdf)?$').firstMatch(path);
+    if (statement != null) {
+      if (statement.group(2) != null) {
+        return http.Response.bytes(pdf, 200, headers: {'content-type': 'application/pdf'});
+      }
+      final items = [
+        historyItem('o-1', 'TOPUP', 15000, at: '2026-10-02T07:14:00Z', operator: 'MPESA'),
+        historyItem('o-2', 'TRANSFER_RECEIVED', 4500, at: '2026-10-04T16:40:00Z', name: 'Grâce Mbuyi', phone: '+243 81• ••• 210', note: 'Remboursement tontine'),
+        historyItem('o-3', 'TRANSFER_SENT', -3030, fee: 30, at: '2026-10-05T06:05:00Z', name: 'Amani Kabeya', phone: '+243 97• ••• 001', note: 'Loyer octobre'),
+        historyItem('o-4', 'WITHDRAWAL', -6090, fee: 90, at: '2026-10-18T08:47:00Z', operator: 'MPESA', msisdn: '+243970000001'),
+        historyItem('o-5', 'TRANSFER_RECEIVED', 2500, at: '2026-10-23T17:31:00Z', name: 'Patrick Ilunga', phone: '+243 81• ••• 211', note: 'Part du marché'),
+      ];
+      return _json({
+        'month': statement.group(1), 'from': '2026-10-01', 'to': '2026-10-31', 'partial': false,
+        'openingBalanceMinor': 1200, 'totalInMinor': 22000, 'totalOutMinor': 9120, 'feesMinor': 120,
+        'closingBalanceMinor': 14080, 'items': items,
       });
     }
     if (path == '/v1/me/security/pin') {
