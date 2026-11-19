@@ -318,6 +318,14 @@ class ApiClient {
 
   Future<Topup> topup(String id) async => Topup.fromJson(await _get('/v1/topups/$id'));
 
+  /// Nom du destinataire (prénom et initiale) avant de confirmer : évite d'envoyer au mauvais numéro.
+  Future<Recipient> lookupRecipient(String phone) async =>
+      Recipient.fromJson(await _get('/v1/transfers/recipient', {'phone': phone}));
+
+  /// Derniers clients à qui l'argent a été envoyé.
+  Future<List<Recipient>> recentRecipients() async =>
+      (await _get('/v1/transfers/recent') as List).map((j) => Recipient.fromJson(j)).toList();
+
   Future<FeeQuote> transferFee(int amountMinor) async =>
       FeeQuote.fromJson(await _get('/v1/transfers/fee', {'amountMinor': '$amountMinor'}));
 

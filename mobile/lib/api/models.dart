@@ -849,3 +849,13 @@ class ScheduledTransfer {
     lastFailure: j['lastFailure'],
   );
 }
+
+/// Destinataire vérifié avant un envoi : prénom et initiale.
+class Recipient {
+  Recipient(this.phone, this.displayName);
+
+  final String phone;
+  final String displayName;
+
+  factory Recipient.fromJson(Map<String, dynamic> j) => Recipient(j['phone'], j['displayName']);
+}

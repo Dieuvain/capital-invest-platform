@@ -61,6 +61,12 @@ class FakeServer {
   /// Réclamations servies par /v1/me/complaints, la plus récente en tête.
   List<Map<String, dynamic>> complaints = [];
 
+  /// Clients connus de /v1/transfers/recipient (numéro → prénom et initiale).
+  static const recipients = {'+243970000002': 'Josué K.', '+243970000402': 'Béni M.', '+243990000870': 'Patrick I.'};
+
+  /// Destinataires servis par /v1/transfers/recent.
+  List<Map<String, dynamic>> recentRecipients = [];
+
   /// Envois programmés servis par /v1/me/scheduled-transfers.
   List<Map<String, dynamic>> scheduled = [];
 
@@ -433,6 +439,14 @@ class FakeServer {
         final start = int.parse(req.url.queryParameters['cursor'] ?? '0');
         final end = (start + limit).clamp(0, all.length);
         return _json({'items': all.sublist(start, end), 'nextCursor': end < all.length ? '$end' : null});
+      case ('GET', '/v1/transfers/recipient'):
+        final p = req.url.queryParameters['phone']!;
+        if (p == '+243970000001') return _error(422, 'SAME_ACCOUNT', 'Impossible');
+        final name = recipients[p];
+        if (name == null) return _error(404, 'RECIPIENT_NOT_FOUND', 'Aucun client');
+        return _json({'phone': p, 'displayName': name});
+      case ('GET', '/v1/transfers/recent'):
+        return _json(recentRecipients);
       case ('GET', '/v1/transfers/fee'):
         final a = int.parse(req.url.queryParameters['amountMinor']!);
         final fee = ((a * 100 + 5000) ~/ 10000).clamp(10, 500);
