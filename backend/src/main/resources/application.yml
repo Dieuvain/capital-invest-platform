@@ -90,6 +90,10 @@ capital-invest:
     bootstrap-admin-password: ${BACKOFFICE_ADMIN_PASSWORD:}
     # Domaines de l'écran back-office, séparés par des virgules. Vide : même domaine que l'API.
     allowed-origins: ${BACKOFFICE_ALLOWED_ORIGINS:}
+  # Crédit téléphone : montant par achat, en centimes de dollar. Le prestataire est encore simulé.
+  airtime:
+    min-amount-minor: 50
+    max-amount-minor: 5000
   # Opérateurs mobile money. Chaque opérateur passe par un prestataire : PAWAPAY (agrégateur),
   # SIMULATOR (développement), ou plus tard un connecteur direct. En production, les trois routes
   # sont obligatoires puisque le simulateur est désactivé.

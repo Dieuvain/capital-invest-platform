@@ -34,14 +34,14 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
     TRANSFER(listOf("TRANSFER")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
-    PAYMENT(listOf("MERCHANT_PAYMENT")),
+    PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND")),
     SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
 }
 
@@ -71,6 +71,8 @@ data class HistoryItem(
     val operator: String?,
     /** Numéro mobile money qui a reçu un retrait (+243…). */
     val msisdn: String?,
+    /** Réseau du numéro rechargé, pour un achat de crédit (VODACOM, AIRTEL, ORANGE, AFRICELL). */
+    val network: String? = null,
     /** Code du commerce payé. */
     val merchantCode: String? = null,
     /** Message joint à un envoi ou à un paiement. */
@@ -176,7 +178,9 @@ class HistoryService(
                shop.name AS merchant_name, shop.code AS merchant_code,
                tp.operator AS topup_operator,
                w.operator AS withdrawal_operator, w.msisdn, w.status AS withdrawal_status,
-               w.failure_message, w.hold_transaction_id
+               COALESCE(w.failure_message, ap.failure_message) AS failure_message,
+               COALESCE(w.hold_transaction_id, ap.hold_transaction_id) AS hold_transaction_id,
+               ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status
         FROM tx
         LEFT JOIN LATERAL (
             SELECT c.full_name, c.phone
@@ -195,6 +199,8 @@ class HistoryService(
         -- Par la clé aussi : juste après l'écriture (notifications), la recharge n'est pas encore liée à sa transaction.
         LEFT JOIN topup tp ON tp.ledger_transaction_id = tx.id OR tx.idempotency_key = 'topup:' || tp.id
         LEFT JOIN withdrawal w ON w.hold_transaction_id = tx.id OR w.final_transaction_id = tx.id
+        -- Par la clé aussi : la notification du remboursement est écrite avant que l'achat soit lié au remboursement.
+        LEFT JOIN airtime_purchase ap ON ap.hold_transaction_id = tx.id OR tx.idempotency_key = 'airtime-refund:' || ap.id
         ORDER BY tx.created_at DESC, tx.id DESC
     """
 
@@ -211,6 +217,8 @@ class HistoryService(
             "WITHDRAWAL" -> HistoryKind.WITHDRAWAL
             "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND" -> HistoryKind.WITHDRAWAL_REFUND
             "MERCHANT_PAYMENT" -> HistoryKind.MERCHANT_PAYMENT
+            "AIRTIME" -> HistoryKind.AIRTIME
+            "AIRTIME_REFUND" -> HistoryKind.AIRTIME_REFUND
             "SAVINGS_DEPOSIT" -> HistoryKind.SAVINGS_DEPOSIT
             "SAVINGS_WITHDRAWAL" -> HistoryKind.SAVINGS_WITHDRAWAL
             else -> HistoryKind.ADJUSTMENT
@@ -234,6 +242,12 @@ class HistoryService(
                 "FAILED" -> HistoryStatus.FAILED
                 else -> HistoryStatus.COMPLETED
             }
+        } else if (kind == HistoryKind.AIRTIME) {
+            when (rs.getString("airtime_status")) {
+                "PENDING" -> HistoryStatus.PENDING
+                "FAILED" -> HistoryStatus.FAILED
+                else -> HistoryStatus.COMPLETED
+            }
         } else {
             HistoryStatus.COMPLETED
         }
@@ -251,10 +265,11 @@ class HistoryService(
             counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name"),
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
             operator = rs.getString("topup_operator") ?: rs.getString("withdrawal_operator"),
-            msisdn = rs.getString("msisdn")?.let { "+$it" },
+            msisdn = (rs.getString("msisdn") ?: rs.getString("airtime_msisdn"))?.let { "+$it" },
+            network = rs.getString("airtime_network"),
             merchantCode = rs.getString("merchant_code"),
             note = if (type == "TRANSFER" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
-            failureMessage = if (status == HistoryStatus.FAILED) rs.getString("failure_message") else null,
+            failureMessage = if (status == HistoryStatus.FAILED || kind == HistoryKind.AIRTIME_REFUND) rs.getString("failure_message") else null,
         )
     }
 

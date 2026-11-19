@@ -12,6 +12,7 @@ import '../ui/chrome.dart';
 import '../ui/format.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'airtime_screen.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
@@ -107,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _payMerchant() => _open(PayMerchantScreen(app: widget.app, limits: limits));
   void _requests() => _open(MoneyRequestsScreen(app: widget.app, limits: limits));
   void _kyc() => _open(KycScreen(app: widget.app, photos: widget.photos));
+  void _airtime() => _open(AirtimeScreen(app: widget.app, limits: limits));
   void _savings() => _open(SavingsScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
 
@@ -120,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
 
   void _more() => showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true, // toutes les lignes, même sur un petit écran
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (sheet) {
       void go(VoidCallback f) {
@@ -128,22 +131,25 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       }
 
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Plus', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
-              _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
-              _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
-              _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
-              _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
-              _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
-              _SheetRow(Icons.person_outline_rounded, 'Mon profil', () => go(() => setState(() => page = 3))),
-            ],
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Plus', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                _SheetRow(Icons.phone_android_rounded, 'Acheter du crédit téléphone', () => go(_airtime)),
+                _SheetRow(Icons.qr_code_scanner_rounded, 'Payer chez un marchand', () => go(_payMerchant)),
+                _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
+                _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
+                _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
+                _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
+                _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),
+                _SheetRow(Icons.person_outline_rounded, 'Mon profil', () => go(() => setState(() => page = 3))),
+              ],
+            ),
           ),
         ),
       );
@@ -268,14 +274,8 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ],
                 ),
               ),
-              if (savings != null) ...[
-                const SizedBox(height: 16),
-                _SavingsCard(savings: savings!, onTap: _savings),
-              ],
-              if (toPay.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                RequestsBanner(toPay: toPay, onTap: _requests),
-              ],
+              if (savings != null) ...[const SizedBox(height: 16), _SavingsCard(savings: savings!, onTap: _savings)],
+              if (toPay.isNotEmpty) ...[const SizedBox(height: 16), RequestsBanner(toPay: toPay, onTap: _requests)],
               if (promos.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 PromoCarousel(
@@ -901,7 +901,11 @@ class _SavingsCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Épargne', style: TextStyle(fontWeight: FontWeight.w700)),
-                Text(line, style: TextStyle(color: context.pal.muted, fontSize: 13), overflow: TextOverflow.ellipsis),
+                Text(
+                  line,
+                  style: TextStyle(color: context.pal.muted, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),

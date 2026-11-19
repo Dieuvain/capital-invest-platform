@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:capital_invest/api/api_client.dart';
@@ -529,6 +530,44 @@ void main() {
     await tester.tap(find.text('Télécharger le relevé (PDF)'));
     await tester.pumpAndSettle();
     expect(shared, [(FakeServer.pdf.length, 'releve-capital-invest-2026-10.pdf', 'application/pdf')]);
+  });
+
+  testWidgets('crédit téléphone : numéro d\'un proche, réseau deviné, PIN, puis refus remboursé', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Acheter du crédit téléphone'));
+    await tester.pumpAndSettle();
+    // Mon numéro par défaut, réseau Airtel deviné (+243 97…).
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('network-AIRTEL'))).selected, isTrue);
+
+    await tester.tap(find.text('Vodacom 812345678'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('network-VODACOM'))).selected, isTrue);
+    await tester.tap(find.text('5 \$'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.ensureVisible(find.text('Acheter 5,00\u00A0\$'));
+    await tester.tap(find.text('Acheter 5,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Crédit envoyé'), findsOneWidget);
+    expect(server.balance, 4500);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/airtime');
+    expect(jsonDecode(sent.body), {'phone': '+243812345678', 'network': 'VODACOM', 'amountMinor': 500, 'pin': '2580'});
+
+    await tester.tap(find.text('Acheter encore'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro à recharger')), '990000000');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '2');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.pump();
+    await tester.ensureVisible(find.text('Acheter 2,00\u00A0\$'));
+    await tester.tap(find.text('Acheter 2,00\u00A0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Crédit non envoyé'), findsOneWidget);
+    expect(find.textContaining('Ce numéro n\'est pas actif chez Airtel. 2,00\u00A0\$ sont revenus'), findsOneWidget);
+    expect(server.balance, 4500);
   });
 
   testWidgets('épargne : mettre de côté, fixer un objectif, reprendre', (tester) async {

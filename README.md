@@ -197,6 +197,18 @@ Dans l'app, Historique → **Relevés de compte** : un relevé par mois depuis l
 - API : `GET /v1/me/statements` (mois disponibles), `GET /v1/me/statements/{AAAA-MM}`, `GET /v1/me/statements/{AAAA-MM}/pdf`.
 - PDF produit par OpenPDF (LGPL/MPL). Exemple : `docs/captures-app/9b-releve-octobre.pdf`.
 
+## Crédit téléphone (unités)
+
+Menu **Plus** → **Acheter du crédit téléphone** : des unités pour son numéro ou celui d'un proche, sur Vodacom, Airtel, Orange et Africell. Le réseau est deviné d'après le préfixe (le client peut le changer pour un numéro porté), les derniers numéros rechargés sont proposés en un geste, et l'achat se confirme par le PIN.
+
+![Crédit téléphone](docs/captures-app/11-credit.png)
+
+- Sans frais pour le client, de 0,50 $ à 50 $ par achat (`capital-invest.airtime`). L'achat compte dans le plafond journalier d'envoi.
+- Dans le grand livre : le montant passe du portefeuille au compte `AIRTIME_PROVIDER_USD` (crédit prépayé chez le prestataire). Si le prestataire refuse (numéro inactif…), le montant revient aussitôt au client, qui est prévenu. Sans réponse sûre, l'achat reste « en cours » et n'est pas remboursé : les unités sont peut-être parties.
+- Historique, reçu et relevé : « Crédit Vodacom » avec le numéro rechargé ; « Crédit non envoyé, remboursé » pour un refus.
+- API : `POST /v1/airtime` (`{"phone", "network"?, "amountMinor", "pin"}`, en-tête `Idempotency-Key`), `GET /v1/airtime/recent`, `GET /v1/airtime/{id}`.
+- **Pas encore branché** : le prestataire réel. Le simulateur envoie toujours les unités, sauf vers un numéro qui finit par 0000. Il faudra choisir un agrégateur d'unités (contrat, commission reçue sur chaque achat), écrire son connecteur (interface `AirtimeConnector`) et une relance des achats restés en cours, avant la mise en service.
+
 ## Épargne
 
 Le client met de l'argent de côté depuis l'accueil (carte **Épargne**) ou le menu : **Mettre de côté** fait passer l'argent du solde à l'épargne, **Reprendre** le ramène sur le solde, à tout moment. Il peut fixer un objectif (un nom comme « Rentrée scolaire » et un montant) et voit où il en est.

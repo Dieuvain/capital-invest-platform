@@ -163,7 +163,7 @@ export interface CustomerSummary {
 
 export type HistoryKind =
   | 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'MERCHANT_PAYMENT'
-  | 'SAVINGS_DEPOSIT' | 'SAVINGS_WITHDRAWAL' | 'ADJUSTMENT'
+  | 'AIRTIME' | 'AIRTIME_REFUND' | 'SAVINGS_DEPOSIT' | 'SAVINGS_WITHDRAWAL' | 'ADJUSTMENT'
 export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL' | 'PAYMENT' | 'SAVINGS'
 
 /** Une opération du client : une ligne par opération, montants en centimes. */
