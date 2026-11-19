@@ -75,6 +75,51 @@ export interface AuditEntry {
 }
 
 export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
+
+/** Fiche client, pour répondre à une réclamation. */
+export interface CustomerSummary {
+  id: string
+  phone: string
+  fullName: string
+  kycLevel: number
+  status: string
+  balanceMinor: number
+}
+
+export type HistoryKind = 'TOPUP' | 'TRANSFER_SENT' | 'TRANSFER_RECEIVED' | 'WITHDRAWAL' | 'WITHDRAWAL_REFUND' | 'ADJUSTMENT'
+export type HistoryCategory = 'TOPUP' | 'TRANSFER' | 'WITHDRAWAL'
+
+/** Une opération du client : une ligne par opération, montants en centimes. */
+export interface HistoryItem {
+  id: string
+  receiptNumber: string
+  kind: HistoryKind
+  status: 'COMPLETED' | 'PENDING' | 'REVIEW' | 'FAILED'
+  amountMinor: number
+  feeMinor: number
+  /** Effet sur le solde : positif quand l'argent entre. */
+  netMinor: number
+  currency: string
+  createdAt: string
+  counterpartyName?: string | null
+  counterpartyPhone?: string | null
+  operator?: Operator | null
+  msisdn?: string | null
+  note?: string | null
+  failureMessage?: string | null
+}
+
+export interface HistoryPage {
+  items: HistoryItem[]
+  nextCursor: string | null
+}
+
+export interface Receipt {
+  item: HistoryItem
+  holderName: string
+  holderPhone: string
+  issuedAt: string
+}
 export type DiscrepancyKind =
   | 'CONFIRMED_NOT_CREDITED'
   | 'CREDITED_NOT_CONFIRMED'
@@ -238,6 +283,17 @@ export class Api {
     this.json<Agent>('POST', '/v1/backoffice/agents', a)
   setAgentActive = (id: string, active: boolean) =>
     this.json<Agent>('POST', `/v1/backoffice/agents/${id}/${active ? 'enable' : 'disable'}`)
+  // ---- Clients ----
+  findCustomer = (phone: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers?phone=${encodeURIComponent(phone)}`)
+  customer = (id: string) => this.json<CustomerSummary>('GET', `/v1/backoffice/customers/${id}`)
+  customerHistory = (id: string, category: HistoryCategory | null, cursor: string | null = null) => {
+    const q = new URLSearchParams({ limit: '25' })
+    if (category) q.set('category', category)
+    if (cursor) q.set('cursor', cursor)
+    return this.json<HistoryPage>('GET', `/v1/backoffice/customers/${id}/history?${q}`)
+  }
+  customerReceipt = (id: string, transactionId: string) =>
+    this.json<Receipt>('GET', `/v1/backoffice/customers/${id}/history/${transactionId}`)
   // ---- Recharges et rapprochement ----
   reviewTopups = () => this.json<ReviewTopup[]>('GET', '/v1/backoffice/topups/review')
   resolveTopup = (id: string, action: ResolveAction, note: string) =>

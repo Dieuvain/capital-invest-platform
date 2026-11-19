@@ -311,8 +311,8 @@ class BackofficeCustomerController(
     @GetMapping
     fun find(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @RequestParam phone: String): CustomerSummary {
         requireAccess(me)
-        val normalized = phone.filter { it.isDigit() || it == '+' }.let { if (it.startsWith("+")) it else "+$it" }
-        val c = customers.findByPhone(normalized) ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Aucun client avec ce numéro")
+        val c = normalizePhone(phone)?.let(customers::findByPhone)
+            ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Aucun client avec ce numéro")
         audit.record(ActorType.AGENT, me.id, "CUSTOMER_VIEWED", "CUSTOMER", c.id)
         return summary(c)
     }
@@ -342,6 +342,17 @@ class BackofficeCustomerController(
     fun receipt(@RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal, @PathVariable id: UUID, @PathVariable transactionId: UUID): Receipt {
         requireAccess(me)
         return history.receipt(customer(id).id, transactionId, maskPhones = false)
+    }
+
+    /** « +243 970 000 001 », « 243970000001 », « 0970000001 » ou « 970000001 » vers +243970000001. */
+    private fun normalizePhone(input: String): String? {
+        val digits = input.filter { it.isDigit() }
+        return when {
+            digits.length == 12 && digits.startsWith("243") -> "+$digits"
+            digits.length == 10 && digits.startsWith("0") -> "+243${digits.drop(1)}"
+            digits.length == 9 -> "+243$digits"
+            else -> null
+        }
     }
 
     private fun summary(c: Customer): CustomerSummary {

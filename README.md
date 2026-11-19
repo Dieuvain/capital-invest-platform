@@ -173,6 +173,18 @@ Côté pawaPay : la même URL de notification sert aux versements (`https://<dom
 
 Back-office (`COMPLIANCE`, `ADMIN`) : les retraits à vérifier apparaissent dans `GET /v1/backoffice/topups/review` (champ `type` : `TOPUP` ou `WITHDRAWAL`), et se traitent par `POST /v1/backoffice/withdrawals/{id}/resolve` (`PAID` ou `REFUND`, avec une note).
 
+## Historique et reçus
+
+Le client voit **une ligne par opération** (pas une ligne par écriture comptable) : recharge, envoi, argent reçu, retrait, retrait remboursé. Chaque ligne donne le montant, les frais et l'effet sur le solde ; la somme des effets donne le solde.
+
+- `GET /v1/me/history` : de la plus récente à la plus ancienne. Filtres `category` (`TOPUP`, `TRANSFER`, `WITHDRAWAL`), `direction` (`IN`, `OUT`), `from` et `to` (dates, heure de Lubumbashi), `limit` (100 au plus). Pagination par `cursor` : la page suivante reste juste même si une opération arrive entre-temps.
+- `GET /v1/me/history/{id}` : reçu de l'opération, avec un numéro lisible (`CI-20261119-51C023`) à donner au service client. Une opération qui ne touche pas le portefeuille du client répond 404.
+- Ce que voit l'autre client d'un envoi : le nom et le numéro **masqué** (`+243 81• ••• 214`). Le destinataire ne voit pas les frais payés par l'expéditeur.
+- Un retrait affiche son état (`PENDING`, `REVIEW`, `FAILED`) ; un retrait refusé apparaît avec, à part, son remboursement frais compris.
+- L'app montre l'historique filtrable et le reçu, partageable par WhatsApp ou SMS.
+
+Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.

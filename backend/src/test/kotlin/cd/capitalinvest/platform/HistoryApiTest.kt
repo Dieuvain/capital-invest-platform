@@ -166,7 +166,7 @@ class HistoryApiTest : ApiTest() {
             .andExpect { status { isForbidden() } }
 
         val compliance = agent(AgentRole.COMPLIANCE)
-        val customer = mvc.get("/v1/backoffice/customers?phone=243970000507") { header("Authorization", "Bearer $compliance") }
+        val customer = mvc.get("/v1/backoffice/customers?phone=0970000507") { header("Authorization", "Bearer $compliance") }
             .andExpect {
                 status { isOk() }
                 jsonPath("$.fullName") { value("Client +243970000507") }
