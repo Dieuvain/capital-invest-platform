@@ -36,6 +36,12 @@ export class FakeServer {
       customerPhone: '+243970000402', customerStatus: 'ACTIVE', kycLevel: 2, resolvedByName: 'Ruth Conformité',
       resolvedAt: '2026-11-17T16:00:00Z', resolutionNote: 'Commerçant connu, paie ses fournisseurs',
     },
+    {
+      id: 'al-m', rule: 'MERCHANT_REPEAT_PAYER', ruleLabel: 'Un client paie le marchand encore et encore',
+      detail: 'Béni Mukendi (+243970000402) a payé 6 fois en 24 h, pour 540,00 $', transactionId: 'tx-alm', status: 'OPEN',
+      createdAt: '2026-11-19T07:30:00Z', customerId: null, customerName: null, customerPhone: null, customerStatus: null, kycLevel: null,
+      merchantId: 'm-1', merchantName: 'Alimentation Mama Nzuzi', merchantCode: 'K7P2QX', merchantStatus: 'ACTIVE',
+    },
   ]
   reports: SuspicionReport[] = []
   customer = { id: 'c-1', phone: '+243970000001', fullName: 'Amani Kabeya', kycLevel: 1, status: 'ACTIVE', balanceMinor: 4750 }
@@ -204,7 +210,11 @@ export class FakeServer {
           status: body.action === 'SUSPEND' ? 'ESCALATED' : 'DISMISSED', resolutionNote: body.note,
           resolvedByName: me.fullName, resolvedAt: '2026-11-19T10:10:00Z',
         })
-        if (body.action === 'SUSPEND') {
+        if (body.action === 'SUSPEND' && a.merchantId) {
+          const m = this.merchants.find((x) => x.id === a.merchantId)!
+          m.status = 'SUSPENDED'
+          this.alerts.filter((x) => x.merchantId === m.id).forEach((x) => { x.merchantStatus = 'SUSPENDED' })
+        } else if (body.action === 'SUSPEND') {
           this.alerts.filter((x) => x.customerId === a.customerId).forEach((x) => { x.customerStatus = 'SUSPENDED' })
           if (a.customerId === this.customer.id) this.customer.status = 'SUSPENDED'
         }
@@ -212,7 +222,9 @@ export class FakeServer {
       }
       const status = u.searchParams.get('status')
       const cid = u.searchParams.get('customerId')
-      return json(this.alerts.filter((a) => (status === 'ALL' || (status === 'OPEN') === (a.status === 'OPEN')) && (!cid || a.customerId === cid)))
+      const mid = u.searchParams.get('merchantId')
+      return json(this.alerts.filter((a) => (status === 'ALL' || (status === 'OPEN') === (a.status === 'OPEN'))
+        && (!cid || a.customerId === cid) && (!mid || a.merchantId === mid)))
     }
     if (path.startsWith('/v1/backoffice/customers')) {
       if (!role('COMPLIANCE', 'ADMIN')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité')

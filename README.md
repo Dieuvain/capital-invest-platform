@@ -259,7 +259,17 @@ Après chaque mouvement d'argent, le serveur regarde le comportement récent des
 - Le contrôle tourne après la fin de l'opération, dans sa propre transaction : une erreur de surveillance ne bloque jamais l'argent.
 - Seuils PROVISOIRES dans `capital-invest.monitoring` (`application.yml`) : à valider par la conformité, puis à ajuster avec les premiers mois d'activité réelle.
 - API : `GET /v1/backoffice/monitoring/alerts` (`status` : `OPEN`, `CLOSED` ou `ALL` ; `customerId` facultatif), `POST /v1/backoffice/monitoring/alerts/{id}/resolve` (`action` : `DISMISS` ou `SUSPEND`, `note`), `POST /v1/backoffice/customers/{id}/status` (`status` : `ACTIVE` ou `SUSPENDED`, `reason`).
-- Pas encore fait : règles sur les marchands.
+
+Les marchands sont surveillés aussi, à chaque paiement reçu. Un faux commerce peut servir à blanchir : l'argent entre par de faux achats et ressort par le reversement.
+
+| Règle (marchand) | Se déclenche quand… (seuils par défaut) |
+| --- | --- |
+| Le marchand se paie lui-même | Un paiement vient du numéro de téléphone du marchand |
+| Un client paie le marchand encore et encore | Le même client paie le même marchand 5 fois en 24 h |
+| Encaissements anormalement élevés | 1 000,00 $ ou plus encaissés en 24 h, et au moins 3 fois la moyenne quotidienne des 30 jours d'avant |
+
+- Une alerte sur un marchand mène à sa fiche. **Suspendre** suspend le marchand (plus de paiement, plus de reversement automatique), pas les clients qui l'ont payé. Pas de déclaration de soupçon depuis une alerte marchand : la déclaration porte sur une personne, ouverte depuis l'alerte ou la fiche du client concerné.
+- La fiche du marchand montre ses alertes, traitées ou non. API : `GET /v1/backoffice/monitoring/alerts?merchantId=…`.
 
 ### Déclarations de soupçon (CENAREF)
 

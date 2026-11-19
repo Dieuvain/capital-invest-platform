@@ -75,6 +75,9 @@ capital-invest:
     fan-in-senders: 5             # expéditeurs différents en 24 h
     cash-out-percent: 80          # part retirée en 24 h…
     cash-out-min-minor: 50000     # … de ce qui est entré, à partir de 500,00 $
+    merchant-repeat-payments: 5   # marchand : même client qui paie autant de fois en 24 h
+    merchant-spike-factor: 3      # marchand : encaissements 24 h ≥ 3 fois la moyenne quotidienne sur 30 jours…
+    merchant-spike-min-minor: 100000  # … et à partir de 1 000,00 $
   # Passage au KYC 2.
   kyc:
     # Clé AES-256 (base64, 32 octets) de chiffrement des pièces d'identité. A fournir en production.

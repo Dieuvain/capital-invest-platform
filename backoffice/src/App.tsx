@@ -149,7 +149,7 @@ export function App({ api }: { api: Api }) {
       page = id ? (
         <SuspicionReportPage api={api} id={id} back={() => go('surveillance')} notify={notify} />
       ) : (
-        <Monitoring api={api} openCustomer={(cid) => go(`clients/${cid}`)} openReport={(rid) => go(`surveillance/${rid}`)} notify={notify} />
+        <Monitoring api={api} openCustomer={(cid) => go(`clients/${cid}`)} openMerchant={(mid) => go(`marchands/${mid}`)} openReport={(rid) => go(`surveillance/${rid}`)} notify={notify} />
       )
       break
     case 'rapprochement':

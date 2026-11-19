@@ -133,4 +133,70 @@ class MonitoringApiTest : ApiTest() {
             audit,
         )
     }
+
+    private fun merchant(admin: String, name: String, phone: String): JsonNode = mvc.post("/v1/backoffice/merchants") {
+        header("Authorization", "Bearer $admin")
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"name":"$name","category":"Alimentation","city":"Lubumbashi","phone":"$phone"}"""
+    }.andExpect { status { isCreated() } }.body()
+
+    private fun pay(s: Session, code: String, amountMinor: Long, key: String) = mvc.post("/v1/merchant-payments") {
+        header("Authorization", "Bearer ${s.token}")
+        header("Idempotency-Key", key)
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"merchantCode":"$code","amountMinor":$amountMinor,"pin":"2580"}"""
+    }
+
+    @Test
+    fun `marchands - se payer soi-meme, faux achats repetes, encaissements qui s'envolent, puis suspension`() {
+        val admin = agent(AgentRole.ADMIN)
+        val compliance = agent(AgentRole.COMPLIANCE)
+        val selfShop = merchant(admin, "Boutique Kasongo", "0990000201")
+        val repeatShop = merchant(admin, "Dépôt Tshala", "0990000202")
+        val bigShop = merchant(admin, "Quincaillerie Lumbu", "0990000203")
+
+        // Le gérant paie sa propre boutique depuis son numéro de marchand.
+        val owner = register("+243990000201")
+        topupConfirmed(owner, 2_000, "s-top")
+        pay(owner, selfShop["code"].asText(), 1_000, "s-1").andExpect { status { isCreated() } }
+
+        // Le même client « achète » cinq fois en une journée.
+        val buyer = register("+243970000940")
+        topupConfirmed(buyer, 10_000, "r-top")
+        repeat(4) { pay(buyer, repeatShop["code"].asText(), 1_500, "r-$it").andExpect { status { isCreated() } } }
+        assertEquals(setOf("MERCHANT_SELF_PAYMENT"), alerts(compliance).map { it["rule"].asText() }.toSet())
+        pay(buyer, repeatShop["code"].asText(), 1_500, "r-5").andExpect { status { isCreated() } }
+
+        // 1 100,00 $ encaissés d'un coup par un commerce sans historique.
+        val whale = register("+243970000941")
+        setKycLevel(whale, 2)
+        topupConfirmed(whale, 110_000, "w-top")
+        pay(whale, bigShop["code"].asText(), 110_000, "w-1").andExpect { status { isCreated() } }
+
+        val open = alerts(compliance).associateBy { it["rule"].asText() }
+        assertEquals(setOf("MERCHANT_SELF_PAYMENT", "MERCHANT_REPEAT_PAYER", "MERCHANT_SPIKE"), open.keys)
+        assertEquals("Boutique Kasongo", open["MERCHANT_SELF_PAYMENT"]!!["merchantName"].asText())
+        assertEquals(true, open["MERCHANT_SELF_PAYMENT"]!!["customerId"].isNull)
+        assertEquals(
+            "Client +243970000940 (+243970000940) a payé 5 fois en 24 h, pour 75,00 \$",
+            open["MERCHANT_REPEAT_PAYER"]!!["detail"].asText(),
+        )
+        assertEquals(
+            "1 100,00 \$ encaissés en 24 h, contre 0,00 \$ par jour en moyenne sur les 30 jours d'avant",
+            open["MERCHANT_SPIKE"]!!["detail"].asText(),
+        )
+
+        // Filtre par marchand, pour sa fiche dans le back-office.
+        val forShop = mvc.get("/v1/backoffice/monitoring/alerts?status=ALL&merchantId=${repeatShop["id"].asText()}") {
+            header("Authorization", "Bearer $compliance")
+        }.body()
+        assertEquals(listOf("MERCHANT_REPEAT_PAYER"), forShop.map { it["rule"].asText() })
+
+        // Suspendre depuis l'alerte : le marchand n'accepte plus de paiement.
+        resolve(compliance, open["MERCHANT_REPEAT_PAYER"]!!["id"].asText(), "SUSPEND", "Faux achats pour sortir de l'argent")
+            .andExpect { status { isOk() }; jsonPath("$.merchantStatus") { value("SUSPENDED") } }
+        pay(buyer, repeatShop["code"].asText(), 500, "r-6").andExpect { jsonPath("$.code") { value("MERCHANT_NOT_ACTIVE") } }
+        // Le client, lui, n'est pas touché.
+        mvc.get("/v1/me") { header("Authorization", "Bearer ${buyer.token}") }.andExpect { status { isOk() } }
+    }
 }

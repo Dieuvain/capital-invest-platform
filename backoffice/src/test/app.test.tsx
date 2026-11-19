@@ -263,13 +263,13 @@ describe('surveillance', () => {
     expect(within(open).getByText('7 expéditeurs différents en 24 h, pour 640,00 $')).toBeInTheDocument()
     expect(within(open).queryByText("Rafale d'opérations")).not.toBeInTheDocument()
 
-    await user.click(within(open).getByRole('button', { name: 'Suspendre' }))
+    await user.click(within(open).getAllByRole('button', { name: 'Suspendre' })[0])
     const confirm = within(open).getByRole('button', { name: 'Suspendre le compte' })
     expect(confirm).toBeDisabled()
     await user.type(within(open).getByLabelText(/Pourquoi suspendre/), 'Collecte pour des tiers, déclaration à la CENAREF')
     await user.click(confirm)
     expect(await screen.findByRole('status')).toHaveTextContent('Compte de Amani Kabeya suspendu')
-    expect(await within(open).findByText('Aucune alerte à traiter.')).toBeInTheDocument()
+    await waitFor(() => expect(within(open).queryByText('7 expéditeurs différents en 24 h, pour 640,00 $')).not.toBeInTheDocument())
     expect(server.requests.find((r) => r.path === '/v1/backoffice/monitoring/alerts/al-1/resolve')?.body)
       .toEqual({ action: 'SUSPEND', note: 'Collecte pour des tiers, déclaration à la CENAREF' })
 
@@ -321,6 +321,29 @@ describe('surveillance', () => {
     const list = await screen.findByRole('region', { name: 'Déclarations de soupçon' })
     expect(await within(list).findByText('Transmise')).toBeInTheDocument()
     expect(within(list).getByText(/DS-2026-0142/)).toBeInTheDocument()
+  })
+
+  it("la conformité suspend un marchand depuis son alerte, puis la retrouve sur la fiche du marchand", async () => {
+    const user = await signIn('conformite@capitalinvest.cd', 'Surveillance')
+    const open = await screen.findByRole('region', { name: 'Alertes à traiter' })
+    const row = (await within(open).findByText('Un client paie le marchand encore et encore')).closest('tr')!
+    expect(within(row).getByText('K7P2QX')).toBeInTheDocument()
+    // Pas de déclaration de soupçon sur un marchand : elle porte sur une personne.
+    expect(within(row).queryByRole('button', { name: 'Déclarer' })).not.toBeInTheDocument()
+
+    await user.click(within(row).getByRole('button', { name: 'Suspendre' }))
+    await user.type(within(open).getByLabelText(/Le marchand ne pourra plus encaisser/), 'Faux achats pour sortir de l\'argent')
+    await user.click(within(open).getByRole('button', { name: 'Suspendre le marchand' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Alimentation Mama Nzuzi suspendu')
+    expect(server.merchants[0].status).toBe('SUSPENDED')
+
+    await user.click(screen.getByRole('button', { name: 'Traitées' }))
+    const closed = await screen.findByRole('region', { name: 'Alertes traitées' })
+    expect(await within(closed).findByText('Marchand suspendu')).toBeInTheDocument()
+    await user.click(within(closed).getByRole('button', { name: 'Alimentation Mama Nzuzi' }))
+    expect(window.location.hash).toBe('#/marchands/m-1')
+    const watch = await screen.findByRole('region', { name: 'Surveillance du marchand' })
+    expect(within(watch).getByText('Faux achats pour sortir de l\'argent', { exact: false })).toBeInTheDocument()
   })
 
   it('la conformité réactive un compte suspendu depuis la fiche client', async () => {

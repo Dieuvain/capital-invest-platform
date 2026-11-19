@@ -201,6 +201,34 @@ function Qr({ payload, label }: { payload: string; label: string }) {
   return <div className="qr" role="img" aria-label={label} dangerouslySetInnerHTML={svg ? { __html: svg } : undefined} />
 }
 
+/** Alertes de surveillance du marchand : seulement s'il y en a. */
+function MerchantAlerts({ api, merchantId, status }: { api: Api; merchantId: string; status: string }) {
+  const { data } = useLoad(() => api.alerts('ALL', undefined, merchantId), [merchantId, status])
+  if (!data || data.length === 0) return null
+  return (
+    <section aria-label="Surveillance du marchand" style={{ marginTop: 10 }}>
+      <h4 style={{ margin: 0 }}>Surveillance</h4>
+      <ul className="pay-list">
+        {data.map((a) => (
+          <li key={a.id}>
+            <div>
+              <div style={{ fontWeight: 600 }}>{a.ruleLabel}</div>
+              <div className="muted">{a.detail}</div>
+              {a.resolutionNote && <div className="muted">Décision : {a.resolutionNote}</div>}
+            </div>
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              {a.status === 'OPEN' ? <span className="badge wait">À traiter</span>
+                : a.status === 'ESCALATED' ? <span className="badge alert">Suspendu</span>
+                : <span className="badge off">Sans suite</span>}
+              <div className="muted">{formatDateTime(a.createdAt)}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function MerchantPanel({ api, id, admin, close, changed }: {
   api: Api
   id: string
@@ -268,6 +296,7 @@ function MerchantPanel({ api, id, admin, close, changed }: {
             {m.city && <div><dt>Ville</dt><dd>{m.city}</dd></div>}
             <div><dt>Créé le</dt><dd>{formatDateTime(m.createdAt)}</dd></div>
           </dl>
+          <MerchantAlerts api={api} merchantId={m.id} status={m.status} />
           <Payouts api={api} merchant={m} payouts={data.payouts} admin={admin}
             done={(message) => { reload(); changed(message) }} />
           <h4 style={{ margin: '10px 0 0' }}>Derniers paiements</h4>
