@@ -79,6 +79,7 @@ export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
 /** Fiche client, pour répondre à une réclamation. */
 /** Alerte de surveillance des opérations (lutte contre le blanchiment). */
 export type MonitoringRule = 'VELOCITY' | 'STRUCTURING' | 'FAN_IN' | 'RAPID_CASH_OUT'
+  | 'MERCHANT_REPEAT_PAYER' | 'MERCHANT_SPIKE' | 'MERCHANT_SELF_PAYMENT'
 export interface MonitoringAlert {
   id: string
   rule: MonitoringRule
@@ -88,11 +89,17 @@ export interface MonitoringAlert {
   transactionId: string
   status: 'OPEN' | 'DISMISSED' | 'ESCALATED'
   createdAt: string
-  customerId: string
-  customerName: string
-  customerPhone: string
-  customerStatus: string
-  kycLevel: number
+  /** Client surveillé ; null pour une alerte sur un marchand. */
+  customerId: string | null
+  customerName: string | null
+  customerPhone: string | null
+  customerStatus: string | null
+  kycLevel: number | null
+  /** Marchand surveillé ; null pour une alerte sur un client. */
+  merchantId?: string | null
+  merchantName?: string | null
+  merchantCode?: string | null
+  merchantStatus?: string | null
   resolvedByName?: string | null
   resolvedAt?: string | null
   resolutionNote?: string | null
@@ -426,8 +433,9 @@ export class Api {
   setCustomerStatus = (id: string, status: 'ACTIVE' | 'SUSPENDED', reason: string) =>
     this.json<{ customerId: string; status: string }>('POST', `/v1/backoffice/customers/${id}/status`, { status, reason })
   // ---- Surveillance des opérations ----
-  alerts = (status: 'OPEN' | 'CLOSED' | 'ALL' = 'OPEN', customerId?: string) =>
-    this.json<MonitoringAlert[]>('GET', `/v1/backoffice/monitoring/alerts?status=${status}${customerId ? `&customerId=${customerId}` : ''}`)
+  alerts = (status: 'OPEN' | 'CLOSED' | 'ALL' = 'OPEN', customerId?: string, merchantId?: string) =>
+    this.json<MonitoringAlert[]>('GET', `/v1/backoffice/monitoring/alerts?status=${status}`
+      + `${customerId ? `&customerId=${customerId}` : ''}${merchantId ? `&merchantId=${merchantId}` : ''}`)
   suspicionReports = () => this.json<SuspicionReportSummary[]>('GET', '/v1/backoffice/suspicion-reports')
   suspicionReport = (id: string) => this.json<SuspicionReport>('GET', `/v1/backoffice/suspicion-reports/${id}`)
   draftSuspicionReport = (customerId: string, alertId?: string) =>

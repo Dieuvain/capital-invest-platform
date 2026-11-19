@@ -16,9 +16,10 @@ const statusLabel: Record<MonitoringAlert['status'], { label: string; cls: strin
  * le plafond, compte qui collecte, retrait aussitôt l'argent reçu). La conformité regarde les opérations
  * du client, puis classe l'alerte sans suite ou suspend le compte, avec une note pour le dossier.
  */
-export function Monitoring({ api, openCustomer, openReport, notify }: {
+export function Monitoring({ api, openCustomer, openMerchant, openReport, notify }: {
   api: Api
   openCustomer: (id: string) => void
+  openMerchant: (id: string) => void
   openReport: (id: string) => void
   notify: (m: string) => void
 }) {
@@ -42,7 +43,9 @@ export function Monitoring({ api, openCustomer, openReport, notify }: {
     setError(null)
     try {
       const a = await api.resolveAlert(pending.id, pending.action, note.trim())
-      notify(pending.action === 'SUSPEND' ? `Compte de ${a.customerName} suspendu` : 'Alerte classée sans suite')
+      notify(pending.action === 'SUSPEND'
+        ? (a.merchantId ? `${a.merchantName} suspendu : ses clients ne peuvent plus le payer` : `Compte de ${a.customerName} suspendu`)
+        : 'Alerte classée sans suite')
       setPending(null)
       list.reload()
     } catch (err) {
@@ -55,6 +58,7 @@ export function Monitoring({ api, openCustomer, openReport, notify }: {
   async function draft(a: MonitoringAlert) {
     setError(null)
     try {
+      if (!a.customerId) return
       const r = await api.draftSuspicionReport(a.customerId, a.id)
       openReport(r.id)
     } catch (err) {
@@ -84,19 +88,21 @@ export function Monitoring({ api, openCustomer, openReport, notify }: {
         ) : (
           <table>
             <thead>
-              <tr><th>Client</th><th>Ce qui a été repéré</th><th>{tab === 'OPEN' ? 'Décision' : 'Décision prise'}</th></tr>
+              <tr><th>Client ou marchand</th><th>Ce qui a été repéré</th><th>{tab === 'OPEN' ? 'Décision' : 'Décision prise'}</th></tr>
             </thead>
             <tbody>
               {alerts?.map((a) => (
-                <AlertRow key={a.id} a={a} openCustomer={openCustomer} pending={pending?.id === a.id ? pending : null}
+                <AlertRow key={a.id} a={a} openCustomer={openCustomer} openMerchant={openMerchant} pending={pending?.id === a.id ? pending : null}
                   choose={(action) => open({ id: a.id, action })} declare={() => draft(a)}>
                   {pending?.id === a.id && (
                     <form className="decision" onSubmit={decide}>
                       <ErrorBanner error={error} />
                       <label className="field">
-                        {pending.action === 'SUSPEND'
+                        {pending.action === 'SUSPEND' && a.merchantId
+                          ? 'Pourquoi suspendre ? Le marchand ne pourra plus encaisser de paiement.'
+                          : pending.action === 'SUSPEND'
                           ? 'Pourquoi suspendre ? Le client ne pourra plus se connecter ni faire bouger son argent.'
-                          : "Pourquoi classer sans suite ? Ce qui explique l'activité du client."}
+                          : `Pourquoi classer sans suite ? Ce qui explique l'activité du ${a.merchantId ? 'marchand' : 'client'}.`}
                         <input type="text" required minLength={5} maxLength={500} autoFocus value={note}
                           onChange={(e) => setNote(e.target.value)}
                           placeholder={pending.action === 'SUSPEND' ? 'Ex. collecte pour des tiers, déclaration à la CENAREF' : 'Ex. commerçant connu, recettes du marché'} />
@@ -105,7 +111,7 @@ export function Monitoring({ api, openCustomer, openReport, notify }: {
                         <span className="spacer" />
                         <button type="button" className="btn ghost small" onClick={() => setPending(null)} disabled={busy}>Annuler</button>
                         <button className={`btn small${pending.action === 'SUSPEND' ? ' danger' : ''}`} disabled={busy || note.trim().length < 5}>
-                          {pending.action === 'SUSPEND' ? 'Suspendre le compte' : 'Classer sans suite'}
+                          {pending.action === 'SUSPEND' ? (a.merchantId ? 'Suspendre le marchand' : 'Suspendre le compte') : 'Classer sans suite'}
                         </button>
                       </div>
                     </form>
@@ -160,25 +166,39 @@ function Reports({ api, open }: { api: Api; open: (id: string) => void }) {
   )
 }
 
-function AlertRow({ a, openCustomer, pending, choose, declare, children }: {
+function AlertRow({ a, openCustomer, openMerchant, pending, choose, declare, children }: {
   a: MonitoringAlert
   openCustomer: (id: string) => void
+  openMerchant: (id: string) => void
   pending: Pending | null
   choose: (action: 'DISMISS' | 'SUSPEND') => void
   declare: () => void
   children: ReactNode
 }) {
-  const s = statusLabel[a.status]
+  const s = a.merchantId && a.status === 'ESCALATED' ? { label: 'Marchand suspendu', cls: 'alert' } : statusLabel[a.status]
   return (
     <>
       <tr>
         <td style={{ verticalAlign: 'top' }}>
-          <button type="button" className="link-btn" onClick={() => openCustomer(a.customerId)}>{a.customerName}</button>
-          <div className="muted small mono">{a.customerPhone}</div>
-          <div className="muted small">
-            Niveau {a.kycLevel}{a.customerStatus !== 'ACTIVE' && ' · '}
-            {a.customerStatus !== 'ACTIVE' && <span className="badge alert">suspendu</span>}
-          </div>
+          {a.merchantId ? (
+            <>
+              <button type="button" className="link-btn" onClick={() => openMerchant(a.merchantId!)}>{a.merchantName}</button>
+              <div className="muted small mono">{a.merchantCode}</div>
+              <div className="muted small">
+                Marchand{a.merchantStatus !== 'ACTIVE' && ' · '}
+                {a.merchantStatus !== 'ACTIVE' && <span className="badge alert">suspendu</span>}
+              </div>
+            </>
+          ) : (
+            <>
+              <button type="button" className="link-btn" onClick={() => openCustomer(a.customerId!)}>{a.customerName}</button>
+              <div className="muted small mono">{a.customerPhone}</div>
+              <div className="muted small">
+                Niveau {a.kycLevel}{a.customerStatus !== 'ACTIVE' && ' · '}
+                {a.customerStatus !== 'ACTIVE' && <span className="badge alert">suspendu</span>}
+              </div>
+            </>
+          )}
         </td>
         <td style={{ verticalAlign: 'top' }}>
           <div className="row" style={{ gap: 6, alignItems: 'flex-start', flexWrap: 'nowrap' }}>
@@ -194,7 +214,7 @@ function AlertRow({ a, openCustomer, pending, choose, declare, children }: {
               <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                 <button type="button" className="btn ghost small" onClick={() => choose('DISMISS')}>Sans suite</button>
                 <button type="button" className="btn ghost small" onClick={() => choose('SUSPEND')}>Suspendre</button>
-                <button type="button" className="btn ghost small" onClick={declare}>Déclarer</button>
+                {!a.merchantId && <button type="button" className="btn ghost small" onClick={declare}>Déclarer</button>}
               </div>
             )
           ) : (
@@ -202,7 +222,7 @@ function AlertRow({ a, openCustomer, pending, choose, declare, children }: {
               <span className={`badge ${s.cls}`}>{s.label}</span>
               <div className="small">{a.resolutionNote}</div>
               <div className="muted small">{a.resolvedByName}{a.resolvedAt && `, ${formatDateTime(a.resolvedAt)}`}</div>
-              {a.status === 'ESCALATED' && (
+              {a.status === 'ESCALATED' && !a.merchantId && (
                 <button type="button" className="btn ghost small" style={{ marginTop: 6 }} onClick={declare}>Déclarer</button>
               )}
             </>

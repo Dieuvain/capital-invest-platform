@@ -10,6 +10,8 @@ import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.common.NotFoundException
 import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.limits.LimitsService
+import cd.capitalinvest.platform.merchants.MerchantService
+import cd.capitalinvest.platform.merchants.MerchantStatus
 import cd.capitalinvest.platform.notifications.MoneyMoved
 import cd.capitalinvest.platform.notifications.NotificationService.Companion.money
 import jakarta.validation.Valid
@@ -57,6 +59,12 @@ data class MonitoringProperties(
     val cashOutPercent: Int = 80,
     /** … quand ce qui est entré atteint au moins ce montant (500,00 $). */
     val cashOutMinMinor: Long = 50_000,
+    /** Marchand : un même client qui paie autant de fois en 24 h (faux achats pour sortir de l'argent). */
+    val merchantRepeatPayments: Int = 5,
+    /** Marchand : encaissements des dernières 24 h à au moins ce multiple de la moyenne quotidienne des 30 jours d'avant… */
+    val merchantSpikeFactor: Int = 3,
+    /** … et à partir de ce montant (1 000,00 $), pour ne pas alerter sur les petits commerces. */
+    val merchantSpikeMinMinor: Long = 100_000,
 )
 
 enum class MonitoringRule(val label: String) {
@@ -64,6 +72,9 @@ enum class MonitoringRule(val label: String) {
     STRUCTURING("Montants juste sous le plafond"),
     FAN_IN("Argent reçu de nombreux clients"),
     RAPID_CASH_OUT("Retrait aussitôt l'argent reçu"),
+    MERCHANT_REPEAT_PAYER("Un client paie le marchand encore et encore"),
+    MERCHANT_SPIKE("Encaissements anormalement élevés"),
+    MERCHANT_SELF_PAYMENT("Le marchand se paie lui-même"),
 }
 
 enum class AlertStatus { OPEN, DISMISSED, ESCALATED }
@@ -76,11 +87,17 @@ data class MonitoringAlert(
     val transactionId: UUID,
     val status: AlertStatus,
     val createdAt: OffsetDateTime,
-    val customerId: UUID,
-    val customerName: String,
-    val customerPhone: String,
-    val customerStatus: String,
-    val kycLevel: Int,
+    /** Client surveillé, ou null pour une alerte sur un marchand. */
+    val customerId: UUID?,
+    val customerName: String?,
+    val customerPhone: String?,
+    val customerStatus: String?,
+    val kycLevel: Int?,
+    /** Marchand surveillé, ou null pour une alerte sur un client. */
+    val merchantId: UUID? = null,
+    val merchantName: String? = null,
+    val merchantCode: String? = null,
+    val merchantStatus: String? = null,
     val resolvedByName: String?,
     val resolvedAt: OffsetDateTime?,
     val resolutionNote: String?,
@@ -96,6 +113,7 @@ class MonitoringService(
     private val jdbc: JdbcClient,
     private val customers: CustomerRepository,
     private val limits: LimitsService,
+    private val merchants: MerchantService,
     private val props: MonitoringProperties,
     private val audit: AuditLog,
     private val clock: Clock,
@@ -151,9 +169,56 @@ class MonitoringService(
                     hits += MonitoringRule.FAN_IN to "${distinct.size} expéditeurs différents en 24 h, pour ${money(senders.sumOf { it.amountMinor })}"
                 }
             }
-            for ((rule, detail) in hits) if (open(customerId, rule, detail, transactionId)) opened += rule
+            for ((rule, detail) in hits) if (open(customerId, null, rule, detail, transactionId)) opened += rule
         }
+        if (touched.any { it[3] == "MERCHANT_PAYMENT" }) opened += checkMerchant(transactionId)
         return opened
+    }
+
+    /**
+     * Un marchand peut servir à blanchir : faux achats répétés d'un même client (l'argent ressort par le
+     * reversement), chiffre d'affaires qui s'envole, ou marchand qui se paie depuis son propre numéro.
+     */
+    private fun checkMerchant(transactionId: UUID): List<MonitoringRule> {
+        val p = jdbc.sql(
+            """SELECT p.merchant_id, p.customer_id, p.created_at, m.phone AS merchant_phone, c.phone AS payer_phone, c.full_name
+               FROM merchant_payment p JOIN merchant m ON m.id = p.merchant_id JOIN customer c ON c.id = p.customer_id
+               WHERE p.transaction_id = :tx""",
+        ).param("tx", transactionId).query { rs, _ ->
+            listOf(
+                rs.getObject("merchant_id", UUID::class.java), rs.getObject("customer_id", UUID::class.java),
+                rs.getObject("created_at", OffsetDateTime::class.java), rs.getString("merchant_phone"), rs.getString("payer_phone"),
+                rs.getString("full_name"),
+            )
+        }.optional().orElse(null) ?: return emptyList()
+        val merchantId = p[0] as UUID
+        val payerId = p[1] as UUID
+        val at = p[2] as OffsetDateTime
+        val hits = mutableListOf<Pair<MonitoringRule, String>>()
+
+        if (p[3] == p[4]) {
+            hits += MonitoringRule.MERCHANT_SELF_PAYMENT to "Paiement de ${p[5]} depuis ${p[4]}, le numéro du marchand lui-même"
+        }
+        val (count, total) = jdbc.sql(
+            """SELECT COUNT(*) AS n, COALESCE(SUM(amount_minor), 0) AS total FROM merchant_payment
+               WHERE merchant_id = :m AND customer_id = :c AND created_at > :from AND created_at <= :to""",
+        ).param("m", merchantId).param("c", payerId).param("from", at.minusHours(24)).param("to", at)
+            .query { rs, _ -> rs.getInt("n") to rs.getLong("total") }.single()
+        if (count >= props.merchantRepeatPayments) {
+            hits += MonitoringRule.MERCHANT_REPEAT_PAYER to "${p[5]} (${p[4]}) a payé $count fois en 24 h, pour ${money(total)}"
+        }
+        val (day, month) = jdbc.sql(
+            """SELECT COALESCE(SUM(amount_minor) FILTER (WHERE created_at > :day), 0) AS day,
+                      COALESCE(SUM(amount_minor) FILTER (WHERE created_at <= :day), 0) AS month
+               FROM merchant_payment WHERE merchant_id = :m AND created_at > :month AND created_at <= :to""",
+        ).param("m", merchantId).param("day", at.minusHours(24)).param("month", at.minusDays(31)).param("to", at)
+            .query { rs, _ -> rs.getLong("day") to rs.getLong("month") }.single()
+        val average = month / 30
+        if (day >= props.merchantSpikeMinMinor && day >= average * props.merchantSpikeFactor) {
+            hits += MonitoringRule.MERCHANT_SPIKE to
+                "${money(day)} encaissés en 24 h, contre ${money(average)} par jour en moyenne sur les 30 jours d'avant"
+        }
+        return hits.filter { (rule, detail) -> open(null, merchantId, rule, detail, transactionId) }.map { it.first }
     }
 
     private fun outgoing(wallet: UUID, from: OffsetDateTime, to: OffsetDateTime): List<Movement> = jdbc.sql(
@@ -181,49 +246,60 @@ class MonitoringService(
         )
     }.list()
 
-    /** Faux si une alerte de cette règle est déjà ouverte pour ce client. */
-    private fun open(customerId: UUID, rule: MonitoringRule, detail: String, transactionId: UUID): Boolean {
+    /** Faux si une alerte de cette règle est déjà ouverte pour ce client ou ce marchand. */
+    private fun open(customerId: UUID?, merchantId: UUID?, rule: MonitoringRule, detail: String, transactionId: UUID): Boolean {
         val id = UUID.randomUUID()
         val inserted = jdbc.sql(
-            """INSERT INTO monitoring_alert (id, customer_id, rule, detail, transaction_id, created_at)
-               VALUES (:id, :c, :rule, :detail, :tx, :now) ON CONFLICT DO NOTHING""",
-        ).param("id", id).param("c", customerId).param("rule", rule.name).param("detail", detail)
+            """INSERT INTO monitoring_alert (id, customer_id, merchant_id, rule, detail, transaction_id, created_at)
+               VALUES (:id, :c, :m, :rule, :detail, :tx, :now) ON CONFLICT DO NOTHING""",
+        ).param("id", id).param("c", customerId).param("m", merchantId).param("rule", rule.name).param("detail", detail)
             .param("tx", transactionId).param("now", now()).update()
         if (inserted == 0) return false
-        audit.record(ActorType.SYSTEM, null, "MONITORING_ALERT_OPENED", "CUSTOMER", customerId, "${rule.label} : $detail")
+        audit.record(
+            ActorType.SYSTEM, null, "MONITORING_ALERT_OPENED", if (merchantId != null) "MERCHANT" else "CUSTOMER",
+            (merchantId ?: customerId)!!, "${rule.label} : $detail",
+        )
         return true
     }
 
-    fun list(status: String?, customerId: UUID?, limit: Int = 100): List<MonitoringAlert> {
+    fun list(status: String?, customerId: UUID?, limit: Int = 100, merchantId: UUID? = null): List<MonitoringAlert> {
         val where = buildList {
             when (status) {
                 "OPEN" -> add("al.status = 'OPEN'")
                 "CLOSED" -> add("al.status <> 'OPEN'")
             }
             if (customerId != null) add("al.customer_id = :c")
+            if (merchantId != null) add("al.merchant_id = :m")
         }.ifEmpty { listOf("TRUE") }.joinToString(" AND ")
         var q = jdbc.sql(
-            """SELECT al.*, c.full_name, c.phone, c.status AS customer_status, c.kyc_level, ag.full_name AS resolver
-               FROM monitoring_alert al JOIN customer c ON c.id = al.customer_id
+            """SELECT al.*, c.full_name, c.phone, c.status AS customer_status, c.kyc_level, ag.full_name AS resolver,
+                      m.name AS merchant_name, m.code AS merchant_code, m.status AS merchant_status
+               FROM monitoring_alert al LEFT JOIN customer c ON c.id = al.customer_id
+               LEFT JOIN merchant m ON m.id = al.merchant_id
                LEFT JOIN backoffice_agent ag ON ag.id = al.resolved_by
                WHERE $where ORDER BY al.created_at DESC, al.id DESC LIMIT :limit""",
         ).param("limit", limit.coerceIn(1, 500))
         if (customerId != null) q = q.param("c", customerId)
+        if (merchantId != null) q = q.param("m", merchantId)
         return q.query { rs, _ ->
             val rule = MonitoringRule.valueOf(rs.getString("rule"))
             MonitoringAlert(
                 rs.getObject("id", UUID::class.java), rule, rule.label, rs.getString("detail"),
                 rs.getObject("transaction_id", UUID::class.java), AlertStatus.valueOf(rs.getString("status")),
                 rs.getObject("created_at", OffsetDateTime::class.java), rs.getObject("customer_id", UUID::class.java),
-                rs.getString("full_name"), rs.getString("phone"), rs.getString("customer_status"), rs.getInt("kyc_level"),
+                rs.getString("full_name"), rs.getString("phone"), rs.getString("customer_status"), rs.getObject("kyc_level") as Int?,
+                rs.getObject("merchant_id", UUID::class.java), rs.getString("merchant_name"), rs.getString("merchant_code"),
+                rs.getString("merchant_status"),
                 rs.getString("resolver"), rs.getObject("resolved_at", OffsetDateTime::class.java), rs.getString("resolution_note"),
             )
         }.list()
     }
 
     fun get(id: UUID): MonitoringAlert =
-        jdbc.sql("SELECT customer_id FROM monitoring_alert WHERE id = :id").param("id", id).query(UUID::class.java).optional().orElse(null)
-            ?.let { c -> list(null, c, 500).first { it.id == id } }
+        jdbc.sql("SELECT customer_id, merchant_id FROM monitoring_alert WHERE id = :id").param("id", id)
+            .query { rs, _ -> rs.getObject("customer_id", UUID::class.java) to rs.getObject("merchant_id", UUID::class.java) }
+            .optional().orElse(null)
+            ?.let { (c, m) -> list(null, c, 500, m).first { it.id == id } }
             ?: throw NotFoundException("ALERT_NOT_FOUND", "Alerte introuvable")
 
     /** Classe l'alerte sans suite, ou suspend le compte du client. La note explique la décision (contrôle de la BCC). */
@@ -240,9 +316,13 @@ class MonitoringService(
         if (updated == 0) throw BusinessException("ALERT_ALREADY_RESOLVED", "Cette alerte a déjà été traitée")
         audit.record(
             ActorType.AGENT, agentId, if (action == ResolveAction.SUSPEND) "MONITORING_ALERT_ESCALATED" else "MONITORING_ALERT_DISMISSED",
-            "CUSTOMER", alert.customerId, "${alert.ruleLabel} : $text",
+            if (alert.merchantId != null) "MERCHANT" else "CUSTOMER", (alert.merchantId ?: alert.customerId)!!, "${alert.ruleLabel} : $text",
         )
-        if (action == ResolveAction.SUSPEND) setCustomerStatus(agentId, alert.customerId, "SUSPENDED", text)
+        if (action == ResolveAction.SUSPEND) {
+            // Un marchand suspendu n'accepte plus de paiement, ni de reversement automatique.
+            if (alert.merchantId != null) merchants.setStatus(agentId, alert.merchantId, MerchantStatus.SUSPENDED, text)
+            else setCustomerStatus(agentId, alert.customerId!!, "SUSPENDED", text)
+        }
         return get(id)
     }
 
@@ -311,9 +391,10 @@ class MonitoringController(private val monitoring: MonitoringService) {
         @RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal,
         @RequestParam(defaultValue = "OPEN") status: String,
         @RequestParam(required = false) customerId: UUID?,
+        @RequestParam(required = false) merchantId: UUID?,
     ): List<MonitoringAlert> {
         requireCompliance(me)
-        return monitoring.list(status, customerId)
+        return monitoring.list(status, customerId, merchantId = merchantId)
     }
 
     @PostMapping("/monitoring/alerts/{id}/resolve")
