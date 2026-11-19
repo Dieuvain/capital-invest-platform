@@ -151,6 +151,21 @@ Dans le tableau de bord pawaPay, déclarer l'URL de notification des dépôts : 
 
 Back-office (`COMPLIANCE`, `ADMIN`) : `GET /v1/backoffice/topups/review`, `POST /v1/backoffice/topups/{id}/resolve`, `GET|POST /v1/backoffice/reconciliation/runs`, `GET /v1/backoffice/reconciliation/items`, `POST /v1/backoffice/reconciliation/items/{id}/resolve`.
 
+## Retraits vers mobile money
+
+Le client envoie son solde vers son propre numéro M-Pesa, Airtel Money ou Orange Money, par le même prestataire que les recharges (pawaPay en production).
+
+- `GET /v1/withdrawals/fee?amountMinor=4000` : frais et total avant confirmation. Frais provisoires : 1,5 %, au moins 0,25 $, au plus 7,50 $ (40 $ coûtent 0,60 $).
+- `POST /v1/withdrawals` (en-tête `Idempotency-Key`, corps `operator`, `amountMinor`, `pin`) : réponse 202, statut `PENDING`. `GET /v1/withdrawals/{id}` pour suivre.
+- **L'argent est bloqué dès la demande** : montant et frais quittent le portefeuille vers le compte `PAYOUTS_IN_TRANSIT_USD`. Impossible de dépenser deux fois la même somme pendant le versement. Les retraits comptent dans le plafond journalier d'envoi.
+- Versement confirmé : l'argent passe sur le compte de règlement du prestataire. Refus certain de l'opérateur : montant **et frais** rendus au client, avec le motif.
+- **Jamais de remboursement sur un doute.** Sans réponse sûre après 24 h, le retrait passe « à vérifier ». Un agent ne peut rembourser que si le prestataire dit que le versement a échoué ou ne le connaît pas, et ne peut le noter versé que si le prestataire le dit payé. Sinon le client risquerait d'être payé deux fois.
+- Le rapprochement de la nuit couvre aussi les retraits : `MARKED_PAID_NOT_PAID` (noté versé, l'opérateur dit échoué : l'agent rembourse) et `PAID_BUT_REFUNDED` (remboursé alors que l'opérateur a payé : à régler à la main).
+
+Côté pawaPay : la même URL de notification sert aux versements (`https://<domaine de l'API>/v1/webhooks/mobile-money/pawapay`, à déclarer aussi pour les « payouts »), et le compte de versement pawaPay doit être approvisionné avant d'ouvrir les retraits.
+
+Back-office (`COMPLIANCE`, `ADMIN`) : les retraits à vérifier apparaissent dans `GET /v1/backoffice/topups/review` (champ `type` : `TOPUP` ou `WITHDRAWAL`), et se traitent par `POST /v1/backoffice/withdrawals/{id}/resolve` (`PAID` ou `REFUND`, avec une note).
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.

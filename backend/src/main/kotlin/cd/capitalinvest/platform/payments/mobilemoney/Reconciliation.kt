@@ -14,6 +14,8 @@ import cd.capitalinvest.platform.payments.Operator
 import cd.capitalinvest.platform.payments.Topup
 import cd.capitalinvest.platform.payments.TopupService
 import cd.capitalinvest.platform.payments.TopupStatus
+import cd.capitalinvest.platform.payments.Withdrawal
+import cd.capitalinvest.platform.payments.WithdrawalService
 import cd.capitalinvest.platform.payments.label
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -37,7 +39,14 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
-enum class DiscrepancyKind { CONFIRMED_NOT_CREDITED, CREDITED_NOT_CONFIRMED, AMOUNT_MISMATCH, STILL_PENDING }
+enum class DiscrepancyKind {
+    CONFIRMED_NOT_CREDITED, CREDITED_NOT_CONFIRMED, // recharges
+    PAID_BUT_REFUNDED, MARKED_PAID_NOT_PAID, // retraits
+    AMOUNT_MISMATCH, STILL_PENDING,
+}
+
+/** Sens de l'argent : recharge (entrée) ou retrait (sortie). */
+enum class MovementType { TOPUP, WITHDRAWAL }
 
 data class ReconciliationRun(
     val id: UUID,
@@ -52,7 +61,9 @@ data class ReconciliationRun(
 data class ReconciliationItem(
     val id: UUID,
     val businessDate: LocalDate,
-    val topupId: UUID,
+    val type: MovementType,
+    /** Identifiant de la recharge ou du retrait. */
+    val targetId: UUID,
     val kind: DiscrepancyKind,
     val ourStatus: String,
     val providerStatus: String,
@@ -68,9 +79,10 @@ data class ReconciliationItem(
     val resolution: String?,
 )
 
-/** Recharge à vérifier, avec ce qu'il faut pour décider. */
+/** Recharge ou retrait à vérifier, avec ce qu'il faut pour décider. */
 data class ReviewTopup(
     val id: UUID,
+    val type: MovementType,
     val operator: Operator,
     val provider: String,
     val amountMinor: Long,
@@ -90,6 +102,7 @@ data class ReviewTopup(
 class ReconciliationService(
     private val jdbc: JdbcClient,
     private val topups: TopupService,
+    private val withdrawals: WithdrawalService,
     private val tx: TransactionTemplate,
     private val clock: Clock,
     limits: LimitsProperties,
@@ -118,35 +131,46 @@ class ReconciliationService(
 
         val from = date.atStartOfDay(zone).toOffsetDateTime()
         val to = date.plusDays(1).atStartOfDay(zone).toOffsetDateTime()
-        // Les recharges déjà à vérifier sont dans leur propre file ; celles déjà tranchées dans ce rapprochement aussi.
-        val ids = jdbc.sql(
-            """SELECT t.id FROM topup t
+        // Ce qui est déjà à vérifier est dans sa propre file ; ce qui a déjà été tranché dans ce rapprochement aussi.
+        fun ids(table: String, column: String) = jdbc.sql(
+            """SELECT t.id FROM $table t
                WHERE t.created_at >= :from AND t.created_at < :to AND t.status <> 'REVIEW'
-                 AND NOT EXISTS (SELECT 1 FROM reconciliation_item i WHERE i.run_id = :run AND i.topup_id = t.id)
+                 AND NOT EXISTS (SELECT 1 FROM reconciliation_item i WHERE i.run_id = :run AND i.$column = t.id)
                ORDER BY t.created_at""",
         ).param("from", from).param("to", to).param("run", runId).query(UUID::class.java).list()
 
         var checked = 0
         var matched = 0
         var discrepancies = 0
-        for (id in ids) {
+        fun record(type: MovementType, id: UUID, status: TopupStatus, amount: Long, found: Triple<DiscrepancyKind?, String, Long?>) {
+            checked++
+            val (kind, providerStatus, providerAmount) = found
+            if (kind == null) {
+                matched++
+                return
+            }
+            discrepancies++
+            jdbc.sql(
+                """INSERT INTO reconciliation_item (id, run_id, topup_id, withdrawal_id, kind, our_status, provider_status,
+                                                    our_amount_minor, provider_amount_minor, created_at)
+                   VALUES (:id, :run, :topup, :withdrawal, :kind, :ours, :theirs, :amount, :pAmount, :now)""",
+            ).param("id", UUID.randomUUID()).param("run", runId)
+                .param("topup", if (type == MovementType.TOPUP) id else null)
+                .param("withdrawal", if (type == MovementType.WITHDRAWAL) id else null)
+                .param("kind", kind.name).param("ours", status.name).param("theirs", providerStatus).param("amount", amount)
+                .param("pAmount", providerAmount).param("now", now()).update()
+        }
+
+        for (id in ids("topup", "topup_id")) {
             // Une recharge encore en attente est d'abord relue : souvent, elle se termine ici.
             val topup = topups.get(id).let { if (it.status == TopupStatus.PENDING) topups.refresh(id) else it }
             if (topup.status == TopupStatus.REVIEW) continue
-            checked++
-            val (kind, providerStatus, providerAmount) = compare(topup)
-            if (kind == null) {
-                matched++
-            } else {
-                discrepancies++
-                jdbc.sql(
-                    """INSERT INTO reconciliation_item (id, run_id, topup_id, kind, our_status, provider_status,
-                                                        our_amount_minor, provider_amount_minor, created_at)
-                       VALUES (:id, :run, :topup, :kind, :ours, :theirs, :amount, :pAmount, :now)""",
-                ).param("id", UUID.randomUUID()).param("run", runId).param("topup", id).param("kind", kind.name)
-                    .param("ours", topup.status.name).param("theirs", providerStatus).param("amount", topup.amountMinor)
-                    .param("pAmount", providerAmount).param("now", now()).update()
-            }
+            record(MovementType.TOPUP, id, topup.status, topup.amountMinor, compare(topup))
+        }
+        for (id in ids("withdrawal", "withdrawal_id")) {
+            val w = withdrawals.get(id).let { if (it.status == TopupStatus.PENDING) withdrawals.refresh(id) else it }
+            if (w.status == TopupStatus.REVIEW) continue
+            record(MovementType.WITHDRAWAL, id, w.status, w.amountMinor, compare(w))
         }
         jdbc.sql("UPDATE reconciliation_run SET finished_at = :now, checked = :c, matched = :m, discrepancies = :d WHERE id = :r")
             .param("now", now()).param("c", checked).param("m", matched).param("d", discrepancies).param("r", runId).update()
@@ -174,6 +198,28 @@ class ReconciliationService(
         return Triple(kind, label(result), amount)
     }
 
+    private fun compare(w: Withdrawal): Triple<DiscrepancyKind?, String, Long?> {
+        if (w.status == TopupStatus.PENDING) return Triple(DiscrepancyKind.STILL_PENDING, "PENDING", null)
+        val result = withdrawals.check(w)
+        val amount = (result as? CheckResult.Completed)?.amountMinor
+        val kind = when (w.status) {
+            TopupStatus.CONFIRMED -> when (result) {
+                // Un versement partiel accepté par un agent garde le montant demandé : seul un versement supérieur est un écart.
+                is CheckResult.Completed ->
+                    if (result.amountMinor <= w.amountMinor && result.currency == w.currency.name) null
+                    else DiscrepancyKind.AMOUNT_MISMATCH
+                is CheckResult.Failed, CheckResult.NotFound -> DiscrepancyKind.MARKED_PAID_NOT_PAID
+                else -> DiscrepancyKind.STILL_PENDING
+            }
+            else -> when (result) {
+                is CheckResult.Completed -> DiscrepancyKind.PAID_BUT_REFUNDED
+                is CheckResult.Failed, CheckResult.NotFound -> null
+                else -> DiscrepancyKind.STILL_PENDING
+            }
+        }
+        return Triple(kind, label(result), amount)
+    }
+
     fun runs(limit: Int, id: UUID? = null): List<ReconciliationRun> =
         jdbc.sql(
             "SELECT * FROM reconciliation_run ${if (id != null) "WHERE id = :id" else ""} ORDER BY business_date DESC LIMIT :limit",
@@ -187,12 +233,15 @@ class ReconciliationService(
 
     fun items(open: Boolean, limit: Int): List<ReconciliationItem> =
         jdbc.sql(
-            """SELECT i.*, r.business_date, t.operator, t.provider, t.created_at AS topup_created_at,
+            """SELECT i.*, r.business_date,
+                      COALESCE(t.operator, w.operator) AS operator, COALESCE(t.provider, w.provider) AS provider,
+                      COALESCE(t.created_at, w.created_at) AS topup_created_at,
                       c.full_name, c.phone, a.full_name AS agent_name
                FROM reconciliation_item i
                JOIN reconciliation_run r ON r.id = i.run_id
-               JOIN topup t ON t.id = i.topup_id
-               JOIN customer c ON c.id = t.customer_id
+               LEFT JOIN topup t ON t.id = i.topup_id
+               LEFT JOIN withdrawal w ON w.id = i.withdrawal_id
+               JOIN customer c ON c.id = COALESCE(t.customer_id, w.customer_id)
                LEFT JOIN backoffice_agent a ON a.id = i.resolved_by
                ${if (open) "WHERE i.resolved_at IS NULL" else ""}
                ORDER BY i.resolved_at DESC NULLS FIRST, r.business_date DESC, i.created_at
@@ -202,7 +251,8 @@ class ReconciliationService(
     private fun item(rs: ResultSet, @Suppress("UNUSED_PARAMETER") row: Int) = ReconciliationItem(
         id = rs.getObject("id", UUID::class.java),
         businessDate = rs.getObject("business_date", LocalDate::class.java),
-        topupId = rs.getObject("topup_id", UUID::class.java),
+        type = if (rs.getObject("topup_id") != null) MovementType.TOPUP else MovementType.WITHDRAWAL,
+        targetId = (rs.getObject("topup_id", UUID::class.java) ?: rs.getObject("withdrawal_id", UUID::class.java)),
         kind = DiscrepancyKind.valueOf(rs.getString("kind")),
         ourStatus = rs.getString("our_status"),
         providerStatus = rs.getString("provider_status"),
@@ -220,12 +270,19 @@ class ReconciliationService(
 
     fun reviewQueue(): List<ReviewTopup> =
         jdbc.sql(
-            """SELECT t.*, c.full_name, c.phone FROM topup t JOIN customer c ON c.id = t.customer_id
-               WHERE t.status = 'REVIEW' ORDER BY t.created_at""",
+            """SELECT 'TOPUP' AS type, t.id, t.operator, t.provider, t.amount_minor, t.currency, t.review_reason, t.checks,
+                      t.created_at, c.full_name, c.phone
+               FROM topup t JOIN customer c ON c.id = t.customer_id WHERE t.status = 'REVIEW'
+               UNION ALL
+               SELECT 'WITHDRAWAL', w.id, w.operator, w.provider, w.amount_minor, w.currency, w.review_reason, w.checks,
+                      w.created_at, c.full_name, c.phone
+               FROM withdrawal w JOIN customer c ON c.id = w.customer_id WHERE w.status = 'REVIEW'
+               ORDER BY created_at""",
         ).query { rs, _ ->
             ReviewTopup(
-                rs.getObject("id", UUID::class.java), Operator.valueOf(rs.getString("operator")), rs.getString("provider"),
-                rs.getLong("amount_minor"), rs.getString("currency"), rs.getString("review_reason"),
+                rs.getObject("id", UUID::class.java), MovementType.valueOf(rs.getString("type")),
+                Operator.valueOf(rs.getString("operator")), rs.getString("provider"),
+                rs.getLong("amount_minor"), rs.getString("currency").trim(), rs.getString("review_reason"),
                 rs.getString("full_name"), rs.getString("phone"), rs.getInt("checks"),
                 rs.getObject("created_at", OffsetDateTime::class.java),
             )
@@ -236,16 +293,21 @@ class ReconciliationService(
      * et seulement s'il le confirme encore à l'instant ; CLOSE consigne une correction faite hors de l'outil.
      */
     fun resolveItem(agent: UUID, itemId: UUID, credit: Boolean, note: String): ReconciliationItem {
-        val (topupId, kind) = jdbc.sql("SELECT topup_id, kind, resolved_at FROM reconciliation_item WHERE id = :id")
+        data class Row(val topupId: UUID?, val withdrawalId: UUID?, val kind: DiscrepancyKind)
+        val row = jdbc.sql("SELECT topup_id, withdrawal_id, kind, resolved_at FROM reconciliation_item WHERE id = :id")
             .param("id", itemId).query { rs, _ ->
                 if (rs.getObject("resolved_at") != null) throw ConflictException("ITEM_ALREADY_RESOLVED", "Écart déjà traité")
-                rs.getObject("topup_id", UUID::class.java) to DiscrepancyKind.valueOf(rs.getString("kind"))
+                Row(rs.getObject("topup_id", UUID::class.java), rs.getObject("withdrawal_id", UUID::class.java), DiscrepancyKind.valueOf(rs.getString("kind")))
             }.optional().orElseThrow { NotFoundException("ITEM_NOT_FOUND", "Écart introuvable") }
         if (credit) {
-            if (kind != DiscrepancyKind.CONFIRMED_NOT_CREDITED) {
-                throw BusinessException("CREDIT_NOT_ALLOWED", "Créditer n'est possible que pour un paiement encaissé et non crédité")
+            // Créditer le client : recharge encaissée sans crédit, ou retrait noté versé que l'opérateur n'a pas payé.
+            when (row.kind) {
+                DiscrepancyKind.CONFIRMED_NOT_CREDITED ->
+                    topups.resolve(row.topupId!!, credit = true, note = note, allowed = setOf(TopupStatus.FAILED))
+                DiscrepancyKind.MARKED_PAID_NOT_PAID ->
+                    withdrawals.resolve(row.withdrawalId!!, WithdrawalService.Decision.REFUND, note)
+                else -> throw BusinessException("CREDIT_NOT_ALLOWED", "Créditer n'est possible que si le client a perdu de l'argent")
             }
-            topups.resolve(topupId, credit = true, note = note, allowed = setOf(TopupStatus.FAILED))
         }
         val updated = jdbc.sql(
             """UPDATE reconciliation_item SET resolved_at = :now, resolved_by = :agent, resolution = :res
@@ -264,6 +326,11 @@ data class ResolveRequest(
 
 enum class ResolveAction { CREDIT, CLOSE }
 
+data class WithdrawalResolveRequest(
+    val action: WithdrawalService.Decision,
+    @field:NotBlank @field:Size(max = 300) val note: String,
+)
+
 data class RunRequest(val businessDate: LocalDate? = null)
 
 /** Écrans « Rapprochement » et « Recharges à vérifier » du back-office. Conformité et administrateurs. */
@@ -272,6 +339,7 @@ data class RunRequest(val businessDate: LocalDate? = null)
 class ReconciliationController(
     private val reconciliation: ReconciliationService,
     private val topups: TopupService,
+    private val withdrawals: WithdrawalService,
     private val audit: AuditLog,
     private val clock: Clock,
     private val limits: LimitsProperties,
@@ -316,8 +384,21 @@ class ReconciliationController(
     ): ReconciliationItem {
         requireAccess(me)
         val item = reconciliation.resolveItem(me.id, id, body.action == ResolveAction.CREDIT, body.note.trim())
-        audit.record(ActorType.AGENT, me.id, "RECONCILIATION_${body.action}", "TOPUP", item.topupId, "${item.kind} : ${body.note.trim()}")
+        audit.record(ActorType.AGENT, me.id, "RECONCILIATION_${body.action}", item.type.name, item.targetId, "${item.kind} : ${body.note.trim()}")
         return item
+    }
+
+    /** Retrait à vérifier : PAID le note versé (l'opérateur doit le confirmer), REFUND rend l'argent (l'opérateur doit confirmer l'échec). */
+    @PostMapping("/withdrawals/{id}/resolve")
+    fun resolveWithdrawal(
+        @RequestAttribute(AGENT_ATTRIBUTE) me: AgentPrincipal,
+        @PathVariable id: UUID,
+        @Valid @RequestBody body: WithdrawalResolveRequest,
+    ): Withdrawal {
+        requireAccess(me)
+        val w = withdrawals.resolve(id, body.action, body.note.trim())
+        audit.record(ActorType.AGENT, me.id, "WITHDRAWAL_REVIEW_${body.action}", "WITHDRAWAL", id, "${w.amountMinor} ${w.currency} : ${body.note.trim()}")
+        return w
     }
 
     @GetMapping("/topups/review")

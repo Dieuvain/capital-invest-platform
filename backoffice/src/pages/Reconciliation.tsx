@@ -1,12 +1,24 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import type { Api, ReconciliationItem, ResolveAction, ReviewTopup } from '../api'
+import type { Api, ReconciliationItem, ReviewTopup } from '../api'
 import { formatDate, formatDateTime, formatShortDate, formatUsd, kindLabel, operatorLabel, providerLabel } from '../format'
 import { ErrorBanner, Icon, PageHead, useLoad } from '../ui'
 
-/** Décision en cours : sur une recharge à vérifier, ou sur un écart du rapprochement. */
-type Pending =
-  | { target: 'topup'; row: ReviewTopup; action: ResolveAction }
-  | { target: 'item'; row: ReconciliationItem; action: ResolveAction }
+/** Une décision proposée sur une ligne : ce qu'on demande, le bouton, et l'appel au serveur. */
+interface Choice {
+  label: string
+  /** Bouton vert : l'argent va au client ou part chez l'opérateur. */
+  positive: boolean
+  prompt: string
+  placeholder: string
+  confirm: string
+  done: string
+  send: (note: string) => Promise<unknown>
+  reload: 'review' | 'items'
+}
+
+type Pending = { key: string; choice: Choice }
+
+const kindOf = { TOPUP: 'Recharge', WITHDRAWAL: 'Retrait' } as const
 
 function yesterday(now = new Date()): string {
   const d = new Date(now)
@@ -61,14 +73,9 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
     setBusy(true)
     setDecisionError(null)
     try {
-      if (pending.target === 'topup') {
-        await api.resolveTopup(pending.row.id, pending.action, note.trim())
-        review.reload()
-      } else {
-        await api.resolveItem(pending.row.id, pending.action, note.trim())
-        items.reload()
-      }
-      notify(pending.action === 'CREDIT' ? `${pending.row.customerName} a été crédité` : 'Dossier clos')
+      await pending.choice.send(note.trim())
+      ;(pending.choice.reload === 'review' ? review : items).reload()
+      notify(pending.choice.done)
       setPending(null)
     } catch (err) {
       setDecisionError((err as Error).message)
@@ -78,23 +85,21 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
   }
 
   const decision = (key: string) =>
-    pending && `${pending.target}-${pending.row.id}` === key ? (
+    pending?.key === key ? (
       <tr>
         <td colSpan={5}>
           <form className="decision" onSubmit={decide}>
             <ErrorBanner error={decisionError} />
             <label className="field">
-              {pending.action === 'CREDIT'
-                ? "Pourquoi créditer ? Le statut est relu chez l'opérateur avant tout crédit."
-                : 'Pourquoi clore ? Ce motif est gardé dans le journal.'}
+              {pending.choice.prompt}
               <input type="text" required maxLength={300} autoFocus value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder={pending.action === 'CREDIT' ? 'Ex. : paiement confirmé par M-Pesa au téléphone' : 'Ex. : remboursé par l’opérateur'} />
+                placeholder={pending.choice.placeholder} />
             </label>
             <div className="row">
               <span className="spacer" />
               <button type="button" className="btn ghost small" onClick={() => setPending(null)} disabled={busy}>Annuler</button>
-              <button className={`btn small ${pending.action === 'CREDIT' ? 'success' : ''}`} disabled={busy || !note.trim()}>
-                {pending.action === 'CREDIT' ? 'Créditer le client' : 'Clore le dossier'}
+              <button className={`btn small ${pending.choice.positive ? 'success' : ''}`} disabled={busy || !note.trim()}>
+                {pending.choice.confirm}
               </button>
             </div>
           </form>
@@ -102,11 +107,59 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
       </tr>
     ) : null
 
+  const reviewChoices = (t: ReviewTopup): Choice[] =>
+    t.type === 'TOPUP'
+      ? [
+          {
+            label: 'Créditer', positive: true, confirm: 'Créditer le client', reload: 'review',
+            prompt: "Pourquoi créditer ? Le statut est relu chez l'opérateur : on crédite le montant réellement encaissé.",
+            placeholder: 'Ex. : paiement confirmé par M-Pesa au téléphone', done: `${t.customerName} a été crédité`,
+            send: (n) => api.resolveTopup(t.id, 'CREDIT', n),
+          },
+          {
+            label: 'Clore', positive: false, confirm: 'Clore le dossier', reload: 'review',
+            prompt: 'Pourquoi clore ? Ce motif est gardé dans le journal.', placeholder: 'Ex. : paiement jamais arrivé',
+            done: 'Dossier clos', send: (n) => api.resolveTopup(t.id, 'CLOSE', n),
+          },
+        ]
+      : [
+          {
+            label: 'Noter versé', positive: true, confirm: 'Noter le retrait versé', reload: 'review',
+            prompt: "Pourquoi noter versé ? L'opérateur doit confirmer le versement, relu à l'instant.",
+            placeholder: 'Ex. : le client confirme avoir reçu l’argent', done: 'Retrait noté versé',
+            send: (n) => api.resolveWithdrawal(t.id, 'PAID', n),
+          },
+          {
+            label: 'Rembourser', positive: false, confirm: 'Rembourser le client', reload: 'review',
+            prompt: "Pourquoi rembourser ? L'opérateur doit confirmer l'échec, sinon le client serait payé deux fois.",
+            placeholder: 'Ex. : échec confirmé par Airtel', done: `${t.customerName} a été remboursé`,
+            send: (n) => api.resolveWithdrawal(t.id, 'REFUND', n),
+          },
+        ]
+
+  const itemChoices = (i: ReconciliationItem): Choice[] => [
+    ...(i.kind === 'CONFIRMED_NOT_CREDITED' || i.kind === 'MARKED_PAID_NOT_PAID'
+      ? [{
+          label: i.type === 'TOPUP' ? 'Créditer' : 'Rembourser', positive: true, reload: 'items' as const,
+          confirm: i.type === 'TOPUP' ? 'Créditer le client' : 'Rembourser le client',
+          prompt: "Pourquoi ? Le statut est relu chez l'opérateur avant de rendre l'argent au client.",
+          placeholder: 'Ex. : confirmé par l’opérateur au téléphone',
+          done: `${i.customerName} a été ${i.type === 'TOPUP' ? 'crédité' : 'remboursé'}`,
+          send: (n: string) => api.resolveItem(i.id, 'CREDIT', n),
+        }]
+      : []),
+    {
+      label: 'Clore', positive: false, confirm: 'Clore le dossier', reload: 'items',
+      prompt: 'Pourquoi clore ? Ce motif est gardé dans le journal.', placeholder: 'Ex. : corrigé avec la finance',
+      done: 'Dossier clos', send: (n) => api.resolveItem(i.id, 'CLOSE', n),
+    },
+  ]
+
   return (
     <>
       <PageHead
         title="Rapprochement"
-        subtitle="Chaque nuit, chaque recharge de la veille est comparée à son statut chez l'opérateur. Rien n'est corrigé sans vous."
+        subtitle="Chaque nuit, chaque recharge et chaque retrait de la veille est comparé à son statut chez l'opérateur. Rien n'est corrigé sans vous."
       >
         <label className="field inline">
           <span className="small muted">Journée</span>
@@ -136,7 +189,7 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
             <span className="sub">tous jours confondus</span>
           </div>
           <div className={`card stat ${(review.data?.length ?? 0) > 0 ? 'warn' : ''}`}>
-            <span className="lbl">Recharges à vérifier</span>
+            <span className="lbl">À vérifier</span>
             <span className="val mono">{review.data?.length ?? 0}</span>
             <span className="sub">en attente d'une décision</span>
           </div>
@@ -144,22 +197,23 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
 
         <section className="card table-wrap" aria-labelledby="t-review">
           <div className="card-head">
-            <h3 id="t-review">Recharges à vérifier</h3>
+            <h3 id="t-review">Recharges et retraits à vérifier</h3>
             <p className="muted small">Montant différent chez l'opérateur, ou aucune réponse sûre après 24 h. Le client voit « en vérification ».</p>
           </div>
           <ErrorBanner error={review.error} />
           {review.data && review.data.length === 0 ? (
-            <div className="empty">Aucune recharge à vérifier.</div>
+            <div className="empty">Rien à vérifier.</div>
           ) : (
             <table>
               <thead>
-                <tr><th>Client</th><th>Recharge</th><th>Pourquoi</th><th>Depuis</th><th /></tr>
+                <tr><th>Client</th><th>Opération</th><th>Pourquoi</th><th>Depuis</th><th /></tr>
               </thead>
               <tbody>
                 {review.data?.map((t) => (
-                  <ReviewRows key={t.id} t={t} onAction={(action) => open({ target: 'topup', row: t, action })}>
-                    {decision(`topup-${t.id}`)}
-                  </ReviewRows>
+                  <Row key={t.id} choices={reviewChoices(t)} onPick={(choice) => open({ key: `r-${t.id}`, choice })}
+                    cells={<ReviewCells t={t} />}>
+                    {decision(`r-${t.id}`)}
+                  </Row>
                 ))}
               </tbody>
             </table>
@@ -177,13 +231,14 @@ export function Reconciliation({ api, notify }: { api: Api; notify: (m: string) 
           ) : (
             <table>
               <thead>
-                <tr><th>Client</th><th>Recharge</th><th>Écart</th><th>Journée</th><th /></tr>
+                <tr><th>Client</th><th>Opération</th><th>Écart</th><th>Journée</th><th /></tr>
               </thead>
               <tbody>
                 {items.data?.map((i) => (
-                  <ItemRows key={i.id} i={i} onAction={(action) => open({ target: 'item', row: i, action })}>
-                    {decision(`item-${i.id}`)}
-                  </ItemRows>
+                  <Row key={i.id} choices={itemChoices(i)} onPick={(choice) => open({ key: `i-${i.id}`, choice })}
+                    cells={<ItemCells i={i} />}>
+                    {decision(`i-${i.id}`)}
+                  </Row>
                 ))}
               </tbody>
             </table>
@@ -224,20 +279,24 @@ function Who({ name, phone }: { name: string; phone: string }) {
   )
 }
 
-function ReviewRows({ t, onAction, children }: { t: ReviewTopup; onAction: (a: ResolveAction) => void; children: ReactNode }) {
+/** Une ligne, ses boutons de décision, et le formulaire de motif juste en dessous quand il est ouvert. */
+function Row({ cells, choices, onPick, children }: {
+  cells: ReactNode
+  choices: Choice[]
+  onPick: (c: Choice) => void
+  children: ReactNode
+}) {
   return (
     <>
       <tr>
-        <Who name={t.customerName} phone={t.customerPhone} />
-        <td>
-          <div className="mono" style={{ fontWeight: 600 }}>{formatUsd(t.amountMinor)}</div>
-          <div className="muted small">{operatorLabel[t.operator]} · {providerLabel(t.provider)}</div>
-        </td>
-        <td className="small">{t.reason ?? '—'}</td>
-        <td className="small mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt)}</td>
+        {cells}
         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-          <button className="btn small success" onClick={() => onAction('CREDIT')}>Créditer</button>{' '}
-          <button className="btn ghost small" onClick={() => onAction('CLOSE')}>Clore</button>
+          {choices.map((c) => (
+            <button key={c.label} className={`btn small ${c.positive ? 'success' : 'ghost'}`} style={{ marginLeft: 6 }}
+              onClick={() => onPick(c)}>
+              {c.label}
+            </button>
+          ))}
         </td>
       </tr>
       {children}
@@ -245,36 +304,50 @@ function ReviewRows({ t, onAction, children }: { t: ReviewTopup; onAction: (a: R
   )
 }
 
-function ItemRows({ i, onAction, children }: { i: ReconciliationItem; onAction: (a: ResolveAction) => void; children: ReactNode }) {
+function Operation({ type, amount, operator, provider, extra }: {
+  type: keyof typeof kindOf
+  amount: number
+  operator: ReviewTopup['operator']
+  provider: string
+  extra?: ReactNode
+}) {
+  return (
+    <td>
+      <div className="mono" style={{ fontWeight: 600 }}>
+        <span className={`badge ${type === 'TOPUP' ? 'off' : 'wait'}`} style={{ marginRight: 8 }}>{kindOf[type]}</span>
+        {formatUsd(amount)}
+        {extra}
+      </div>
+      <div className="muted small" style={{ marginTop: 4 }}>{operatorLabel[operator]} · {providerLabel(provider)}</div>
+    </td>
+  )
+}
+
+function ReviewCells({ t }: { t: ReviewTopup }) {
+  return (
+    <>
+      <Who name={t.customerName} phone={t.customerPhone} />
+      <Operation type={t.type} amount={t.amountMinor} operator={t.operator} provider={t.provider} />
+      <td className="small">{t.reason ?? '—'}</td>
+      <td className="small mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(t.createdAt)}</td>
+    </>
+  )
+}
+
+function ItemCells({ i }: { i: ReconciliationItem }) {
   const k = kindLabel[i.kind]
   return (
     <>
-      <tr>
-        <Who name={i.customerName} phone={i.customerPhone} />
-        <td>
-          <div className="mono" style={{ fontWeight: 600 }}>
-            {formatUsd(i.ourAmountMinor)}
-            {i.providerAmountMinor != null && i.providerAmountMinor !== i.ourAmountMinor && (
-              <span className="muted"> · reçu {formatUsd(i.providerAmountMinor)}</span>
-            )}
-          </div>
-          <div className="muted small">{operatorLabel[i.operator]} · {providerLabel(i.provider)}</div>
-        </td>
-        <td>
-          <span className={`badge ${k.tone}`}>{k.title}</span>
-          <div className="muted small" style={{ marginTop: 4, maxWidth: 320 }}>{k.help}</div>
-        </td>
-        <td className="small" style={{ whiteSpace: 'nowrap' }}>{formatDate(i.businessDate)}</td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-          {i.kind === 'CONFIRMED_NOT_CREDITED' && (
-            <>
-              <button className="btn small success" onClick={() => onAction('CREDIT')}>Créditer</button>{' '}
-            </>
-          )}
-          <button className="btn ghost small" onClick={() => onAction('CLOSE')}>Clore</button>
-        </td>
-      </tr>
-      {children}
+      <Who name={i.customerName} phone={i.customerPhone} />
+      <Operation type={i.type} amount={i.ourAmountMinor} operator={i.operator} provider={i.provider}
+        extra={i.providerAmountMinor != null && i.providerAmountMinor !== i.ourAmountMinor && (
+          <span className="muted"> · opérateur {formatUsd(i.providerAmountMinor)}</span>
+        )} />
+      <td>
+        <span className={`badge ${k.tone}`}>{k.title}</span>
+        <div className="muted small" style={{ marginTop: 4, maxWidth: 320 }}>{k.help}</div>
+      </td>
+      <td className="small" style={{ whiteSpace: 'nowrap' }}>{formatDate(i.businessDate)}</td>
     </>
   )
 }

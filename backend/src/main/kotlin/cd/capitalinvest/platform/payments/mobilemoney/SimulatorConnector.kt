@@ -19,6 +19,7 @@ class SimulatorConnector(private val json: ObjectMapper) : MobileMoneyConnector 
     }
 
     private val outcomes = ConcurrentHashMap<UUID, CheckResult>()
+    private val payoutOutcomes = ConcurrentHashMap<UUID, CheckResult>()
 
     override val name = NAME
 
@@ -28,9 +29,19 @@ class SimulatorConnector(private val json: ObjectMapper) : MobileMoneyConnector 
 
     override fun check(topup: Topup): CheckResult = outcomes[topup.id] ?: CheckResult.Pending
 
+    override fun initiatePayout(request: PaymentRequest) = InitiateResult.Accepted(null)
+
+    override fun checkPayout(withdrawalId: UUID): CheckResult = payoutOutcomes[withdrawalId] ?: CheckResult.Pending
+
     override fun parseNotification(notification: IncomingNotification): ParsedNotification {
-        val id = runCatching { UUID.fromString(json.readTree(notification.body)["topupId"].asText()) }.getOrNull()
-        return ParsedNotification(id, null)
+        val body = runCatching { json.readTree(notification.body) }.getOrNull()
+        fun id(field: String) = runCatching { UUID.fromString(body!![field].asText()) }.getOrNull()
+        return ParsedNotification(id("topupId"), null, id("withdrawalId"))
+    }
+
+    /** Ce que « l'opérateur » répondra désormais pour ce retrait. */
+    fun setPayoutOutcome(withdrawalId: UUID, outcome: CheckResult) {
+        payoutOutcomes[withdrawalId] = outcome
     }
 
     /** Ce que « l'opérateur » répondra désormais pour cette recharge. */

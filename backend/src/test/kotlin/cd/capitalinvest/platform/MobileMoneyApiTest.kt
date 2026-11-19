@@ -142,7 +142,7 @@ class MobileMoneyApiTest : ApiTest() {
             jsonPath("$.discrepancies") { value(2) }
         }
         val items = mvc.get("/v1/backoffice/reconciliation/items") { header("Authorization", "Bearer $admin") }.body()
-        val byTopup = items.associateBy { it["topupId"].asText() }
+        val byTopup = items.associateBy { it["targetId"].asText() }
         assertEquals("CONFIRMED_NOT_CREDITED", byTopup[failed]!!["kind"].asText())
         assertEquals("STILL_PENDING", byTopup[pending]!!["kind"].asText())
 
@@ -154,7 +154,7 @@ class MobileMoneyApiTest : ApiTest() {
         }.andExpect { jsonPath("$.discrepancies") { value(2) } }
 
         val itemId = mvc.get("/v1/backoffice/reconciliation/items") { header("Authorization", "Bearer $admin") }.body()
-            .first { it["topupId"].asText() == failed }["id"].asText()
+            .first { it["targetId"].asText() == failed }["id"].asText()
         mvc.post("/v1/backoffice/reconciliation/items/$itemId/resolve") {
             header("Authorization", "Bearer $admin")
             contentType = MediaType.APPLICATION_JSON
