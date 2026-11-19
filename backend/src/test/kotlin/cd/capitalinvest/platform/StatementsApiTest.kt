@@ -23,7 +23,9 @@ class StatementsApiTest : ApiTest() {
         val current = YearMonth.now(zone)
         val last = current.minusMonths(1)
         val lastDay = last.atDay(15).atStartOfDay(zone).toOffsetDateTime()
-        jdbc.sql("UPDATE ledger_transaction SET created_at = :at").param("at", lastDay).update()
+        // Une heure d'écart : l'ordre des lignes ne dépend pas de l'identifiant des opérations.
+        jdbc.sql("UPDATE ledger_transaction SET created_at = :at + CASE WHEN type = 'TOPUP' THEN interval '0' ELSE interval '1 hour' END")
+            .param("at", lastDay).update()
         jdbc.sql("UPDATE ledger_account SET created_at = :at WHERE customer_id = :c::uuid").param("at", lastDay).param("c", alice.customerId).update()
 
         topupConfirmed(alice, 5_000, "t-2")
