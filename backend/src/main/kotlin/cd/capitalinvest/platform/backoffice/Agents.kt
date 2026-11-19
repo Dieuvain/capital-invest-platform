@@ -22,7 +22,7 @@ import java.time.ZoneOffset
 import java.util.Base64
 import java.util.UUID
 
-enum class AgentRole { KYC_AGENT, COMPLIANCE, ADMIN }
+enum class AgentRole { KYC_AGENT, COMPLIANCE, ADMIN, MARKETING }
 
 data class AgentPrincipal(val id: UUID, val role: AgentRole)
 
