@@ -374,6 +374,17 @@ describe('surveillance', () => {
       .toEqual({ status: 'ACTIVE', reason: 'Justificatifs reçus' })
   })
 
+  it('un compte fermé par le client montre la date et le motif, sans bouton de suspension', async () => {
+    Object.assign(server.customer, { status: 'CLOSED', balanceMinor: 0, closedAt: '2026-11-19T10:00:00Z', closureReason: 'FEES : Trop cher pour moi' })
+    const user = await signIn('conformite@capitalinvest.cd', 'Clients')
+    await user.type(screen.getByLabelText('Numéro du client'), '+243970000001')
+    await user.click(screen.getByRole('button', { name: 'Rechercher' }))
+    const account = await screen.findByRole('region', { name: 'Compte' })
+    expect(within(account).getByText(/^Compte fermé le/)).toBeInTheDocument()
+    expect(account).toHaveTextContent('Motif : frais trop élevés. « Trop cher pour moi »')
+    expect(within(account).queryByRole('button')).not.toBeInTheDocument()
+  })
+
   it('la fiche client montre le plafond par jour choisi par le client et la hausse en attente', async () => {
     Object.assign(server.customer, { personalDailyOutMinor: 5000, pendingDailyOut: { dailyOutMinor: 20000, effectiveAt: '2026-11-20T11:05:00Z' } })
     const user = await signIn('conformite@capitalinvest.cd', 'Clients')

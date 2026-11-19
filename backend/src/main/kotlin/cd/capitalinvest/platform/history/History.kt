@@ -343,6 +343,9 @@ data class CustomerSummary(
     val personalDailyOutMinor: Long? = null,
     /** Hausse de ce plafond en attente (24 h après la demande). */
     val pendingDailyOut: cd.capitalinvest.platform.limits.PendingDailyLimit? = null,
+    /** Compte fermé par le client : date et motif. */
+    val closedAt: java.time.OffsetDateTime? = null,
+    val closureReason: String? = null,
 )
 
 @RestController
@@ -407,6 +410,6 @@ class BackofficeCustomerController(
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
         return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt,
-            personal.dailyOutMinor, personal.pending)
+            personal.dailyOutMinor, personal.pending, c.closedAt, c.closureReason)
     }
 }

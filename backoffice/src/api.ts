@@ -165,6 +165,9 @@ export interface CustomerSummary {
   personalDailyOutMinor?: number | null
   /** Hausse de ce plafond en attente ; dailyOutMinor null : retour au plafond du niveau. */
   pendingDailyOut?: { dailyOutMinor: number | null; effectiveAt: string } | null
+  /** Compte fermé par le client : date et motif (« FEES : commentaire »). */
+  closedAt?: string | null
+  closureReason?: string | null
 }
 
 export type HistoryKind =

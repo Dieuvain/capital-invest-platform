@@ -558,6 +558,44 @@ void main() {
     expect(find.text('Hausse annulée. Votre plafond reste à 50,00\u00A0\$ par jour.'), findsOneWidget);
   });
 
+  testWidgets('fermer son compte : d\'abord vider le solde et l\'épargne, puis motif et PIN', (tester) async {
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('close-account')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('blocker-SAVINGS_NOT_EMPTY')), findsOneWidget);
+    expect(find.textContaining('Retirez ou envoyez votre solde (50,00'), findsOneWidget);
+    expect(find.byKey(const Key('close-confirm')), findsNothing);
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+
+    server.closure = {'canClose': true, 'balanceMinor': 0, 'savingsMinor': 0, 'blockers': []};
+    await tester.tap(find.byKey(const Key('close-account')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.byKey(const Key('close-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dites-nous pourquoi vous partez.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reason-FEES')));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.byKey(const Key('close-confirm')));
+    await tester.pumpAndSettle();
+    expect(server.closed, isTrue);
+    expect(server.requests.lastWhere((r) => r.url.path == '/v1/me/closure').body, contains('"reason":"FEES"'));
+    expect(find.text('Compte fermé'), findsOneWidget);
+    expect(app.signedIn, isFalse);
+    await tester.tap(find.text('Terminer'));
+    await tester.pumpAndSettle();
+    await login(tester);
+    expect(find.textContaining('Ce compte est fermé'), findsOneWidget);
+  });
+
   testWidgets('téléphone volé : bloquer son compte depuis Sécurité, PIN redemandé, retour à l\'accueil', (tester) async {
     await start(tester);
     await login(tester);

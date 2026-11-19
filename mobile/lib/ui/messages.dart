@@ -9,6 +9,7 @@ String messageFor(Object error) {
     'PIN_LOCKED' => 'PIN bloqué après 5 erreurs. Réessayez dans 15 minutes ou changez votre PIN.',
     'SESSION_EXPIRED' || 'SESSION_INVALID' || 'AUTH_REQUIRED' => 'Session expirée. Entrez votre PIN.',
     'CUSTOMER_BLOCKED' => 'Compte bloqué à votre demande. Pour le débloquer, présentez-vous en agence avec votre pièce d\'identité.',
+    'CUSTOMER_CLOSED' => 'Ce compte est fermé. Pour en ouvrir un nouveau sur ce numéro, présentez-vous en agence.',
     'CUSTOMER_NOT_ACTIVE' => 'Compte suspendu. Appelez le service client.',
     'OTP_INVALID' => 'Code invalide ou expiré.',
     'OTP_RATE_LIMITED' => 'Trop de codes demandés. Réessayez dans 10 minutes.',

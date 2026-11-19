@@ -368,7 +368,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sécurité et PIN'));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('close-account')));
+      await tester.pumpAndSettle();
+      await shot('18-fermer-compte$suffix');
+      await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('block-account')));
       await tester.pumpAndSettle();

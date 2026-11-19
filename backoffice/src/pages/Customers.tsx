@@ -247,6 +247,14 @@ function ReceiptPanel({ api, customerId, id, close }: { api: Api; customerId: st
 
 const ruleStatus: Record<MonitoringAlert['status'], string> = { OPEN: 'à traiter', DISMISSED: 'sans suite', ESCALATED: 'compte suspendu' }
 
+const closureReasons: Record<string, string> = {
+  NOT_USED: 'ne s\'en sert plus',
+  FEES: 'frais trop élevés',
+  OTHER_SERVICE: 'passe à un autre service',
+  MOVING: 'quitte la région',
+  OTHER: 'autre raison',
+}
+
 /** Suspendre ou réactiver le compte, avec une note pour le dossier ; et les alertes de surveillance du client. */
 function AccountStatus({ api, customer, notify, changed }: {
   api: Api
@@ -284,7 +292,18 @@ function AccountStatus({ api, customer, notify, changed }: {
     }
   }
 
-  if (customer.status === 'CLOSED') return null
+  if (customer.status === 'CLOSED') {
+    const [code, ...rest] = (customer.closureReason ?? '').split(' : ')
+    return (
+      <section className="card pad stack" aria-label="Compte" style={{ gap: 6 }}>
+        <b>Compte fermé{customer.closedAt ? ` le ${formatDateTime(customer.closedAt)}` : ''}</b>
+        <div className="muted small">
+          Fermé par le client. {closureReasons[code] ? `Motif : ${closureReasons[code]}.` : ''}{rest.length ? ` « ${rest.join(' : ')} »` : ''}
+        </div>
+        <div className="muted small">Les opérations restent consultables. Pour rouvrir, le client se présente en agence avec sa pièce d'identité.</div>
+      </section>
+    )
+  }
   const list = alerts.data ?? []
   return (
     <section className={`card pad stack${suspended ? ' suspended' : ''}`} aria-label="Compte" style={{ gap: 10 }}>

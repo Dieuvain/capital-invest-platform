@@ -950,3 +950,22 @@ class SpendingSummary {
     topRecipients: (j['topRecipients'] as List).map((r) => TopRecipient.fromJson(r)).toList(),
   );
 }
+
+/// Ce qu'il reste à faire avant de pouvoir fermer le compte.
+class ClosureCheck {
+  ClosureCheck(this.canClose, this.balanceMinor, this.savingsMinor, this.blockers);
+
+  final bool canClose;
+  final int balanceMinor;
+  final int savingsMinor;
+
+  /// (code, message) : BALANCE_NOT_EMPTY, SAVINGS_NOT_EMPTY, TOPUP_PENDING, OPERATION_PENDING.
+  final List<(String, String)> blockers;
+
+  factory ClosureCheck.fromJson(Map<String, dynamic> j) => ClosureCheck(
+    j['canClose'] == true,
+    j['balanceMinor'],
+    j['savingsMinor'],
+    [for (final b in j['blockers'] as List) (b['code'] as String, b['message'] as String)],
+  );
+}

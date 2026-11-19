@@ -101,6 +101,28 @@ Le déblocage se fait **en agence seulement**, après vérification de la pièce
 |---|---|
 | ![Bloquer mon compte](docs/captures-app/15-bloquer-compte.png) | ![Compte bloqué](docs/captures-app/15b-compte-bloque.png) |
 
+## Fermer son compte
+
+Dans l'app, sous Sécurité, tout en bas, **Fermer mon compte**.
+
+- **Ce qu'il faut d'abord :** que le compte soit vide (portefeuille et épargne) et qu'aucune opération ne soit en cours (recharge, retrait, crédit ou facture). L'écran liste ce qu'il reste à faire, avec les montants. Aucun argent ne peut rester bloqué sur un compte fermé.
+- **Pour confirmer :** le client choisit un motif (ne s'en sert plus, frais, autre service, déménagement, autre), peut laisser un commentaire, puis donne son PIN.
+- **Ce que fait la fermeture :**
+  - le compte et ses comptes du grand livre passent en `CLOSED` ;
+  - les envois programmés sont arrêtés ;
+  - les demandes d'argent en attente sont annulées ;
+  - toutes les sessions sont fermées ;
+  - le client reçoit un SMS.
+- **Ensuite :**
+  - la connexion est refusée avec le code `CUSTOMER_CLOSED` ;
+  - personne ne peut plus envoyer d'argent sur ce numéro ;
+  - les opérations et le dossier KYC sont conservés ;
+  - le numéro reste attaché au compte fermé, et rouvrir un compte se fait en agence.
+- **Back-office :** la fiche client affiche « Compte fermé », avec la date, le motif et le commentaire.
+- API : `GET /v1/me/closure` (ce qu'il reste à faire), `POST /v1/me/closure` (`pin`, `reason`, `comment`). Journal d'audit : `CUSTOMER_CLOSED`.
+
+![Fermer mon compte](docs/captures-app/18-fermer-compte.png)
+
 ## Plafonds KYC
 
 Valeurs **provisoires**, à valider par la conformité (fichier `application.yml`, section `capital-invest.limits`).

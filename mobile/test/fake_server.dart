@@ -97,6 +97,16 @@ class FakeServer {
     };
   }
 
+  /// Réponse de /v1/me/closure, et compte fermé par /v1/me/closure (POST).
+  Map<String, dynamic> closure = {
+    'canClose': false, 'balanceMinor': 5000, 'savingsMinor': 1850,
+    'blockers': [
+      {'code': 'SAVINGS_NOT_EMPTY', 'message': 'Reprenez votre épargne (18,50 \$) sur votre solde.'},
+      {'code': 'BALANCE_NOT_EMPTY', 'message': 'Retirez ou envoyez votre solde (50,00 \$) : un compte fermé ne peut plus rien rendre.'},
+    ],
+  };
+  bool closed = false;
+
   /// Compte bloqué par le client (/v1/me/security/block ou /v1/auth/block).
   bool blocked = false;
 
@@ -450,6 +460,13 @@ class FakeServer {
       return found == null ? _error(422, 'STATEMENT_UNAVAILABLE', 'Pas de relevé') : _json(found);
     }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/closure') {
+      if (req.method == 'GET') return _json(closure);
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      closed = true;
+      return http.Response('', 204);
+    }
     if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
       if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
       blocked = true;
@@ -470,6 +487,7 @@ class FakeServer {
         final b = body();
         if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
         if (blocked) return _error(403, 'CUSTOMER_BLOCKED', 'Compte bloqué à votre demande');
+        if (closed) return _error(403, 'CUSTOMER_CLOSED', 'Ce compte est fermé');
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,

@@ -55,7 +55,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED
 }
 
 data class NotificationView(
@@ -241,6 +241,17 @@ class NotificationService(
             NotificationKind.DAILY_LIMIT_RAISE_PENDING, "Hausse du plafond demandée",
             "Votre plafond d'envoi passera à ${money(dailyOutMinor)} par jour dans $hours heures. Si ce n'est pas vous, annulez la hausse dans Sécurité ou bloquez votre compte.",
             "Capital Invest: votre plafond d'envoi passera a ${ascii(money(dailyOutMinor))} par jour dans $hours h. Si ce n'est pas vous, bloquez votre compte.",
+        ),
+        null,
+    )
+
+    /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
+    fun accountClosed(customerId: UUID, at: OffsetDateTime) = queue(
+        customerId, "closed:$customerId",
+        Draft(
+            NotificationKind.ACCOUNT_CLOSED, "Compte fermé",
+            "Votre compte Capital Invest est fermé. Merci de nous avoir fait confiance. Si ce n'est pas vous, appelez tout de suite le service client.",
+            "Capital Invest: votre compte est ferme. Merci de votre confiance. Si ce n'est pas vous, appelez vite le service client.",
         ),
         null,
     )

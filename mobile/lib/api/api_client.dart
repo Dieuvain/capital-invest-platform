@@ -178,6 +178,12 @@ class ApiClient {
   Future<List<DeviceSession>> deviceSessions() async =>
       (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();
 
+  Future<ClosureCheck> closureCheck() async => ClosureCheck.fromJson(await _get('/v1/me/closure'));
+
+  /// Ferme le compte : toutes les sessions tombent, celle-ci comprise.
+  Future<void> closeAccount(String pin, String reason, String? comment) =>
+      _post('/v1/me/closure', {'pin': pin, 'reason': reason, 'comment': ?comment});
+
   /// « Bloquer mon compte » : toutes les sessions tombent, celle-ci comprise. Déblocage en agence seulement.
   Future<void> blockAccount(String pin) => _post('/v1/me/security/block', {'pin': pin});
 
