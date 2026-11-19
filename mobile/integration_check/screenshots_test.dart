@@ -136,6 +136,14 @@ void main() {
 
       await nav(tester, 'Historique');
       await shot('2b-historique$suffix');
+      await tester.enterText(find.byKey(const ValueKey('history-search')), 'grâce');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await shot('24-recherche-historique$suffix');
+      await tester.tap(find.byTooltip('Effacer'));
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Envoi à Grâce Mbuyi'));
       await tester.pumpAndSettle();
       await shot('2e-recu$suffix');

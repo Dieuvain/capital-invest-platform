@@ -30,6 +30,7 @@ String messageFor(Object error) {
     'RECIPIENT_NOT_FOUND' => 'Aucun client Capital Invest avec ce numéro.',
     'RECIPIENT_LOOKUP_LIMIT' => 'Trop de numéros vérifiés en une heure. Réessayez plus tard.',
     'RECIPIENT_NOT_ACTIVE' => 'Ce compte ne peut pas recevoir d\'argent pour le moment.',
+    'INVALID_SEARCH' => 'Recherche trop longue : 60 caractères au plus.',
     'SAME_ACCOUNT' => 'Vous ne pouvez pas vous envoyer de l\'argent.',
     'LIMIT_PER_TRANSACTION' => 'Montant au-dessus de votre plafond par opération.',
     'LIMIT_DAILY_PERSONAL' => 'Plafond par jour que vous avez choisi atteint. Vous pouvez le changer dans Sécurité.',

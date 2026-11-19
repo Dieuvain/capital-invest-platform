@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../api/models.dart';
@@ -146,6 +148,11 @@ class _HistoryViewState extends State<HistoryView> with ApiAction {
   String? category;
   List<HistoryItem>? items;
   String? next;
+  final search = TextEditingController();
+  Timer? _typing;
+
+  /// Texte cherché, null sans recherche.
+  String? get _query => search.text.trim().isEmpty ? null : search.text.trim();
 
   @override
   void initState() {
@@ -153,13 +160,43 @@ class _HistoryViewState extends State<HistoryView> with ApiAction {
     _load(reset: true);
   }
 
+  @override
+  void dispose() {
+    _typing?.cancel();
+    search.dispose();
+    super.dispose();
+  }
+
+  /// On cherche quand le client s'arrête de taper, pas à chaque lettre.
+  void _searchChanged(String _) {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 400), _reload);
+    setState(() {}); // bouton d'effacement
+  }
+
+  void _clearSearch() {
+    _typing?.cancel();
+    search.clear();
+    _reload();
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() {
+      items = null;
+      next = null;
+    });
+    _load(reset: true);
+  }
+
   Future<void> _load({required bool reset}) async {
     final wanted = category;
+    final query = _query;
     final page = await run(
       widget.app,
-      () => widget.app.api.history(category: wanted, cursor: reset ? null : next, limit: 20),
+      () => widget.app.api.history(category: wanted, cursor: reset ? null : next, limit: 20, search: query),
     );
-    if (page == null || !mounted || wanted != category) return;
+    if (page == null || !mounted || wanted != category || query != _query) return;
     setState(() {
       items = [if (!reset) ...?items, ...page.items];
       next = page.nextCursor;
@@ -182,6 +219,24 @@ class _HistoryViewState extends State<HistoryView> with ApiAction {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        TextField(
+          key: const ValueKey('history-search'),
+          controller: search,
+          onChanged: _searchChanged,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) {
+            _typing?.cancel();
+            _reload();
+          },
+          decoration: InputDecoration(
+            hintText: 'Nom, numéro, motif, montant ou n° de reçu',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: search.text.isEmpty
+                ? null
+                : IconButton(tooltip: 'Effacer', icon: const Icon(Icons.close_rounded), onPressed: _clearSearch),
+          ),
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -211,7 +266,11 @@ class _HistoryViewState extends State<HistoryView> with ApiAction {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   child: Text(
-                    category == null ? 'Aucune opération pour l\'instant. Commencez par une recharge.' : 'Aucune opération de ce type.',
+                    _query != null
+                        ? 'Aucune opération ne correspond à « $_query ».'
+                        : category == null
+                        ? 'Aucune opération pour l\'instant. Commencez par une recharge.'
+                        : 'Aucune opération de ce type.',
                     style: TextStyle(color: context.pal.muted),
                   ),
                 ),

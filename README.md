@@ -253,6 +253,15 @@ Le client voit **une ligne par opération** (pas une ligne par écriture comptab
 
 Back-office, rôles `COMPLIANCE` et `ADMIN` (écran « Clients ») : `GET /v1/backoffice/customers?phone=…` (numéro en `+243…`, `243…`, `0…` ou 9 chiffres), `GET /v1/backoffice/customers/{id}/history` et `GET /v1/backoffice/customers/{id}/history/{operation}`. Les numéros y sont complets, et chaque recherche est inscrite dans `audit_log` (`CUSTOMER_VIEWED`).
 
+### Rechercher une opération
+
+En haut de l'historique, un champ cherche dans **toutes** les opérations, pas seulement celles qui sont affichées. On peut taper le nom ou le numéro de l'autre client, le motif, un commerce, une facture, un montant (« 25 », « 12,50 ») ou un n° de reçu (« CI-20261118-3F9A2C »). La recherche se combine avec les filtres et la pagination. Elle ne tient compte ni des majuscules ni des accents : « grace » trouve « Grâce ».
+
+![Recherche dans l'historique](docs/captures-app/24-recherche-historique.png)
+
+- API : `GET /v1/me/history?q=…`, avec les autres paramètres habituels. 60 caractères au plus (`INVALID_SEARCH`). Un numéro est comparé sur ses 9 derniers chiffres, quelle que soit la façon de l'écrire (« 0970 004 102 », « +243… »). Les `%` et `_` tapés sont cherchés tels quels.
+- L'app attend que le client ait fini de taper (400 ms) avant d'interroger le serveur, puis ignore les réponses arrivées trop tard.
+
 ## Mes dépenses
 
 Dans l'app, Historique, puis **Mes dépenses** : où part l'argent du mois, par catégorie, comparé au mois d'avant.

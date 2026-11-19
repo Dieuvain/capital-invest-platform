@@ -113,6 +113,40 @@ void main() {
     expect(find.byType(TopupScreen), findsOneWidget);
   });
 
+  testWidgets('historique : recherche par nom ou motif, combinée aux filtres, puis effacée', (tester) async {
+    server.history = [
+      FakeServer.historyItem('s1', 'TRANSFER_SENT', -2020, fee: 20, name: 'Béni Mukendi', phone: '+243 97• ••• 402', note: 'Loyer'),
+      FakeServer.historyItem('r1', 'TRANSFER_RECEIVED', 4500, name: 'Patrick Ilunga', phone: '+243 99• ••• 870'),
+      FakeServer.historyItem('t1', 'TOPUP', 1000, operator: 'MPESA'),
+    ];
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Historique'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recharge M-Pesa'), findsOneWidget);
+
+    // Une seule requête quand le client a fini de taper.
+    await tester.enterText(find.byKey(const ValueKey('history-search')), 'loy');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(find.byKey(const ValueKey('history-search')), 'loyer');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    final searches = server.requests.where((r) => r.url.path == '/v1/me/history' && r.url.queryParameters.containsKey('q'));
+    expect(searches.map((r) => r.url.queryParameters['q']).toList(), ['loyer']);
+    expect(find.text('Envoi à Béni Mukendi'), findsOneWidget);
+    expect(find.text('Recharge M-Pesa'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('filter-TOPUP')));
+    await tester.pumpAndSettle();
+    expect(server.requests.last.url.queryParameters, containsPair('q', 'loyer'));
+    expect(find.text('Aucune opération ne correspond à « loyer ».'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Effacer'));
+    await tester.pumpAndSettle();
+    expect(server.requests.last.url.queryParameters.containsKey('q'), isFalse);
+    expect(find.text('Recharge M-Pesa'), findsOneWidget);
+  });
+
   testWidgets('historique : filtres, page suivante, puis reçu partagé', (tester) async {
     server.history = [
       FakeServer.historyItem('w1', 'WITHDRAWAL', -1015, fee: 15, operator: 'AIRTEL', msisdn: '+243970000001', status: 'PENDING'),

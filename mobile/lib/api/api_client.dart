@@ -328,8 +328,10 @@ class ApiClient {
   Future<Limits> cancelDailyLimitRaise() async => Limits.fromJson(await _delete('/v1/me/limits/daily/pending'));
 
   /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
-  Future<HistoryPage> history({String? category, String? cursor, int limit = 30}) async =>
-      HistoryPage.fromJson(await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit'}));
+  /// [search] : nom, numéro, motif, montant ou n° de reçu.
+  Future<HistoryPage> history({String? category, String? cursor, int limit = 30, String? search}) async => HistoryPage.fromJson(
+    await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit', 'q': ?search}),
+  );
 
   Future<Receipt> receipt(String id) async => Receipt.fromJson(await _get('/v1/me/history/$id'));
 
