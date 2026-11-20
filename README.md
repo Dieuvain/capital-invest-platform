@@ -459,6 +459,32 @@ Beaucoup de proches n'ont pas encore Capital Invest. Quand le numéro tapé n'a 
 - Historique : « Envoi à Maman Chantal », état « En attente de son inscription », puis terminé ou « Envoi remboursé ». Un compte avec un envoi en attente ne peut pas être fermé.
 - API : `POST /v1/transfers/pending` (`{"toPhone", "recipientName", "amountMinor", "pin", "note"}`, en-tête `Idempotency-Key`), `GET /v1/transfers/pending`, `DELETE /v1/transfers/pending/{id}` (annuler).
 
+## Cagnottes
+
+| Mes cagnottes | Code et QR à partager | Participer chez un proche |
+|---|---|---|
+| ![](docs/captures-app/25-cagnottes.png) | ![](docs/captures-app/25b-ma-cagnotte.png) | ![](docs/captures-app/25c-participer.png) |
+
+Un client collecte l'argent de ses proches pour un deuil, un mariage ou une cotisation (menu **Plus**, puis **Cagnottes**) :
+
+- il donne un nom à la cagnotte, et s'il veut un message et un objectif. Il reçoit un code de 6 caractères (sans 0, O, 1 ni I, pour le dicter sans erreur) et un QR, qu'il partage par WhatsApp ou SMS ;
+- ses proches tapent le code, ou scannent le QR avec **Payer**. Ils voient le nom de la cagnotte et le prénom de l'organisateur avant de confirmer avec leur PIN. Participer ne coûte rien, et compte dans leur plafond d'envoi du jour ;
+- un participant peut laisser un mot et cacher son nom aux autres participants. L'organisateur voit toujours les noms, les montants et les mots ; les autres participants ne voient que le total ;
+- l'organisateur reçoit une notification dans l'app à chaque participation (pas de SMS : une cagnotte de deuil en reçoit des dizaines) ;
+- à la clôture, tout l'argent passe sur son solde, avec un SMS. Plus personne ne peut participer.
+
+Règles :
+
+- 3 cagnottes ouvertes au plus par organisateur (`capital-invest.pots.max-open-per-owner`).
+- Une cagnotte ne dépasse pas le solde maximal du niveau de l'organisateur (`POT_FULL`), pour qu'il puisse toujours la recevoir. Si son solde est déjà élevé à la clôture, elle attend qu'il passe au niveau 2 ou retire une partie de son solde (`POT_PAYOUT_LIMIT`).
+- Une cagnotte ouverte empêche de fermer son compte.
+- Grand livre : un compte `CUSTOMER_POT` par cagnotte, au nom de l'organisateur ; écritures `POT_CONTRIBUTION` (portefeuille du participant vers la cagnotte) et `POT_PAYOUT` (cagnotte vers le portefeuille de l'organisateur). L'écran Activité du back-office compte les participations dans les envois et l'argent des cagnottes dans l'argent des clients.
+- Le plafond d'envoi du jour compte désormais aussi les envois à un proche sans compte, qui y échappaient.
+
+API : `POST /v1/me/pots` (`title`, `description`?, `targetMinor`?), `GET /v1/me/pots`, `POST /v1/me/pots/{id}/close`, `GET /v1/pots/{code}`, `POST /v1/pots/{code}/contributions` (`amountMinor`, `pin`, `message`?, `hideName`?, en-tête `Idempotency-Key`).
+
+Captures en mode sombre : [cagnottes](docs/captures-app/25-cagnottes-sombre.png), [ma cagnotte](docs/captures-app/25b-ma-cagnotte-sombre.png), [participer](docs/captures-app/25c-participer-sombre.png).
+
 ## Envois programmés
 
 Menu **Plus** → **Envois programmés** : le loyer chaque mois, l'argent pour la famille chaque semaine. Le client choisit le destinataire, le montant, le rythme et le jour, voit les frais de chaque envoi, puis confirme **une fois** par son PIN. Après un envoi ordinaire, « Répéter cet envoi chaque mois » préremplit le formulaire.

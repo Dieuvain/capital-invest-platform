@@ -299,6 +299,8 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.BILL_REFUND -> "Facture non payée, remboursée"
             HistoryKind.SAVINGS_DEPOSIT -> "Mis de côté (épargne)"
             HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
+            HistoryKind.POT_CONTRIBUTION -> "Participation à la cagnotte « ${i.counterpartyName ?: ""} »"
+            HistoryKind.POT_PAYOUT -> "Cagnotte « ${i.counterpartyName ?: ""} » versée"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }

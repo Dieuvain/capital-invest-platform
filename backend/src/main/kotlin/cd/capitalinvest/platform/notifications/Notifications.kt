@@ -61,7 +61,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED, POT_CONTRIBUTION_SENT, POT_CONTRIBUTION_RECEIVED, POT_PAID_OUT
 }
 
 data class NotificationView(
@@ -276,6 +276,21 @@ class NotificationService(
         transactionId,
     )
 
+    /**
+     * À l'organisateur, à chaque participation : dans l'app seulement. Un SMS par participation
+     * serait trop pour une cagnotte de deuil qui en reçoit des dizaines ; le SMS part à la clôture.
+     */
+    fun potContribution(ownerId: UUID, transactionId: UUID, title: String, contributorName: String, amountMinor: Long, message: String?, collectedMinor: Long) = queue(
+        ownerId, "pot-received:$transactionId",
+        Draft(
+            NotificationKind.POT_CONTRIBUTION_RECEIVED, "Nouvelle participation",
+            "$contributorName a versé ${money(amountMinor)} à « $title »" + (message?.let { " : « $it »." } ?: ".") +
+                " Total collecté : ${money(collectedMinor)}.",
+            null,
+        ),
+        null,
+    )
+
     /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
     fun accountClosed(customerId: UUID, at: OffsetDateTime) = queue(
         customerId, "closed:$customerId",
@@ -458,6 +473,17 @@ class NotificationService(
                 "${money(i.amountMinor)} payés à ${i.counterpartyName ?: "un marchand"}. Nouveau solde : ${money(balance)}. " +
                     "Si ce n'est pas vous, appelez le service client.",
                 "Capital Invest: paiement de ${money(i.amountMinor)} a ${short(i.counterpartyName)}. $solde. $ref. Pas vous? Appelez-nous.",
+            )
+            HistoryKind.POT_CONTRIBUTION -> Draft(
+                NotificationKind.POT_CONTRIBUTION_SENT, "Participation envoyée",
+                "${money(i.amountMinor)} versés à la cagnotte « ${i.counterpartyName ?: ""} ». Nouveau solde : ${money(balance)}. " +
+                    "Si ce n'est pas vous, appelez le service client.",
+                "Capital Invest: ${money(i.amountMinor)} verses a la cagnotte ${short(i.counterpartyName)}. $solde. $ref. Pas vous? Appelez-nous.",
+            )
+            HistoryKind.POT_PAYOUT -> Draft(
+                NotificationKind.POT_PAID_OUT, "Cagnotte versée",
+                "La cagnotte « ${i.counterpartyName ?: ""} » est clôturée : ${money(i.amountMinor)} sont sur votre compte. Nouveau solde : ${money(balance)}.",
+                "Capital Invest: cagnotte ${short(i.counterpartyName)} cloturee, ${money(i.amountMinor)} sur votre compte. $solde. $ref",
             )
             HistoryKind.ADJUSTMENT -> Draft(
                 NotificationKind.ADJUSTMENT, "Solde corrigé",

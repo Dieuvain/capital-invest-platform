@@ -381,6 +381,35 @@ class ApiClient {
   Future<PendingTransfer> cancelPendingTransfer(String id) async =>
       PendingTransfer.fromJson(await _delete('/v1/transfers/pending/$id'));
 
+  /// Mes cagnottes : ouvertes d'abord.
+  Future<List<Pot>> myPots() async => (await _get('/v1/me/pots') as List).map((j) => Pot.fromJson(j)).toList();
+
+  Future<Pot> createPot({required String title, String? description, int? targetMinor}) async => Pot.fromJson(
+    await _post('/v1/me/pots', {'title': title, 'description': description, 'targetMinor': targetMinor}),
+  );
+
+  /// Clôture : tout l'argent collecté passe sur mon solde.
+  Future<Pot> closePot(String id) async => Pot.fromJson(await _post('/v1/me/pots/$id/close', null));
+
+  /// Une cagnotte par son code, la mienne ou celle d'un proche.
+  Future<Pot> pot(String code) async => Pot.fromJson(await _get('/v1/pots/$code'));
+
+  Future<Pot> contributeToPot({
+    required String code,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+    String? message,
+    bool hideName = false,
+  }) async => Pot.fromJson(
+    await _post('/v1/pots/$code/contributions', {
+      'amountMinor': amountMinor,
+      'pin': pin,
+      'message': message,
+      'hideName': hideName,
+    }, idempotencyKey: idempotencyKey),
+  );
+
   /// Favoris : destinataires enregistrés avec un surnom, triés par surnom.
   Future<List<Favorite>> favorites() async =>
       (await _get('/v1/me/favorites') as List).map((j) => Favorite.fromJson(j)).toList();

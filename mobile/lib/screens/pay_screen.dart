@@ -12,6 +12,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'history_screens.dart';
 import 'money_screens.dart';
+import 'pot_screens.dart';
 
 /// Ouvre l'appareil photo, ou l'outil des tests quand il est fourni.
 Future<String?> scanQr(AppState app, BuildContext context) {
@@ -63,6 +64,14 @@ class _PayMerchantScreenState extends State<PayMerchantScreen> with ApiAction {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(builder: (_) => TransferScreen(app: widget.app, limits: widget.limits, scanned: person)),
         ),
+      );
+      return;
+    }
+    // Le QR d'une cagnotte : on participe, ce n'est pas un paiement marchand.
+    final pot = raw.trim().startsWith('capitalinvest://pot') ? potCodeFrom(raw) : null;
+    if (pot != null) {
+      unawaited(
+        Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ContributeScreen(app: widget.app, code: pot))),
       );
       return;
     }

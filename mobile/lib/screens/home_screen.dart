@@ -19,6 +19,7 @@ import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
 import 'pay_screen.dart';
+import 'pot_screens.dart';
 import 'receive_screen.dart';
 import 'request_screens.dart';
 import 'scheduled_screens.dart';
@@ -117,6 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _bills() => _open(BillersScreen(app: widget.app));
   void _airtime() => _open(AirtimeScreen(app: widget.app, limits: limits));
   void _savings() => _open(SavingsScreen(app: widget.app));
+  void _pots() => _open(PotsScreen(app: widget.app));
   void _complaints() => _open(ComplaintsScreen(app: widget.app));
   void _scheduled() => _open(ScheduledTransfersScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
@@ -156,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
                 _SheetRow(Icons.event_repeat_rounded, 'Envois programmés', () => go(_scheduled)),
                 _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
+                _SheetRow(Icons.volunteer_activism_outlined, 'Cagnottes', () => go(_pots)),
                 _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
                 _SheetRow(Icons.speed_rounded, 'Mes plafonds', () => go(() => setState(() => page = 2))),
                 _SheetRow(Icons.receipt_long_outlined, 'Historique et reçus', () => go(() => setState(() => page = 1))),

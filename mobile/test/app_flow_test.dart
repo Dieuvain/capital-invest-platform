@@ -1283,4 +1283,114 @@ void main() {
     expect(server.uploads, ['ID_FRONT', 'ID_BACK', 'SELFIE']);
     expect(find.text('Demande en cours d\'examen'), findsOneWidget);
   });
+
+  Future<void> openPots(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cagnottes'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('cagnotte : la créer, partager son code, voir les participations, la clôturer vers son solde', (tester) async {
+    final shared = <String>[];
+    app.share = (text, subject) async => shared.add(text);
+    await start(tester);
+    await login(tester);
+    await openPots(tester);
+    await tester.tap(find.byKey(const ValueKey('pot-new')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Créer la cagnotte'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Donnez un nom à la cagnotte'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pot-title')), 'Deuil de Papa Mbuyi');
+    await tester.enterText(find.byKey(const ValueKey('pot-target')), '500');
+    await tester.tap(find.text('Créer la cagnotte'));
+    await tester.pumpAndSettle();
+    expect(find.text('K7M 4QX'), findsOneWidget);
+    expect(server.requests.lastWhere((r) => r.url.path == '/v1/me/pots' && r.method == 'POST').body, contains('"targetMinor":50000'));
+    await tester.ensureVisible(find.byKey(const ValueKey('pot-share')));
+    await tester.tap(find.byKey(const ValueKey('pot-share')));
+    expect(shared.single, contains('K7M 4QX'));
+    expect(shared.single, contains('capitalinvest://pot?c=K7M4QX'));
+
+    // Des proches participent ; l'organisateur voit noms, montants et messages.
+    server.pots = [
+      FakeServer.pot('K7M4QX', 'Deuil de Papa Mbuyi', target: 50000, contributions: [
+        FakeServer.contribution('c2', 'Grâce Kabeya', 1000),
+        FakeServer.contribution('c1', 'Papy Ilunga', 2500, message: 'Courage à la famille'),
+      ]),
+    ];
+    Navigator.of(tester.element(find.text('K7M 4QX'))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('2 participants · code K7M 4QX'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pot-K7M4QX')));
+    await tester.pumpAndSettle();
+    expect(find.text('7 % de ${formatUsd(50000)}'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('« Courage à la famille »'), 300, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('pot-close')), 300, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.byKey(const ValueKey('pot-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('${formatUsd(3500)} passent sur votre solde. Personne ne pourra plus participer.'), findsOneWidget);
+    await tester.tap(find.text('Clôturer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Versé sur votre solde'), findsOneWidget);
+    expect(find.text('K7M 4QX'), findsNothing);
+    expect(server.balance, 5000 + 3500);
+  });
+
+  testWidgets('cagnotte d\'un proche : par code tapé ou QR scanné, nom caché, PIN, puis merci', (tester) async {
+    server.pots = [
+      FakeServer.pot('H8RT2Z', 'Mariage de Jonas', mine: false, ownerName: 'Béni M.', description: 'La dot est samedi', contributions: [
+        FakeServer.contribution('c1', null, null, hiddenAmount: 2000),
+      ]),
+    ];
+    await start(tester);
+    await login(tester);
+    await openPots(tester);
+    await tester.enterText(find.byKey(const ValueKey('pot-code')), 'abc');
+    await tester.tap(find.byKey(const ValueKey('pot-join')));
+    await tester.pumpAndSettle();
+    expect(find.text('Le code a 6 caractères, par exemple K7M 4QX.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pot-code')), 'h8r 2tz');
+    await tester.tap(find.byKey(const ValueKey('pot-join')));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucune cagnotte avec ce code. Vérifiez les 6 caractères.'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Cagnotte'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('pot-code')), 'h8r t2z');
+    await tester.tap(find.byKey(const ValueKey('pot-join')));
+    await tester.pumpAndSettle();
+    expect(find.text('Cagnotte organisée par Béni M.'), findsOneWidget);
+    expect(find.text('La dot est samedi'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pot-amount')), '10');
+    await tester.enterText(find.byKey(const ValueKey('pot-message')), 'Félicitations !');
+    await tester.ensureVisible(find.byKey(const ValueKey('pot-hide-name')));
+    await tester.tap(find.byKey(const ValueKey('pot-hide-name')));
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.ensureVisible(find.text('Participer'));
+    await tester.tap(find.text('Participer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Merci pour votre participation'), findsOneWidget);
+    expect(find.textContaining('${formatUsd(1000)} versés à « Mariage de Jonas »'), findsOneWidget);
+    final sent = server.requests.lastWhere((r) => r.url.path == '/v1/pots/H8RT2Z/contributions');
+    expect(jsonDecode(sent.body), {'amountMinor': 1000, 'pin': '2580', 'message': 'Félicitations !', 'hideName': true});
+    expect(sent.headers['Idempotency-Key'], isNotEmpty);
+    expect(server.balance, 4000);
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.text('Cagnottes'))).pop();
+    await tester.pumpAndSettle();
+
+    // Le QR de la cagnotte, scanné avec « Payer », ouvre la participation.
+    app.scanQr = (_) async => 'capitalinvest://pot?c=H8RT2Z';
+    await pay(tester, 'Payer');
+    expect(find.text('Cagnotte organisée par Béni M.'), findsOneWidget);
+    expect(find.text('Vous avez déjà donné ${formatUsd(1000)}.'), findsOneWidget);
+
+    expect(potCodeFrom('capitalinvest://pot?c=k7m4qx'), 'K7M4QX');
+    expect(potCodeFrom('K7M-4QX'), 'K7M4QX');
+    expect(potCodeFrom('K7M4Q0'), isNull); // pas de zéro, pour ne pas le confondre avec O
+    expect(potCodeFrom('capitalinvest://send?p=243970000002'), isNull);
+  });
 }

@@ -25,6 +25,8 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'BILL_REFUND' => 'Facture non payée, remboursée',
   'SAVINGS_DEPOSIT' => 'Mis de côté',
   'SAVINGS_WITHDRAWAL' => 'Repris de l\'épargne',
+  'POT_CONTRIBUTION' => 'Cagnotte « ${i.counterpartyName ?? ''} »',
+  'POT_PAYOUT' => 'Cagnotte « ${i.counterpartyName ?? ''} » versée',
   _ => 'Correction de solde',
 };
 
@@ -48,6 +50,7 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'AIRTIME_REFUND' || 'BILL_REFUND' || 'TRANSFER_REFUND' => Icons.undo_rounded,
   'BILL_PAYMENT' => Icons.receipt_rounded,
   'SAVINGS_DEPOSIT' || 'SAVINGS_WITHDRAWAL' => Icons.savings_outlined,
+  'POT_CONTRIBUTION' || 'POT_PAYOUT' => Icons.volunteer_activism_outlined,
   _ => Icons.tune_rounded,
 };
 
