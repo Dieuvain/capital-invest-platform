@@ -403,7 +403,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
         ),
         const SizedBox(height: 20),
         FilledButton.icon(
-          onPressed: () => widget.app.share(receiptText(r), 'Reçu Capital Invest ${i.receiptNumber}'),
+          onPressed: () => widget.app.withoutLock(() => widget.app.share(receiptText(r), 'Reçu Capital Invest ${i.receiptNumber}')),
           icon: const Icon(Icons.ios_share_rounded),
           label: const Text('Partager le reçu'),
         ),

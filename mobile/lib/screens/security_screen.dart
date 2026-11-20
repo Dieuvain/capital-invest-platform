@@ -130,6 +130,28 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
           ),
         ),
         const SizedBox(height: 24),
+        const Text('Verrouillage automatique', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(
+          'Après ce temps hors de l\'app, votre PIN est redemandé. Utile si le téléphone est perdu ou volé déverrouillé.',
+          style: TextStyle(color: context.pal.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 10),
+        ListenableBuilder(
+          listenable: widget.app,
+          builder: (context, _) => SegmentedButton<Duration>(
+            key: const ValueKey('lock-after'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: Duration.zero, label: Text('Tout de suite')),
+              ButtonSegment(value: Duration(minutes: 1), label: Text('1 min')),
+              ButtonSegment(value: Duration(minutes: 5), label: Text('5 min')),
+            ],
+            selected: {widget.app.lockAfter},
+            onSelectionChanged: (s) => widget.app.setLockAfter(s.single),
+          ),
+        ),
+        const SizedBox(height: 24),
         const Text('Connexions récentes', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(

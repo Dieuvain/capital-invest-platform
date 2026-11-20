@@ -77,6 +77,20 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - API : `POST /v1/me/security/pin` (`currentPin`, `newPin`), `GET /v1/me/security/sessions`, `POST /v1/me/security/sessions/sign-out-others`. `deviceName` est facultatif à l'inscription, à la connexion et au PIN oublié.
 - En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
+## Verrouillage automatique et solde masqué
+
+Un téléphone posé sur une table ou volé alors qu'il est déverrouillé ne doit pas laisser l'argent accessible. Quand le client quitte l'app plus longtemps que le délai choisi, l'app **redemande le PIN à son retour**. Les écrans ouverts sont fermés et la session aussi. Le numéro reste rempli, et un mot explique pourquoi. Le délai se règle dans Sécurité : tout de suite, 1 minute (par défaut) ou 5 minutes.
+
+Sur l'accueil, l'œil à côté de « Solde » **masque le solde et l'épargne**, pour sortir son téléphone en public sans montrer ce qu'on a. Les deux choix sont gardés sur le téléphone.
+
+| Solde masqué | Délai de verrouillage | App verrouillée |
+|---|---|---|
+| ![](docs/captures-app/23-solde-masque.png) | ![](docs/captures-app/23b-verrouillage.png) | ![](docs/captures-app/23c-app-verrouillee.png) |
+
+- Le délai compte à partir du passage en arrière-plan (`paused`). L'appareil photo du KYC et le partage d'un reçu ou d'un relevé font quitter l'app un moment : ils ne la verrouillent pas.
+- Le verrouillage ferme aussi la session côté serveur (`/v1/auth/logout`) : le jeton ne peut plus servir.
+- Tout se passe dans l'app : le serveur ne change pas.
+
 ## Téléphone perdu ou volé : bloquer son compte
 
 Le client bloque lui-même son compte, sans attendre le service client :

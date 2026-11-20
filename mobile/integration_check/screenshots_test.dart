@@ -121,6 +121,11 @@ void main() {
       await shot('2a-accueil-promotions$suffix');
       await tester.drag(find.byType(ListView).first, const Offset(0, 420));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('toggle-balance')));
+      await tester.pumpAndSettle();
+      await shot('23-solde-masque$suffix');
+      await tester.tap(find.byKey(const ValueKey('toggle-balance')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Notifications, 1 non lues'));
       await tester.pumpAndSettle();
@@ -375,6 +380,26 @@ void main() {
       await tester.pump();
       await shot('5-niveau-2$suffix');
       await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      // Réglage du verrouillage, puis l'app verrouillée au retour.
+      await tester.tap(find.byTooltip('Profil'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sécurité et PIN'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('lock-after')), 200, scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Tout de suite'));
+      await tester.pumpAndSettle();
+      await shot('23b-verrouillage$suffix');
+      for (final st in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+          AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(st);
+      }
+      await tester.pumpAndSettle();
+      await shot('23c-app-verrouillee$suffix');
+      app.lockAfter = const Duration(minutes: 1);
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+      await tester.tap(find.text('Se connecter'));
       await tester.pumpAndSettle();
 
       // Téléphone perdu ou volé : en dernier, puisque le blocage ferme la session.

@@ -28,13 +28,30 @@ void main() {
   late FakeServer server;
   late AppState app;
 
+  final saved = <String, Object>{};
+
   setUp(() {
     server = FakeServer();
     app = AppState(
       ApiClient(baseUrl: 'http://test', httpClient: server.client),
       deviceId: 'test',
-    );
+    )..savePreference = (key, value) async => saved[key] = value;
+    saved.clear();
   });
+
+  Future<void> background(WidgetTester tester) async {
+    for (final s in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      tester.binding.handleAppLifecycleStateChanged(s);
+    }
+    await tester.pump();
+  }
+
+  Future<void> foreground(WidgetTester tester) async {
+    for (final s in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(s);
+    }
+    await tester.pumpAndSettle();
+  }
 
   Future<void> start(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
@@ -513,6 +530,71 @@ void main() {
     expect(operatorForPhone('+243900000001'), isNull);
   });
 
+  testWidgets('verrouillage : PIN redemandé après une minute hors de l\'app, délai réglable', (tester) async {
+    var clock = DateTime(2026, 11, 19, 10);
+    app.now = () => clock;
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Envoyer');
+
+    // 30 secondes ailleurs : rien ne change.
+    await background(tester);
+    clock = clock.add(const Duration(seconds: 30));
+    await foreground(tester);
+    expect(find.text('Continuer'), findsOneWidget);
+
+    // Deux minutes : l'écran d'envoi est fermé, la session aussi, le numéro reste rempli.
+    await background(tester);
+    clock = clock.add(const Duration(minutes: 2));
+    await foreground(tester);
+    expect(find.byKey(const ValueKey('lock-notice')), findsOneWidget);
+    expect(find.text('Se connecter'), findsOneWidget);
+    expect(find.text('Continuer'), findsNothing);
+    expect(server.requests.where((r) => r.url.path == '/v1/auth/logout'), hasLength(1));
+    expect(find.text('970000001'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN')), '2580');
+    await tester.tap(find.text('Se connecter'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('balance')), findsOneWidget);
+
+    // « Tout de suite » : verrouillé même sans attendre.
+    await tester.tap(find.byTooltip('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sécurité et PIN'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Tout de suite'));
+    await tester.tap(find.text('Tout de suite'));
+    await tester.pumpAndSettle();
+    expect(app.lockAfter, Duration.zero);
+    expect(saved['lock_after_seconds'], 0);
+    await background(tester);
+    await foreground(tester);
+    expect(find.byKey(const ValueKey('lock-notice')), findsOneWidget);
+
+    // Appareil photo ou partage : on quitte l'app un moment sans la verrouiller.
+    await login(tester);
+    await app.withoutLock(() async {
+      await background(tester);
+      clock = clock.add(const Duration(minutes: 10));
+    });
+    await foreground(tester);
+    expect(find.byKey(const ValueKey('balance')), findsOneWidget);
+  });
+
+  testWidgets('solde masqué d\'un geste sur l\'accueil, choix gardé', (tester) async {
+    await start(tester);
+    await login(tester);
+    expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
+    await tester.tap(find.byKey(const ValueKey('toggle-balance')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '•••••');
+    expect(saved['hide_balance'], true);
+    await tester.tap(find.byKey(const ValueKey('toggle-balance')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Amount>(find.byKey(const ValueKey('balance'))).formatted, '50,00\u00A0\$');
+    expect(saved['hide_balance'], false);
+  });
+
   testWidgets('sécurité : changer son PIN avec l\'ancien, puis déconnecter les autres téléphones', (tester) async {
     server.deviceSessions[2]['active'] = false;
     await start(tester);
@@ -522,8 +604,10 @@ void main() {
     await tester.tap(find.text('Sécurité et PIN'));
     await tester.pumpAndSettle();
     expect(find.text('Samsung Galaxy A14'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Déconnecter les autres téléphones'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.textContaining('Ce téléphone'), findsOneWidget);
-    expect(find.text('Déconnecter les autres téléphones'), findsOneWidget);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Changer mon PIN'));
     await tester.pumpAndSettle();
@@ -540,6 +624,9 @@ void main() {
     expect(server.pin, '7391');
     expect(find.text('PIN changé. Vos autres téléphones ont été déconnectés.'), findsOneWidget);
     // Plus aucun autre téléphone connecté : le bouton disparaît.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.text('Téléphone perdu ou volé'), findsOneWidget);
     expect(find.text('Déconnecter les autres téléphones'), findsNothing);
   });
 
@@ -550,10 +637,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sécurité et PIN'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Déconnecter les autres téléphones'));
+    await tester.scrollUntilVisible(find.text('Déconnecter les autres téléphones'), 300, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Déconnecter les autres téléphones'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Déconnecter'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
     await tester.pumpAndSettle();
     expect(find.text('1 téléphone déconnecté.'), findsOneWidget);
     expect(server.requests.where((r) => r.url.path == '/v1/me/security/sessions/sign-out-others'), hasLength(1));

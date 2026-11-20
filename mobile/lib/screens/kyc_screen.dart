@@ -71,7 +71,8 @@ class _KycScreenState extends State<KycScreen> with ApiAction {
   ];
 
   Future<void> _take(String kind) async {
-    final p = await widget.photos.take(selfie: kind == 'SELFIE');
+    // L'appareil photo du téléphone fait quitter l'app un moment : pas de verrouillage pour autant.
+    final p = await widget.app.withoutLock(() => widget.photos.take(selfie: kind == 'SELFIE'));
     if (p != null) setState(() => photos[kind] = p);
   }
 
