@@ -400,6 +400,16 @@ Ce que Capital Invest doit au marchand part vers son **compte mobile money de re
 - Activé par défaut pour chaque nouveau marchand ; un administrateur le coupe ou le remet depuis la fiche (`POST /v1/backoffice/merchants/{id}/auto-payout`, `enabled`). Toute la tâche se coupe avec `capital-invest.merchants.auto-payout-enabled: false`, l'heure se règle avec `auto-payout-cron`.
 - Pas encore fait : reversement vers un compte bancaire.
 
+## Mon QR pour recevoir
+
+Dans le menu, « Mon QR pour recevoir » affiche un QR avec le nom et le numéro du client. Un proche le scanne avec **Payer**, comme un QR marchand : l'app reconnaît un QR de client et ouvre **l'envoi avec le numéro déjà rempli**. Le client peut aussi y mettre un montant : celui qui scanne n'a plus qu'à vérifier le nom et confirmer avec son PIN. « Partager mon numéro » envoie le numéro par WhatsApp ou SMS.
+
+![Mon QR pour recevoir](docs/captures-app/22-recevoir.png)
+
+- Contenu du QR : `capitalinvest://send?p=243970000001&a=2500` (le montant `a`, en centimes, est facultatif). Il n'y a rien de secret dedans : seulement le numéro et le montant.
+- Même vérification qu'un envoi tapé à la main : le nom du destinataire s'affiche avant le PIN. Le QR est dessiné en noir sur blanc même en mode sombre, ce qui le rend plus facile à lire.
+- Tout se passe dans l'app : le serveur ne change pas.
+
 ## Demander de l'argent
 
 Un client demande un montant à un autre client (menu « Demander de l'argent » de l'app). Le client sollicité reçoit un SMS et une notification, voit la demande en haut de son accueil, puis **paie avec son PIN** ou **refuse**.

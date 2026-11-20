@@ -22,6 +22,10 @@ int? parseUsd(String input) {
   return value > 0 ? value : null;
 }
 
+/// Centimes vers ce que le client taperait : 2500 → « 25 », 1250 → « 12,50 ».
+String formatAmountInput(int minor) =>
+    minor % 100 == 0 ? '${minor ~/ 100}' : '${minor ~/ 100},${(minor % 100).toString().padLeft(2, '0')}';
+
 /// « 0970000001 », « 970000001 » ou « +243 970 000 001 » vers +243970000001 ; null si invalide.
 String? normalizePhone(String input) {
   var s = input.replaceAll(RegExp(r'[\s.-]'), '');

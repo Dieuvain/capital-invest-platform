@@ -357,18 +357,24 @@ String topupFailureText(String? code, String operator) => switch (code) {
 
 /// Envoi à un autre client : saisie, vérification avec les frais, puis confirmation par PIN.
 class TransferScreen extends StatefulWidget {
-  const TransferScreen({super.key, required this.app, this.limits});
+  const TransferScreen({super.key, required this.app, this.limits, this.scanned});
 
   final AppState app;
   final Limits? limits;
+
+  /// Lu dans le QR « Recevoir » d'un client : numéro et, parfois, montant déjà remplis.
+  final ReceiveQr? scanned;
 
   @override
   State<TransferScreen> createState() => _TransferScreenState();
 }
 
 class _TransferScreenState extends State<TransferScreen> with ApiAction {
-  final phone = TextEditingController();
-  final amount = TextEditingController();
+  // Le champ affiche déjà +243 : on n'y met que les 9 chiffres.
+  late final phone = TextEditingController(text: widget.scanned?.phone.replaceFirst('+243', ''));
+  late final amount = TextEditingController(
+    text: widget.scanned?.amountMinor == null ? null : formatAmountInput(widget.scanned!.amountMinor!),
+  );
   final note = TextEditingController();
   final pin = TextEditingController();
   String? toPhone;

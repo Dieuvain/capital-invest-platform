@@ -450,6 +450,48 @@ void main() {
     expect(server.moneyRequests.map((r) => r['status']), ['DECLINED', 'PAID']);
   });
 
+  testWidgets('mon QR pour recevoir : montant facultatif, partage, et scanné il ouvre l\'envoi pré-rempli', (tester) async {
+    final shared = <String>[];
+    app.share = (text, subject) async => shared.add(text);
+    await start(tester);
+    await login(tester);
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mon QR pour recevoir'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('receive-qr')), findsOneWidget);
+    expect(find.text('+243 970 000 001'), findsOneWidget);
+    expect(find.byKey(const ValueKey('receive-amount')), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('receive-amount-field')), 'abc');
+    await tester.pump();
+    expect(find.text('Entrez un montant, par exemple 25 ou 12,50.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('receive-amount-field')), '12,5');
+    await tester.pump();
+    expect(find.text('12,50\u00a0\$'), findsOneWidget);
+    await tester.tap(find.text('Partager mon numéro'));
+    expect(shared.single, contains('+243 970 000 001'));
+    expect(shared.single, contains('12,50'));
+    Navigator.of(tester.element(find.text('Recevoir'))).pop();
+    await tester.pumpAndSettle();
+
+    // Un proche scanne ce QR avec « Payer » : l'envoi s'ouvre avec le numéro et le montant.
+    expect(ReceiveQr('+243970000002', 1250).payload, 'capitalinvest://send?p=243970000002&a=1250');
+    app.scanQr = (_) async => ReceiveQr('+243970000002', 1250).payload;
+    await pay(tester, 'Payer');
+    expect(find.text('Envoyer'), findsWidgets);
+    expect(find.text('970000002'), findsOneWidget);
+    expect(find.text('12,50'), findsOneWidget);
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const ValueKey('recipient-name')), matching: find.text('Josué K.')), findsOneWidget);
+
+    // Un QR mal formé n'est ni un envoi ni un paiement.
+    expect(ReceiveQr.parse('capitalinvest://send?p=12345'), isNull);
+    expect(ReceiveQr.parse('https://example.com'), isNull);
+    expect(ReceiveQr.parse('capitalinvest://send?p=243970000002')!.amountMinor, isNull);
+  });
+
   testWidgets('demander de l\'argent depuis le menu, puis annuler la demande', (tester) async {
     await start(tester);
     await login(tester);
