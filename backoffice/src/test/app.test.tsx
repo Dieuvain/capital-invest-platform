@@ -42,9 +42,9 @@ describe('connexion', () => {
 
   it.each([
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
-    ['marketing@capitalinvest.cd', ['Tableau de bord', 'Promotions']],
-    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2', 'Promotions', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['marketing@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Promotions']],
+    ['conformite@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Demandes KYC 2', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Demandes KYC 2', 'Promotions', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))
@@ -696,5 +696,38 @@ describe('rapprochement', () => {
     await signIn('kyc@capitalinvest.cd')
     window.location.hash = '/rapprochement'
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Écarts à traiter' })).toBeNull())
+  })
+})
+
+describe('activité', () => {
+  it('chiffres de la période, évolution, et changement de période', async () => {
+    const user = await signIn('marketing@capitalinvest.cd', 'Activité')
+    expect(await screen.findByText(/^184.723,50 \$$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Du 22 oct\. au 20 nov\., comparé aux 30 jours/)).toBeInTheDocument()
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
+    expect(rows.map((r) => r.querySelector('td')?.firstChild?.textContent)).toEqual([
+      'Rechargements', 'Envois entre clients', 'Paiements marchands', 'Factures et crédit', 'Retraits',
+    ])
+    expect(screen.getByRole('img').getAttribute('aria-label')).toMatch(/^Toutes opérations, montant par jour/)
+    await user.click(screen.getByRole('button', { name: 'Retraits' }))
+    expect(screen.getByRole('img').getAttribute('aria-label')).toMatch(/^Retraits, montant par jour/)
+    expect(screen.getByRole('img').querySelectorAll('.bar')).toHaveLength(30)
+    await user.click(screen.getByRole('tab', { name: '7 jours' }))
+    await waitFor(() => expect(screen.getByRole('img').querySelectorAll('.bar')).toHaveLength(7))
+    expect(server.requests.some((r) => r.path === '/v1/backoffice/activity')).toBe(true)
+  })
+
+  it('évolution : hausse, baisse, stable ou nouveau', async () => {
+    const { change } = await import('../pages/Activity')
+    expect(change(112, 100)).toEqual({ text: '+12\u00a0%', tone: 'ok' })
+    expect(change(97, 100)).toEqual({ text: '−3\u00a0%', tone: 'alert' })
+    expect(change(100, 100)).toEqual({ text: '=', tone: 'off' })
+    expect(change(5, 0)).toEqual({ text: 'nouveau', tone: 'ok' })
+    expect(change(0, 0)).toBeNull()
+  })
+
+  it("un agent KYC n'y a pas accès", async () => {
+    await signIn('kyc@capitalinvest.cd')
+    expect(menu().queryByRole('link', { name: /Activité/ })).toBeNull()
   })
 })

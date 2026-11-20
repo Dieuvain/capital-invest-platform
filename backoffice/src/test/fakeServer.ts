@@ -386,6 +386,10 @@ export class FakeServer {
       if (!a.active) for (const [t, id] of this.sessions) if (id === a.id) this.sessions.delete(t)
       return json(a)
     }
+    if (path.startsWith('/v1/backoffice/activity')) {
+      if (role('KYC_AGENT')) return problem(403, 'ACTIVITY_FORBIDDEN', 'Réservé à la direction, à la conformité et au marketing')
+      return json(fakeActivity(Number(u.searchParams.get('days') ?? 30)))
+    }
     if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals|purchases|airtime|bills)/.test(path)) {
       if (path === '/v1/backoffice/purchases/review') return json(this.purchases)
       if ((m = path.match(/^\/v1\/backoffice\/(airtime|bills)\/([^/]+)\/resolve$/))) {
@@ -458,5 +462,53 @@ function item(id: string, kind: HistoryItem['kind'], net: number, fee: number, e
   return {
     id, receiptNumber: `CI-20261118-${id.toUpperCase().padStart(6, '0')}`, kind, status: 'COMPLETED',
     amountMinor: Math.abs(net) - fee, feeMinor: fee, netMinor: net, currency: 'USD', createdAt: '2026-11-18T10:00:00Z', ...extra,
+  }
+}
+
+/** Activité inventée mais régulière : un creux le dimanche, une hausse lente, le jour de paie plus chargé. */
+export function fakeActivity(days: number, to = '2026-11-20') {
+  const end = new Date(`${to}T12:00:00Z`)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const day = (offset: number) => {
+    const d = new Date(end)
+    d.setUTCDate(d.getUTCDate() - offset)
+    const wave = (1 + 0.35 * Math.sin(offset * 1.7)) * (d.getUTCDay() === 0 ? 0.55 : 1) * (1 - offset / 400) * (d.getUTCDate() === 5 ? 1.5 : 1)
+    const flow = (n: number, avg: number) => ({ count: Math.round(n * wave), amountMinor: Math.round(n * wave) * avg })
+    const topups = flow(62, 4_200)
+    return {
+      date: iso(d),
+      newCustomers: Math.round(14 * wave),
+      activeCustomers: Math.round(180 * wave),
+      topups,
+      transfers: flow(95, 2_350),
+      withdrawals: flow(31, 5_100),
+      merchantPayments: flow(40, 1_150),
+      billsAndAirtime: flow(52, 900),
+      feesMinor: Math.round(31 * wave) * 102 + Math.round(95 * wave) * 23,
+    }
+  }
+  const list = (from: number, n: number) => Array.from({ length: n }, (_, i) => day(from + n - 1 - i))
+  const total = (l: ReturnType<typeof day>[], active: number) => {
+    const sum = (k: 'topups' | 'transfers' | 'withdrawals' | 'merchantPayments' | 'billsAndAirtime') => ({
+      count: l.reduce((s, d) => s + d[k].count, 0),
+      amountMinor: l.reduce((s, d) => s + d[k].amountMinor, 0),
+    })
+    return {
+      newCustomers: l.reduce((s, d) => s + d.newCustomers, 0),
+      activeCustomers: active,
+      topups: sum('topups'), transfers: sum('transfers'), withdrawals: sum('withdrawals'),
+      merchantPayments: sum('merchantPayments'), billsAndAirtime: sum('billsAndAirtime'),
+      feesMinor: l.reduce((s, d) => s + d.feesMinor, 0),
+    }
+  }
+  const current = list(0, days)
+  return {
+    from: current[0].date,
+    to,
+    days: current,
+    totals: total(current, Math.min(4_812, 260 + days * 52)),
+    previous: total(list(days, days), Math.min(4_400, 240 + days * 47)),
+    customersActive: 5_236,
+    customerHoldingsMinor: 18_472_350,
   }
 }
