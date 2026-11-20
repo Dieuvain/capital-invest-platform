@@ -540,7 +540,8 @@ Capital Invest ne transmet rien elle-même : la conformité **imprime** le dossi
 L'écran « Activité » donne à la direction, à la conformité et au marketing les chiffres de la plateforme sur 7, 30 ou 90 jours, comparés à la période précédente de même durée :
 
 - l'argent que les clients ont chez Capital Invest aujourd'hui (portefeuilles et épargne), le nombre de clients actifs et de nouveaux comptes ;
-- par type d'opération (rechargements, envois entre clients, paiements marchands, factures et crédit, retraits) : nombre, montant, montant moyen et évolution ;
+- par type d'opération (rechargements, envois, paiements marchands, factures et crédit, retraits) : nombre, montant, montant moyen et évolution. Les envois comptent ceux entre clients et ceux vers un proche sans compte, remboursements déduits ;
+- les envois à des proches sans compte : envoyés, reçus (chacun est un nouveau client venu par un client), revenus à l'expéditeur (annulés ou non réclamés en 7 jours), et ce qui attend aujourd'hui, avec la part des envois reçus ;
 - les frais encaissés, remboursements de frais déduits ;
 - un graphique du montant par jour, pour toutes les opérations ou une seule famille.
 

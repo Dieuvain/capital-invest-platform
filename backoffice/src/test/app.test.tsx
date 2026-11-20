@@ -706,7 +706,7 @@ describe('activité', () => {
     expect(screen.getByText(/^Du 22 oct\. au 20 nov\., comparé aux 30 jours/)).toBeInTheDocument()
     const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
     expect(rows.map((r) => r.querySelector('td')?.firstChild?.textContent)).toEqual([
-      'Rechargements', 'Envois entre clients', 'Paiements marchands', 'Factures et crédit', 'Retraits',
+      'Rechargements', 'Envois', 'Paiements marchands', 'Factures et crédit', 'Retraits',
     ])
     expect(screen.getByRole('img').getAttribute('aria-label')).toMatch(/^Toutes opérations, montant par jour/)
     await user.click(screen.getByRole('button', { name: 'Retraits' }))
@@ -715,6 +715,17 @@ describe('activité', () => {
     await user.click(screen.getByRole('tab', { name: '7 jours' }))
     await waitFor(() => expect(screen.getByRole('img').querySelectorAll('.bar')).toHaveLength(7))
     expect(server.requests.some((r) => r.path === '/v1/backoffice/activity')).toBe(true)
+  })
+
+  it('envois à des proches sans compte : envoyés, reçus, revenus, en attente', async () => {
+    await signIn('admin@capitalinvest.cd', 'Activité')
+    const box = within(await screen.findByRole('region', { name: 'Envois à des proches sans compte' }))
+    const data = server.lastActivity!
+    const claimed = data.totals.invitesClaimed.count
+    const rate = Math.round((claimed / (claimed + data.totals.invitesRefunded.count)) * 100)
+    expect(box.getByText(new RegExp(`^${rate}.% reçus, les autres revenus à l'expéditeur$`))).toBeInTheDocument()
+    expect(box.getByText(/^\d+ nouveaux clients venus ainsi$/)).toBeInTheDocument()
+    expect(box.getByText("En attente aujourd'hui").parentElement).toHaveTextContent(/27\s*485,00/)
   })
 
   it('évolution : hausse, baisse, stable ou nouveau', async () => {
