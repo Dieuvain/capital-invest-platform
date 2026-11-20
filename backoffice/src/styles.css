@@ -251,6 +251,12 @@ textarea { resize: vertical; min-height: 80px; }
 .activity-chart.dense { gap: 2px; }
 .activity-chart .bar { border-radius: 5px; }
 .activity-chart.dense .bar { border-radius: 2px; }
+.invites { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.invites .mini { background: var(--surface-alt); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.invites .lbl { font-size: 13px; }
+.invites .val { font-size: 26px; letter-spacing: -0.02em; }
+.invites .sub { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11.5px; color: var(--muted); margin-top: auto; }
+@media (max-width: 1100px) { .invites { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .activity-chart .col { min-width: 0; padding-bottom: 20px; }
 .activity-chart .day { white-space: nowrap; font-size: 10.5px; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
 .activity-chart .col:last-child .day { left: auto; right: 0; transform: none; }

@@ -9,7 +9,7 @@ type Period = (typeof periods)[number]
 /** Les familles d'opérations, dans l'ordre où l'argent circule : il entre, il circule, il sort. */
 const families = [
   { key: 'topups', label: 'Rechargements', hint: 'Mobile money vers Capital Invest' },
-  { key: 'transfers', label: 'Envois entre clients', hint: "L'argent reste chez Capital Invest" },
+  { key: 'transfers', label: 'Envois', hint: 'Entre clients, et vers des proches sans compte' },
   { key: 'merchantPayments', label: 'Paiements marchands', hint: 'QR et code marchand' },
   { key: 'billsAndAirtime', label: 'Factures et crédit', hint: 'SNEL, REGIDESO, TV, crédit téléphone' },
   { key: 'withdrawals', label: 'Retraits', hint: 'Capital Invest vers mobile money' },
@@ -67,6 +67,7 @@ export function ActivityPage({ api }: { api: Api }) {
           <>
             <Overview data={data} />
             <Chart data={data} metric={metric} setMetric={setMetric} />
+            <Invites data={data} />
             <Families totals={data.totals} previous={data.previous} />
           </>
         )}
@@ -182,6 +183,45 @@ function Families({ totals, previous }: { totals: ActivityTotals; previous: Acti
       <p className="tiny" style={{ padding: '4px 16px 16px', margin: 0 }}>
         Montants sans les frais. Un retrait ou une facture remboursé vient en déduction du jour du remboursement.
       </p>
+    </div>
+  )
+}
+
+/** Envois à des proches sans compte : chaque envoi reçu est un client de plus, venu par un client. */
+function Invites({ data }: { data: Activity }) {
+  const t = data.totals
+  const p = data.previous
+  const settled = t.invitesClaimed.count + t.invitesRefunded.count
+  const rate = settled ? Math.round((t.invitesClaimed.count / settled) * 100) : null
+  return (
+    <section className="card pad stack" aria-label="Envois à des proches sans compte">
+      <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ flex: 1, fontWeight: 500, minWidth: 200 }}>Envois à des proches sans compte</h3>
+        {rate !== null && <span className="badge off">{`${rate}\u00a0% reçus, les autres revenus à l'expéditeur`}</span>}
+      </div>
+      <div className="invites">
+        <Mini label="Envoyés" flow={t.invitesSent} before={p.invitesSent} />
+        <Mini label="Reçus" flow={t.invitesClaimed} before={p.invitesClaimed}
+          sub={`${count(t.invitesClaimed.count)} nouveau${t.invitesClaimed.count > 1 ? 'x' : ''} client${t.invitesClaimed.count > 1 ? 's' : ''} venu${t.invitesClaimed.count > 1 ? 's' : ''} ainsi`} />
+        <Mini label="Revenus à l'expéditeur" flow={t.invitesRefunded} before={p.invitesRefunded} sub="annulés, ou non réclamés en 7 jours" />
+        <Mini label="En attente aujourd'hui" flow={data.pendingInvites} sub="le proche n'a pas encore ouvert son compte" />
+      </div>
+    </section>
+  )
+}
+
+function Mini({ label, flow, before, sub }: { label: string; flow: Flow; before?: Flow; sub?: string }) {
+  return (
+    <div className="mini">
+      <div className="lbl">{label}</div>
+      <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
+        <span className="val">{count(flow.count)}</span>
+        <span className="muted">{formatUsd(flow.amountMinor)}</span>
+      </div>
+      <div className="sub">
+        <span>{sub ?? ' '}</span>
+        {before && <Change now={flow.count} before={before.count} />}
+      </div>
     </div>
   )
 }

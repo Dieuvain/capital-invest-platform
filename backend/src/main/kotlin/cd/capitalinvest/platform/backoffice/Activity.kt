@@ -31,6 +31,10 @@ data class ActivityDay(
     val billsAndAirtime: Flow,
     /** Frais et commissions encaissés, remboursements de frais déduits. */
     val feesMinor: Long,
+    /** Envois à un proche sans compte : partis, reçus par le proche à l'ouverture de son compte, revenus à l'expéditeur. */
+    val invitesSent: Flow,
+    val invitesClaimed: Flow,
+    val invitesRefunded: Flow,
 )
 
 data class ActivityTotals(
@@ -42,6 +46,9 @@ data class ActivityTotals(
     val merchantPayments: Flow,
     val billsAndAirtime: Flow,
     val feesMinor: Long,
+    val invitesSent: Flow,
+    val invitesClaimed: Flow,
+    val invitesRefunded: Flow,
 )
 
 data class Activity(
@@ -54,6 +61,8 @@ data class Activity(
     /** Aujourd'hui : clients actifs (ni suspendus ni fermés), et argent qu'ils ont chez Capital Invest. */
     val customersActive: Long,
     val customerHoldingsMinor: Long,
+    /** Aujourd'hui : envois qui attendent qu'un proche ouvre son compte. */
+    val pendingInvites: Flow,
 )
 
 /**
@@ -97,6 +106,8 @@ class ActivityService(private val jdbc: JdbcClient, private val limits: LimitsPr
                    FROM ledger_entry e JOIN ledger_account a ON a.id = e.account_id
                    WHERE a.type IN ('CUSTOMER_WALLET', 'CUSTOMER_SAVINGS') AND a.currency = 'USD'""",
             ).query(Long::class.java).single(),
+            pendingInvites = jdbc.sql("SELECT count(*) AS n, COALESCE(SUM(amount_minor), 0) AS a FROM pending_transfer WHERE status = 'PENDING'")
+                .query { rs, _ -> Flow(rs.getLong("n"), rs.getLong("a")) }.single(),
         )
     }
 
@@ -131,17 +142,23 @@ class ActivityService(private val jdbc: JdbcClient, private val limits: LimitsPr
             val back = rows.filter { it.type in refunds }
             return Flow(out.sumOf { it.count }, out.sumOf(amount) - back.sumOf { it.walletIn + it.fees })
         }
+        // Montant parti du portefeuille, frais déduits.
+        val sent: (Row) -> Long = { it.walletOut - it.fees }
         return ActivityDay(
             date = d,
             newCustomers = newCustomers,
             activeCustomers = active,
             topups = flow(listOf("TOPUP"), emptyList()) { it.walletIn },
-            transfers = flow(listOf("TRANSFER"), emptyList()) { it.walletIn },
+            // Entre clients : reçu par le destinataire ; vers un proche sans compte : parti de l'expéditeur, remboursements déduits.
+            transfers = flow(listOf("TRANSFER", "TRANSFER_INVITE"), listOf("TRANSFER_INVITE_REFUND")) { if (it.type == "TRANSFER") it.walletIn else sent(it) },
             // Montant parti vers l'opérateur : débit du portefeuille moins les frais.
-            withdrawals = flow(listOf("WITHDRAWAL"), listOf("WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")) { it.walletOut - it.fees },
+            withdrawals = flow(listOf("WITHDRAWAL"), listOf("WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND"), sent),
             merchantPayments = flow(listOf("MERCHANT_PAYMENT"), emptyList()) { it.walletOut },
-            billsAndAirtime = flow(listOf("BILL_PAYMENT", "AIRTIME"), listOf("BILL_REFUND", "AIRTIME_REFUND")) { it.walletOut - it.fees },
+            billsAndAirtime = flow(listOf("BILL_PAYMENT", "AIRTIME"), listOf("BILL_REFUND", "AIRTIME_REFUND"), sent),
             feesMinor = rows.sumOf { it.fees },
+            invitesSent = flow(listOf("TRANSFER_INVITE"), emptyList(), sent),
+            invitesClaimed = flow(listOf("TRANSFER_INVITE_CLAIM"), emptyList()) { it.walletIn },
+            invitesRefunded = flow(listOf("TRANSFER_INVITE_REFUND"), emptyList()) { it.walletIn + it.fees },
         )
     }
 
@@ -151,6 +168,7 @@ class ActivityService(private val jdbc: JdbcClient, private val limits: LimitsPr
             days.sumOf { it.newCustomers }, active,
             sum { it.topups }, sum { it.transfers }, sum { it.withdrawals }, sum { it.merchantPayments }, sum { it.billsAndAirtime },
             days.sumOf { it.feesMinor },
+            sum { it.invitesSent }, sum { it.invitesClaimed }, sum { it.invitesRefunded },
         )
     }
 }

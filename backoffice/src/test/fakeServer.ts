@@ -144,6 +144,7 @@ export class FakeServer {
     }],
   }
   requests: { method: string; path: string; body: unknown }[] = []
+  lastActivity: ReturnType<typeof fakeActivity> | null = null
   documentsViewed: string[] = []
 
   login(role: Role): string {
@@ -388,7 +389,8 @@ export class FakeServer {
     }
     if (path.startsWith('/v1/backoffice/activity')) {
       if (role('KYC_AGENT')) return problem(403, 'ACTIVITY_FORBIDDEN', 'Réservé à la direction, à la conformité et au marketing')
-      return json(fakeActivity(Number(u.searchParams.get('days') ?? 30)))
+      this.lastActivity = fakeActivity(Number(u.searchParams.get('days') ?? 30))
+      return json(this.lastActivity)
     }
     if (/^\/v1\/backoffice\/(reconciliation|topups|withdrawals|purchases|airtime|bills)/.test(path)) {
       if (path === '/v1/backoffice/purchases/review') return json(this.purchases)
@@ -485,11 +487,14 @@ export function fakeActivity(days: number, to = '2026-11-20') {
       merchantPayments: flow(40, 1_150),
       billsAndAirtime: flow(52, 900),
       feesMinor: Math.round(31 * wave) * 102 + Math.round(95 * wave) * 23,
+      invitesSent: flow(6, 1_800),
+      invitesClaimed: flow(4, 1_750),
+      invitesRefunded: flow(1, 1_500),
     }
   }
   const list = (from: number, n: number) => Array.from({ length: n }, (_, i) => day(from + n - 1 - i))
   const total = (l: ReturnType<typeof day>[], active: number) => {
-    const sum = (k: 'topups' | 'transfers' | 'withdrawals' | 'merchantPayments' | 'billsAndAirtime') => ({
+    const sum = (k: 'topups' | 'transfers' | 'withdrawals' | 'merchantPayments' | 'billsAndAirtime' | 'invitesSent' | 'invitesClaimed' | 'invitesRefunded') => ({
       count: l.reduce((s, d) => s + d[k].count, 0),
       amountMinor: l.reduce((s, d) => s + d[k].amountMinor, 0),
     })
@@ -499,6 +504,7 @@ export function fakeActivity(days: number, to = '2026-11-20') {
       topups: sum('topups'), transfers: sum('transfers'), withdrawals: sum('withdrawals'),
       merchantPayments: sum('merchantPayments'), billsAndAirtime: sum('billsAndAirtime'),
       feesMinor: l.reduce((s, d) => s + d.feesMinor, 0),
+      invitesSent: sum('invitesSent'), invitesClaimed: sum('invitesClaimed'), invitesRefunded: sum('invitesRefunded'),
     }
   }
   const current = list(0, days)
@@ -510,5 +516,6 @@ export function fakeActivity(days: number, to = '2026-11-20') {
     previous: total(list(days, days), Math.min(4_400, 240 + days * 47)),
     customersActive: 5_236,
     customerHoldingsMinor: 18_472_350,
+    pendingInvites: { count: 27, amountMinor: 48_500 },
   }
 }

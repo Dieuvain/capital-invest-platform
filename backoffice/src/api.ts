@@ -419,6 +419,10 @@ export interface ActivityTotals {
   merchantPayments: Flow
   billsAndAirtime: Flow
   feesMinor: number
+  /** Envois à un proche sans compte : partis, reçus à l'ouverture du compte, revenus à l'expéditeur. */
+  invitesSent: Flow
+  invitesClaimed: Flow
+  invitesRefunded: Flow
 }
 
 export interface ActivityDay extends ActivityTotals {
@@ -433,6 +437,8 @@ export interface Activity {
   previous: ActivityTotals
   customersActive: number
   customerHoldingsMinor: number
+  /** Aujourd'hui : envois qui attendent qu'un proche ouvre son compte. */
+  pendingInvites: Flow
 }
 
 export class ApiError extends Error {
