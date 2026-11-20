@@ -25,14 +25,14 @@ abstract class ApiTest : DatabaseTest() {
         return Regex("[0-9]{6}").find(text)!!.value
     }
 
-    fun register(phone: String, pin: String = "2580"): Session {
+    fun register(phone: String, pin: String = "2580", fullName: String = "Client $phone"): Session {
         mvc.post("/v1/auth/otp") {
             contentType = MediaType.APPLICATION_JSON
             content = """{"phone":"$phone"}"""
         }.andExpect { status { isAccepted() } }
         val body = mvc.post("/v1/auth/register") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"phone":"$phone","code":"${lastSmsCode(phone)}","fullName":"Client $phone","language":"sw","pin":"$pin","deviceId":"test-device"}"""
+            content = """{"phone":"$phone","code":"${lastSmsCode(phone)}","fullName":"$fullName","language":"sw","pin":"$pin","deviceId":"test-device"}"""
         }.andExpect { status { isCreated() } }.body()
         return Session(
             body["accessToken"].asText(),

@@ -147,6 +147,44 @@ class FakeServer {
         'settledAt': settledAt,
       };
 
+  /// Cagnottes servies par /v1/me/pots et /v1/pots/{code}. « mine » : celles du client connecté.
+  List<Map<String, dynamic>> pots = [];
+
+  static Map<String, dynamic> pot(String code, String title,
+      {bool mine = true, String ownerName = 'Josué K.', String? description, int? target, String status = 'OPEN',
+      List<Map<String, dynamic>> contributions = const [], int myTotal = 0}) {
+    final collected = contributions.fold<int>(0, (s, c) => s + ((c['_amount'] ?? c['amountMinor'] ?? 0) as int));
+    return {
+      'id': 'pot-$code',
+      'code': code,
+      'title': title,
+      'description': description,
+      'targetMinor': target,
+      'status': status,
+      'ownerName': ownerName,
+      'mine': mine,
+      'collectedMinor': collected,
+      'contributors': contributions.map((c) => c['name'] ?? c['id']).toSet().length,
+      'myTotalMinor': myTotal,
+      'progressPercent': target == null ? null : (collected * 100 ~/ target).clamp(0, 100),
+      'shareLink': 'capitalinvest://pot?c=$code',
+      'contributions': contributions,
+      'createdAt': '2026-11-18T09:00:00Z',
+      'closedAt': status == 'CLOSED' ? '2026-11-20T10:00:00Z' : null,
+      'paidOutMinor': status == 'CLOSED' ? collected : null,
+    };
+  }
+
+  static Map<String, dynamic> contribution(String id, String? name, int? amount, {String? message, int? hiddenAmount, String at = '2026-11-19T15:30:00Z'}) => {
+        'id': id,
+        'name': name,
+        'amountMinor': amount,
+        'message': message,
+        'mine': false,
+        'createdAt': at,
+        '_amount': ?hiddenAmount,
+      };
+
   /// Favoris servis par /v1/me/favorites.
   List<Map<String, dynamic>> favorites = [];
   int _favoriteSeq = 0;
@@ -361,6 +399,60 @@ class FakeServer {
       pendingTransfers = [...pendingTransfers]..[i] = updated;
       return _json(updated);
     }
+    final potClose = RegExp(r'^/v1/me/pots/([^/]+)/close$').firstMatch(path);
+    if (potClose != null && req.method == 'POST') {
+      final i = pots.indexWhere((p) => p['id'] == potClose.group(1) && p['mine'] == true);
+      if (i < 0) return _error(404, 'POT_NOT_FOUND', 'Cagnotte introuvable');
+      final p = pots[i];
+      if (p['status'] == 'OPEN') balance += p['collectedMinor'] as int;
+      final closed = {...p, 'status': 'CLOSED', 'closedAt': '2026-11-20T10:00:00Z', 'paidOutMinor': p['collectedMinor']};
+      pots = [...pots]..[i] = closed;
+      return _json(closed);
+    }
+    final potGive = RegExp(r'^/v1/pots/([^/]+)/contributions$').firstMatch(path);
+    if (potGive != null && req.method == 'POST') {
+      final i = pots.indexWhere((p) => p['code'] == potGive.group(1));
+      if (i < 0) return _error(404, 'POT_NOT_FOUND', 'Aucune cagnotte avec ce code');
+      final b = body();
+      if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      final p = pots[i];
+      if (p['mine'] == true) return _error(422, 'OWN_POT', 'Votre cagnotte');
+      if (p['status'] != 'OPEN') return _error(422, 'POT_CLOSED', 'Clôturée');
+      final a = b['amountMinor'] as int;
+      if (a > balance) return _error(422, 'INSUFFICIENT_FUNDS', 'Solde insuffisant');
+      balance -= a;
+      final c = {
+        'id': 'pc-${(p['contributions'] as List).length + 1}',
+        'name': 'Josué Kabila',
+        'amountMinor': a,
+        'message': b['message'],
+        'mine': true,
+        'createdAt': '2026-11-20T11:00:00Z',
+      };
+      final updated = {
+        ...p,
+        'collectedMinor': (p['collectedMinor'] as int) + a,
+        'contributors': (p['contributors'] as int) + ((p['myTotalMinor'] as int) == 0 ? 1 : 0),
+        'myTotalMinor': (p['myTotalMinor'] as int) + a,
+        'contributions': [c, ...(p['contributions'] as List)],
+      };
+      pots = [...pots]..[i] = updated;
+      return _json(updated, 201);
+    }
+    final potGet = RegExp(r'^/v1/pots/([^/]+)$').firstMatch(path);
+    if (potGet != null && req.method == 'GET') {
+      final p = pots.where((p) => p['code'] == potGet.group(1)).firstOrNull;
+      return p == null ? _error(404, 'POT_NOT_FOUND', 'Aucune cagnotte avec ce code') : _json(p);
+    }
+    if (path == '/v1/me/pots' && req.method == 'POST') {
+      final b = body();
+      final t = (b['title'] as String).trim();
+      if (t.isEmpty) return _error(422, 'INVALID_POT_TITLE', 'Nom invalide');
+      final p = pot('K7M4QX', t, description: b['description'], target: b['targetMinor']);
+      pots = [p, ...pots];
+      return _json(p, 201);
+    }
+    if (path == '/v1/me/pots') return _json(pots.where((p) => p['mine'] == true).toList());
     final fav = RegExp(r'^/v1/me/favorites/([^/]+)$').firstMatch(path);
     if (fav != null && req.method == 'DELETE') {
       final before = favorites.length;

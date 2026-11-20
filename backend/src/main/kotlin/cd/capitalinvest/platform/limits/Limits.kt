@@ -175,8 +175,22 @@ class LimitsService(
                  AND t.id IN (SELECT d.transaction_id FROM ledger_entry d
                               WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
         ).param("w", walletId).param("since", dayStart).query(Long::class.java).single() +
-            withdrawnSince(walletId, dayStart) + paidToMerchantsSince(walletId, dayStart) + airtimeSince(walletId, dayStart) + billsSince(walletId, dayStart)
+            withdrawnSince(walletId, dayStart) + paidToMerchantsSince(walletId, dayStart) + airtimeSince(walletId, dayStart) + billsSince(walletId, dayStart) +
+            setAsideSince(walletId, dayStart)
     }
+
+    /**
+     * Argent parti vers un compte d'attente : envoi à un proche sans compte, participation à une cagnotte.
+     * Sans les frais ; un envoi annulé ensuite compte quand même, comme un envoi normal.
+     */
+    private fun setAsideSince(walletId: UUID, since: OffsetDateTime): Long =
+        jdbc.sql(
+            """SELECT COALESCE(SUM(c.amount_minor), 0) FROM ledger_entry c
+               JOIN ledger_account a ON a.id = c.account_id AND a.type IN ('PENDING_TRANSFERS', 'CUSTOMER_POT')
+               WHERE c.direction = 'CREDIT'
+                 AND c.transaction_id IN (SELECT d.transaction_id FROM ledger_entry d
+                                          WHERE d.account_id = :w AND d.direction = 'DEBIT' AND d.created_at >= :since)""",
+        ).param("w", walletId).param("since", since).query(Long::class.java).single()
 
     /** Paiements chez les marchands du jour : ce que le client a payé (il n'y a pas de frais). */
     private fun paidToMerchantsSince(walletId: UUID, since: OffsetDateTime): Long =

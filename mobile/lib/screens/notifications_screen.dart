@@ -21,6 +21,7 @@ IconData _icon(AppNotification n) => switch (n.kind) {
   'WITHDRAWAL_REFUNDED' || 'AIRTIME_REFUNDED' || 'BILL_REFUNDED' || 'TRANSFER_REFUNDED' => Icons.undo_rounded,
   'TRANSFER_PENDING' => Icons.hourglass_top_rounded,
   'TRANSFER_CLAIMED' => Icons.how_to_reg_rounded,
+  'POT_CONTRIBUTION_SENT' || 'POT_CONTRIBUTION_RECEIVED' || 'POT_PAID_OUT' => Icons.volunteer_activism_outlined,
   'BILL_PAID' => Icons.receipt_rounded,
   'COMPLAINT_RECEIVED' || 'COMPLAINT_ANSWERED' => Icons.support_agent_rounded,
   'SCHEDULED_TRANSFER_FAILED' => Icons.event_busy_rounded,

@@ -69,6 +69,23 @@ void main() {
       FakeServer.pendingTransfer('pt-1', 'Papa Jean', '+243 99• ••• 112', 5000,
           status: 'CLAIMED', createdAt: '2026-11-14T08:00:00Z', settledAt: '2026-11-15T16:42:00Z'),
     ];
+    server.pots = [
+      FakeServer.pot('K7M4QX', 'Deuil de Papa Mbuyi', description: 'Pour les funérailles de samedi à Lemba', target: 80000, contributions: [
+        FakeServer.contribution('c4', 'Patrick Ilunga', 5000, message: 'Que Dieu console la famille', at: '2026-11-20T09:12:00Z'),
+        FakeServer.contribution('c3', 'Grâce Kabeya', 2000, at: '2026-11-19T21:40:00Z'),
+        FakeServer.contribution('c2', 'Béni Mukendi', 10000, message: 'Courage à vous tous', at: '2026-11-19T18:05:00Z'),
+        FakeServer.contribution('c1', 'Josué Kalala', 15000, at: '2026-11-19T16:30:00Z'),
+      ]),
+      FakeServer.pot('M3W8PB', 'Cotisation des mamans de Kintambo', target: 30000, status: 'CLOSED', contributions: [
+        FakeServer.contribution('d1', 'Odette Lukusa', 30000),
+      ]),
+      FakeServer.pot('H8RT2Z', 'Mariage de Jonas et Ruth', mine: false, ownerName: 'Béni M.', description: 'La dot est samedi, merci à tous !',
+          target: 150000, contributions: [
+        FakeServer.contribution('e3', 'Patrick Ilunga', null, hiddenAmount: 5000, message: 'Félicitations !'),
+        FakeServer.contribution('e2', null, null, hiddenAmount: 20000),
+        FakeServer.contribution('e1', 'Grâce Kabeya', null, hiddenAmount: 70000),
+      ]),
+    ];
     server.favorites = [
       {'id': 'fav-1', 'nickname': 'Boutique Patrick', 'phone': '+243990000870', 'displayName': 'Patrick I.'},
       {'id': 'fav-2', 'nickname': 'Propriétaire', 'phone': '+243970000402', 'displayName': 'Béni M.'},
@@ -221,6 +238,29 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('receive-amount-field')), '25');
       await tester.pump();
       await shot('22-recevoir$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+
+      // Cagnottes : les miennes, celle que j'organise à partager, celle d'un proche où je participe.
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cagnottes'));
+      await tester.pumpAndSettle();
+      await shot('25-cagnottes$suffix');
+      await tester.tap(find.byKey(const ValueKey('pot-K7M4QX')));
+      await tester.pumpAndSettle();
+      await shot('25b-ma-cagnotte$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pot-code')), 'H8R T2Z');
+      await tester.tap(find.byKey(const ValueKey('pot-join')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('pot-amount')), '20');
+      await tester.enterText(find.byKey(const ValueKey('pot-message')), 'Que Dieu bénisse votre foyer');
+      await tester.pump();
+      await shot('25c-participer$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 

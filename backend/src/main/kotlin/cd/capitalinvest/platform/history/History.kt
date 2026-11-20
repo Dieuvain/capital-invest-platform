@@ -36,12 +36,12 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, POT_CONTRIBUTION, POT_PAYOUT, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
-    TRANSFER(listOf("TRANSFER", "TRANSFER_INVITE", "TRANSFER_INVITE_CLAIM", "TRANSFER_INVITE_REFUND")),
+    TRANSFER(listOf("TRANSFER", "TRANSFER_INVITE", "TRANSFER_INVITE_CLAIM", "TRANSFER_INVITE_REFUND", "POT_CONTRIBUTION", "POT_PAYOUT")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
     PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND", "BILL_PAYMENT", "BILL_REFUND")),
     SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
@@ -195,7 +195,8 @@ class HistoryService(
                bp.biller, bp.reference AS bill_reference, bp.token AS bill_token, bp.status AS bill_status,
                ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status,
                pt.status AS invite_status, pt.recipient_name AS invite_name, pt.phone AS invite_phone,
-               ps.full_name AS invite_sender_name, ps.phone AS invite_sender_phone
+               ps.full_name AS invite_sender_name, ps.phone AS invite_sender_phone,
+               pot.title AS pot_title
         FROM tx
         LEFT JOIN LATERAL (
             SELECT c.full_name, c.phone
@@ -221,6 +222,11 @@ class HistoryService(
         LEFT JOIN pending_transfer pt ON pt.id = CASE WHEN tx.type IN ('TRANSFER_INVITE', 'TRANSFER_INVITE_CLAIM', 'TRANSFER_INVITE_REFUND')
                                                     THEN CAST(split_part(tx.idempotency_key, ':', 2) AS uuid) END
         LEFT JOIN customer ps ON ps.id = pt.sender_id
+        -- Cagnotte : participation ou versement à l'organisateur.
+        LEFT JOIN LATERAL (
+            SELECT p.title FROM ledger_entry pe JOIN pot p ON p.account_id = pe.account_id
+             WHERE pe.transaction_id = tx.id LIMIT 1
+        ) pot ON TRUE
         ORDER BY tx.created_at DESC, tx.id DESC
     """
 
@@ -246,6 +252,8 @@ class HistoryService(
             "BILL_REFUND" -> HistoryKind.BILL_REFUND
             "SAVINGS_DEPOSIT" -> HistoryKind.SAVINGS_DEPOSIT
             "SAVINGS_WITHDRAWAL" -> HistoryKind.SAVINGS_WITHDRAWAL
+            "POT_CONTRIBUTION" -> HistoryKind.POT_CONTRIBUTION
+            "POT_PAYOUT" -> HistoryKind.POT_PAYOUT
             else -> HistoryKind.ADJUSTMENT
         }
         // Les frais d'un envoi sont ceux de l'expéditeur : le destinataire ne les voit pas.
@@ -292,7 +300,7 @@ class HistoryService(
             netMinor = net,
             currency = Currency.valueOf(rs.getString("currency")),
             createdAt = createdAt,
-            counterpartyName = rs.getString("other_name") ?: rs.getString("merchant_name")
+            counterpartyName = rs.getString("pot_title") ?: rs.getString("other_name") ?: rs.getString("merchant_name")
                 ?: (if (type == "TRANSFER_INVITE_CLAIM") rs.getString("invite_sender_name") else rs.getString("invite_name"))
                 ?: rs.getString("biller")?.let { Biller.valueOf(it).label },
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
@@ -302,7 +310,7 @@ class HistoryService(
             billReference = rs.getString("bill_reference"),
             token = rs.getString("bill_token")?.let { BillService.formatToken(it) },
             merchantCode = rs.getString("merchant_code"),
-            note = if (type == "TRANSFER" || type == "TRANSFER_INVITE" || type == "TRANSFER_INVITE_CLAIM" || type == "MERCHANT_PAYMENT") rs.getString("description") else null,
+            note = if (type == "TRANSFER" || type == "TRANSFER_INVITE" || type == "TRANSFER_INVITE_CLAIM" || type == "MERCHANT_PAYMENT" || type == "POT_CONTRIBUTION") rs.getString("description") else null,
             failureMessage = if (status == HistoryStatus.FAILED || kind == HistoryKind.AIRTIME_REFUND || kind == HistoryKind.BILL_REFUND) rs.getString("failure_message") else null,
         )
     }

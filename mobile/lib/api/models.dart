@@ -1051,3 +1051,103 @@ class ClosureCheck {
     [for (final b in j['blockers'] as List) (b['code'] as String, b['message'] as String)],
   );
 }
+
+/// Une participation à une cagnotte. Le nom et le montant manquent quand le serveur les cache.
+class PotContribution {
+  PotContribution({required this.id, this.name, this.amountMinor, this.message, required this.mine, required this.createdAt});
+
+  final String id;
+  final String? name;
+  final int? amountMinor;
+  final String? message;
+  final bool mine;
+  final DateTime createdAt;
+
+  factory PotContribution.fromJson(Map<String, dynamic> j) => PotContribution(
+    id: j['id'],
+    name: j['name'],
+    amountMinor: j['amountMinor'],
+    message: j['message'],
+    mine: j['mine'] ?? false,
+    createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+/// Cagnotte : un client collecte l'argent de ses proches, qui participent avec un code de 6 caractères.
+class Pot {
+  Pot({
+    required this.id,
+    required this.code,
+    required this.title,
+    this.description,
+    this.targetMinor,
+    required this.status,
+    required this.ownerName,
+    required this.mine,
+    required this.collectedMinor,
+    required this.contributors,
+    required this.myTotalMinor,
+    this.progressPercent,
+    required this.shareLink,
+    required this.contributions,
+    required this.createdAt,
+    this.closedAt,
+    this.paidOutMinor,
+  });
+
+  final String id;
+  final String code;
+  final String title;
+  final String? description;
+  final int? targetMinor;
+
+  /// OPEN ou CLOSED.
+  final String status;
+  final String ownerName;
+  final bool mine;
+  final int collectedMinor;
+  final int contributors;
+  final int myTotalMinor;
+  final int? progressPercent;
+  final String shareLink;
+  final List<PotContribution> contributions;
+  final DateTime createdAt;
+  final DateTime? closedAt;
+  final int? paidOutMinor;
+
+  bool get isOpen => status == 'OPEN';
+
+  /// « K7M4QX » vers « K7M 4QX », plus facile à dicter.
+  String get spacedCode => '${code.substring(0, 3)} ${code.substring(3)}';
+
+  factory Pot.fromJson(Map<String, dynamic> j) => Pot(
+    id: j['id'],
+    code: j['code'],
+    title: j['title'],
+    description: j['description'],
+    targetMinor: j['targetMinor'],
+    status: j['status'],
+    ownerName: j['ownerName'],
+    mine: j['mine'] ?? false,
+    collectedMinor: j['collectedMinor'],
+    contributors: j['contributors'],
+    myTotalMinor: j['myTotalMinor'] ?? 0,
+    progressPercent: j['progressPercent'],
+    shareLink: j['shareLink'],
+    contributions: [for (final c in (j['contributions'] as List? ?? const [])) PotContribution.fromJson(c)],
+    createdAt: DateTime.parse(j['createdAt']),
+    closedAt: j['closedAt'] == null ? null : DateTime.parse(j['closedAt']),
+    paidOutMinor: j['paidOutMinor'],
+  );
+}
+
+/// Code de cagnotte tapé (« k7m 4qx ») ou scanné (capitalinvest://pot?c=K7M4QX). Null s'il n'est pas valable.
+String? potCodeFrom(String raw) {
+  final t = raw.trim();
+  final uri = Uri.tryParse(t);
+  final candidate = (uri != null && uri.scheme == 'capitalinvest')
+      ? (uri.host == 'pot' ? uri.queryParameters['c'] ?? '' : '')
+      : t.replaceAll(RegExp(r'[\s-]'), '');
+  final c = candidate.toUpperCase();
+  return RegExp(r'^[A-HJ-NP-Z2-9]{6}$').hasMatch(c) ? c : null;
+}

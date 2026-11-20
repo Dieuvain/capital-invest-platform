@@ -104,7 +104,7 @@ class ActivityService(private val jdbc: JdbcClient, private val limits: LimitsPr
             customerHoldingsMinor = jdbc.sql(
                 """SELECT COALESCE(SUM(CASE WHEN e.direction = 'CREDIT' THEN e.amount_minor ELSE -e.amount_minor END), 0)
                    FROM ledger_entry e JOIN ledger_account a ON a.id = e.account_id
-                   WHERE a.type IN ('CUSTOMER_WALLET', 'CUSTOMER_SAVINGS') AND a.currency = 'USD'""",
+                   WHERE a.type IN ('CUSTOMER_WALLET', 'CUSTOMER_SAVINGS', 'CUSTOMER_POT') AND a.currency = 'USD'""",
             ).query(Long::class.java).single(),
             pendingInvites = jdbc.sql("SELECT count(*) AS n, COALESCE(SUM(amount_minor), 0) AS a FROM pending_transfer WHERE status = 'PENDING'")
                 .query { rs, _ -> Flow(rs.getLong("n"), rs.getLong("a")) }.single(),
@@ -150,7 +150,7 @@ class ActivityService(private val jdbc: JdbcClient, private val limits: LimitsPr
             activeCustomers = active,
             topups = flow(listOf("TOPUP"), emptyList()) { it.walletIn },
             // Entre clients : reçu par le destinataire ; vers un proche sans compte : parti de l'expéditeur, remboursements déduits.
-            transfers = flow(listOf("TRANSFER", "TRANSFER_INVITE"), listOf("TRANSFER_INVITE_REFUND")) { if (it.type == "TRANSFER") it.walletIn else sent(it) },
+            transfers = flow(listOf("TRANSFER", "TRANSFER_INVITE", "POT_CONTRIBUTION"), listOf("TRANSFER_INVITE_REFUND")) { if (it.type == "TRANSFER") it.walletIn else sent(it) },
             // Montant parti vers l'opérateur : débit du portefeuille moins les frais.
             withdrawals = flow(listOf("WITHDRAWAL"), listOf("WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND"), sent),
             merchantPayments = flow(listOf("MERCHANT_PAYMENT"), emptyList()) { it.walletOut },
