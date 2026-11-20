@@ -55,6 +55,8 @@ String messageFor(Object error) {
     'KYC_REQUEST_PENDING' => 'Votre demande est déjà en cours d\'examen.',
     'DOCUMENT_TYPE_INVALID' => 'Photo JPEG ou PNG attendue.',
     'DOCUMENT_TOO_LARGE' => 'Photo trop lourde (5 Mo au plus).',
+    // Le détail de Spring (« fullName: must not be blank ») est en anglais et technique.
+    'VALIDATION_ERROR' => 'Certaines informations ne sont pas valides. Vérifiez la saisie et réessayez.',
     _ => error.detail,
   };
 }

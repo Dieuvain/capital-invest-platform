@@ -77,6 +77,14 @@ curl -s -X POST localhost:8080/v1/auth/pin-reset -H 'Content-Type: application/j
 - API : `POST /v1/me/security/pin` (`currentPin`, `newPin`), `GET /v1/me/security/sessions`, `POST /v1/me/security/sessions/sign-out-others`. `deviceName` est facultatif à l'inscription, à la connexion et au PIN oublié.
 - En production : `OTP_SECRET` et `KYC_ENCRYPTION_KEY` obligatoires, `SIMULATORS_ENABLED=false`.
 
+### Formulaires d'inscription et de PIN oublié
+
+L'app vérifie la saisie avant d'appeler le serveur : numéro congolais (9 chiffres après +243), code SMS de 6 chiffres, nom complet (3 lettres au moins), PIN ni répété ni en suite, et deux PIN identiques. Une saisie que le serveur refuse quand même (`VALIDATION_ERROR`) s'affiche en français, dans l'app comme dans le back-office, au lieu du détail technique en anglais.
+
+| Ouvrir un compte | PIN oublié |
+|---|---|
+| ![Ouvrir un compte](docs/captures-app/1a-inscription.png) | ![PIN oublié](docs/captures-app/1b-pin-oublie.png) |
+
 ## Verrouillage automatique et solde masqué
 
 Un téléphone posé sur une table ou volé alors qu'il est déverrouillé ne doit pas laisser l'argent accessible. Quand le client quitte l'app plus longtemps que le délai choisi, l'app **redemande le PIN à son retour**. Les écrans ouverts sont fermés et la session aussi. Le numéro reste rempli, et un mot explique pourquoi. Le délai se règle dans Sécurité : tout de suite, 1 minute (par défaut) ou 5 minutes.

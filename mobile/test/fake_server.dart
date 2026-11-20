@@ -260,10 +260,14 @@ class FakeServer {
 
   static const token = 'jeton-test';
 
+  /// Code SMS accepté par /v1/auth/register et /v1/auth/pin-reset ; nom donné à l'inscription.
+  static const smsCode = '123456';
+  String fullName = 'Amani Kabeya';
+
   Map<String, dynamic> get _customer => {
     'id': 'c-1',
     'phone': '+243970000001',
-    'fullName': 'Amani Kabeya',
+    'fullName': fullName,
     'language': 'fr',
     'kycLevel': kycLevel,
     'status': 'ACTIVE',
@@ -533,6 +537,18 @@ class FakeServer {
       return http.Response('', 204);
     }
     switch ((req.method, path)) {
+      case ('POST', '/v1/auth/otp') || ('POST', '/v1/auth/pin-reset/otp'):
+        return http.Response('', 204);
+      case ('POST', '/v1/auth/register') || ('POST', '/v1/auth/pin-reset'):
+        final b = body();
+        if (b['code'] != smsCode) return _error(401, 'OTP_INVALID', 'Code invalide ou expiré');
+        if (b['fullName'] != null) fullName = b['fullName'];
+        pin = b['pin'] ?? b['newPin'];
+        return _json({
+          'accessToken': token,
+          'expiresInSeconds': 900,
+          'customer': {'customer': _customer, 'walletAccountId': 'w-1'},
+        });
       case ('POST', '/v1/auth/login'):
         final b = body();
         if (b['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');

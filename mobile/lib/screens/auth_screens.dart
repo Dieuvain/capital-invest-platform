@@ -248,6 +248,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
   }
 
   Future<void> _reset() async {
+    if (!RegExp(r'^[0-9]{6}$').hasMatch(code.text)) return setState(() => error = 'Le code SMS fait 6 chiffres.');
     final problem = pinProblem(pin.text);
     if (problem != null) return setState(() => error = problem);
     if (pin.text != pin2.text) return setState(() => error = 'Les deux PIN sont différents.');
@@ -286,6 +287,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
           children: [
             ErrorBanner(error),
             TextField(
+              key: const ValueKey('code'),
               controller: code,
               keyboardType: TextInputType.number,
               maxLength: 6,

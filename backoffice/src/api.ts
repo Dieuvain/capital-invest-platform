@@ -490,6 +490,8 @@ export class Api {
     } catch {
       /* pas de corps JSON */
     }
+    // Le détail de Spring (« title: must not be blank ») est en anglais et technique.
+    if (code === 'VALIDATION_ERROR') detail = 'Certaines informations ne sont pas valides. Vérifiez la saisie et réessayez.'
     if (res.status === 401 && this.token && path !== '/v1/backoffice/auth/login') {
       this.token = null
       this.onExpired()
