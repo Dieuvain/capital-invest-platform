@@ -140,6 +140,49 @@ void main() {
       await tester.pumpAndSettle();
       await shot('1-connexion$suffix');
 
+      Future<void> open(String link) async {
+        await tester.ensureVisible(find.text(link));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(link));
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> back() async {
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.tap(find.byTooltip('Retour'));
+        await tester.pumpAndSettle();
+      }
+
+      await open('Ouvrir un compte');
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970 000 001');
+      await tester.tap(find.text('Recevoir le code'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('code')), '123456');
+      await tester.enterText(find.byKey(const ValueKey('name')), 'Amani Kabeya');
+      await tester.enterText(find.byKey(const ValueKey('pin-Choisissez un PIN')), '4826');
+      await tester.enterText(find.byKey(const ValueKey('pin-Confirmez le PIN')), '4827');
+      await tester.ensureVisible(find.text('Créer mon compte'));
+      await tester.tap(find.text('Créer mon compte'));
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await shot('1a-inscription$suffix');
+      await back();
+
+      await open('PIN oublié ?');
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro de téléphone')), '970 000 001');
+      await tester.tap(find.text('Recevoir le code'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('code')), '1234');
+      await tester.tap(find.text('Changer mon PIN'));
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await shot('1b-pin-oublie$suffix');
+      await back();
+      await tester.dragUntilVisible(find.text('Se connecter'), find.byType(Scrollable).first, const Offset(0, 200));
+      await tester.pumpAndSettle();
+
       await login(tester);
       await shot('2-accueil$suffix');
       await tester.drag(find.byType(ListView).first, const Offset(0, -420));
