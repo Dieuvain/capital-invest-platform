@@ -473,6 +473,22 @@ Capital Invest ne transmet rien elle-même : la conformité **imprime** le dossi
 - API : `GET /v1/backoffice/suspicion-reports`, `POST /v1/backoffice/suspicion-reports` (`customerId`, `alertId` facultatif), `GET` et `PUT /v1/backoffice/suspicion-reports/{id}` (`periodFrom`, `periodTo`, `facts`, `analysis`), `POST /v1/backoffice/suspicion-reports/{id}/submit` (`submittedOn`, `cenarefReference`).
 - À valider avec la conformité : le contenu exact attendu par la CENAREF et le délai de transmission. Le dossier suit les rubriques habituelles d'une déclaration (identité, faits, analyse, opérations), pas encore un formulaire officiel.
 
+## Activité de la plateforme (back-office)
+
+![Activité dans le back-office](docs/captures-backoffice/15-activite.png)
+
+L'écran « Activité » donne à la direction, à la conformité et au marketing les chiffres de la plateforme sur 7, 30 ou 90 jours, comparés à la période précédente de même durée :
+
+- l'argent que les clients ont chez Capital Invest aujourd'hui (portefeuilles et épargne), le nombre de clients actifs et de nouveaux comptes ;
+- par type d'opération (rechargements, envois entre clients, paiements marchands, factures et crédit, retraits) : nombre, montant, montant moyen et évolution ;
+- les frais encaissés, remboursements de frais déduits ;
+- un graphique du montant par jour, pour toutes les opérations ou une seule famille.
+
+Tout est recalculé à partir du grand livre, par jour à l'heure de Lubumbashi, sans table de statistiques à tenir à jour. Les montants sont hors frais ; un retrait, une facture ou un crédit téléphone remboursé vient en déduction du jour du remboursement. L'écran ne montre aucune donnée personnelle, seulement des totaux ; les agents KYC n'y ont pas accès.
+
+- API : `GET /v1/backoffice/activity?days=30` (de 1 à 90 jours, sinon `INVALID_PERIOD`), rôles `COMPLIANCE`, `ADMIN` et `MARKETING`.
+- Captures : [sombre](docs/captures-backoffice/15-activite-sombre.png), [téléphone](docs/captures-backoffice/15b-activite-mobile.png).
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.

@@ -186,6 +186,7 @@ table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th { text-align: left; font-size: 12.5px; color: var(--muted); font-weight: 400; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 td { padding: 13px 16px; border-bottom: 1px solid var(--divider); vertical-align: middle; }
 tbody tr:last-child td { border-bottom: 0; }
+th.num, td.num { text-align: right; white-space: nowrap; }
 tr.link { cursor: pointer; }
 tr.link:hover td { background: var(--surface-alt); }
 .tiny { font-size: 10.5px; color: var(--muted); }
@@ -240,6 +241,20 @@ textarea { resize: vertical; min-height: 80px; }
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; font-size: 11.5px; }
 .quick a { text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .quick .ic { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-alt); box-shadow: inset 0 0 0 1px var(--divider); }
+
+/* ---- Activité ---- */
+.activity-top { display: grid; grid-template-columns: minmax(260px, 1.3fr) repeat(4, minmax(0, 1fr)); gap: 16px; }
+.activity-top .hero { min-height: 140px; }
+.activity-top .hero .big { font-size: 34px; }
+.activity-val { font-size: 26px !important; white-space: nowrap; }
+.activity-chart { height: 200px; gap: 6px; padding-top: 30px; }
+.activity-chart.dense { gap: 2px; }
+.activity-chart .bar { border-radius: 5px; }
+.activity-chart.dense .bar { border-radius: 2px; }
+.activity-chart .col { min-width: 0; padding-bottom: 20px; }
+.activity-chart .day { white-space: nowrap; font-size: 10.5px; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
+.activity-chart .col:last-child .day { left: auto; right: 0; transform: none; }
+@media (max-width: 1300px) { .activity-top { grid-template-columns: repeat(2, minmax(0, 1fr)); } .activity-top .hero { grid-column: span 2; } }
 
 /* ---- Connexion ---- */
 .login { min-height: 100%; display: grid; place-items: center; padding: 24px; background: var(--bg); }

@@ -405,6 +405,36 @@ export interface ScheduledTransfer {
   createdAt: string
 }
 
+export interface Flow {
+  count: number
+  amountMinor: number
+}
+
+export interface ActivityTotals {
+  newCustomers: number
+  activeCustomers: number
+  topups: Flow
+  transfers: Flow
+  withdrawals: Flow
+  merchantPayments: Flow
+  billsAndAirtime: Flow
+  feesMinor: number
+}
+
+export interface ActivityDay extends ActivityTotals {
+  date: string
+}
+
+export interface Activity {
+  from: string
+  to: string
+  days: ActivityDay[]
+  totals: ActivityTotals
+  previous: ActivityTotals
+  customersActive: number
+  customerHoldingsMinor: number
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -567,6 +597,7 @@ export class Api {
   resolvePurchase = (p: Pick<PendingPurchase, 'type' | 'id'>, action: 'DONE' | 'REFUND', note: string, token?: string) =>
     this.json<unknown>('POST', `/v1/backoffice/${p.type === 'AIRTIME' ? 'airtime' : 'bills'}/${p.id}/resolve`,
       token ? { action, note, token } : { action, note })
+  activity = (days = 30) => this.json<Activity>('GET', `/v1/backoffice/activity?days=${days}`)
   reconciliationRuns = (limit = 14) => this.json<ReconciliationRun[]>('GET', `/v1/backoffice/reconciliation/runs?limit=${limit}`)
   runReconciliation = (businessDate?: string) =>
     this.json<ReconciliationRun>('POST', '/v1/backoffice/reconciliation/runs', businessDate ? { businessDate } : {})

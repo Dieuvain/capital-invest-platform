@@ -16,6 +16,7 @@ import { Complaints } from './pages/Complaints'
 import { Monitoring } from './pages/Monitoring'
 import { SuspicionReportPage } from './pages/SuspicionReport'
 import { Dashboard } from './pages/Dashboard'
+import { ActivityPage } from './pages/Activity'
 import { ago, buildNotices } from './notifications'
 import type { KycRequest, Promotion } from './api'
 
@@ -25,6 +26,7 @@ const SEEN_KEY = 'capital-invest-notifs-vues'
 /** Chaque menu, et qui y a accès. Le serveur vérifie de toute façon les mêmes droits. */
 export const sections: { path: string; label: string; icon: string; roles: Role[]; other?: boolean }[] = [
   { path: 'accueil', label: 'Tableau de bord', icon: 'home', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN', 'MARKETING'] },
+  { path: 'activite', label: 'Activité', icon: 'chart', roles: ['COMPLIANCE', 'ADMIN', 'MARKETING'] },
   { path: 'kyc', label: 'Demandes KYC 2', icon: 'id', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN'] },
   { path: 'promotions', label: 'Promotions', icon: 'promo', roles: ['MARKETING', 'ADMIN'] },
   { path: 'reclamations', label: 'Réclamations', icon: 'chat', roles: ['COMPLIANCE', 'ADMIN'] },
@@ -156,6 +158,9 @@ export function App({ api }: { api: Api }) {
       ) : (
         <Monitoring api={api} openCustomer={(cid) => go(`clients/${cid}`)} openMerchant={(mid) => go(`marchands/${mid}`)} openReport={(rid) => go(`surveillance/${rid}`)} notify={notify} />
       )
+      break
+    case 'activite':
+      page = <ActivityPage api={api} />
       break
     case 'rapprochement':
       page = <Reconciliation api={api} notify={notify} />
