@@ -880,6 +880,62 @@ class Recipient {
   factory Recipient.fromJson(Map<String, dynamic> j) => Recipient(j['phone'], j['displayName']);
 }
 
+/// Envoi à un proche qui n'a pas encore de compte : l'argent l'attend jusqu'à [expiresAt].
+class PendingTransfer {
+  PendingTransfer({
+    required this.id,
+    required this.recipientName,
+    required this.phone,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.status,
+    required this.createdAt,
+    required this.expiresAt,
+    this.note,
+    this.settledAt,
+  });
+
+  final String id;
+  final String recipientName;
+  final String phone;
+  final int amountMinor;
+  final int feeMinor;
+  final String? note;
+
+  /// PENDING, CLAIMED, CANCELLED ou EXPIRED.
+  final String status;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final DateTime? settledAt;
+
+  bool get isPending => status == 'PENDING';
+
+  factory PendingTransfer.fromJson(Map<String, dynamic> j) => PendingTransfer(
+    id: j['id'],
+    recipientName: j['recipientName'],
+    phone: j['phone'],
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'],
+    note: j['note'],
+    status: j['status'],
+    createdAt: DateTime.parse(j['createdAt']),
+    expiresAt: DateTime.parse(j['expiresAt']),
+    settledAt: j['settledAt'] == null ? null : DateTime.parse(j['settledAt']),
+  );
+}
+
+/// Un destinataire enregistré avec un surnom (« Maman », « Boutique »).
+class Favorite {
+  Favorite(this.id, this.nickname, this.phone, this.displayName);
+
+  final String id;
+  final String nickname;
+  final String phone;
+  final String displayName;
+
+  factory Favorite.fromJson(Map<String, dynamic> j) => Favorite(j['id'], j['nickname'], j['phone'], j['displayName']);
+}
+
 /// Une catégorie de « Mes dépenses ».
 class CategorySpending {
   CategorySpending(this.category, this.amountMinor, this.previousMinor, this.count);

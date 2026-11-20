@@ -64,6 +64,15 @@ void main() {
       {'phone': '+243970000402', 'displayName': 'Béni M.'},
       {'phone': '+243990000870', 'displayName': 'Patrick I.'},
     ];
+    server.pendingTransfers = [
+      FakeServer.pendingTransfer('pt-2', 'Tantine Odette', '+243 81• ••• 557', 3000),
+      FakeServer.pendingTransfer('pt-1', 'Papa Jean', '+243 99• ••• 112', 5000,
+          status: 'CLAIMED', createdAt: '2026-11-14T08:00:00Z', settledAt: '2026-11-15T16:42:00Z'),
+    ];
+    server.favorites = [
+      {'id': 'fav-1', 'nickname': 'Boutique Patrick', 'phone': '+243990000870', 'displayName': 'Patrick I.'},
+      {'id': 'fav-2', 'nickname': 'Propriétaire', 'phone': '+243970000402', 'displayName': 'Béni M.'},
+    ];
     server.scheduled = [
       FakeServer.scheduledTransfer('st-1', 'Béni Mukendi', 15000, 'MONTHLY', 5, note: 'Loyer', lastResult: 'SENT'),
       FakeServer.scheduledTransfer('st-2', 'Maman Chantal', 2000, 'WEEKLY', 5, lastResult: 'FAILED', lastFailure: 'Solde insuffisant')
@@ -171,6 +180,37 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
       await tester.pump();
       await shot('3-envoi-verification$suffix');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+      await tester.tap(find.text('Envoyer 150,00\u00a0\$'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('favorite-nickname')), 'Josué, frais scolaires');
+      await tester.pump();
+      await shot('20-favoris$suffix');
+      server.balance += 15150; // les captures suivantes gardent le solde de départ
+      await tester.tap(find.text('Terminé'));
+      await tester.pumpAndSettle();
+
+      // Numéro sans compte : proposer d'envoyer quand même, l'argent attend le proche.
+      await tester.tap(find.byKey(const ValueKey('quick-Envoyer')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
+      await tester.enterText(find.byKey(const ValueKey('amount')), '25');
+      await tester.tap(find.text('Continuer'));
+      await tester.pumpAndSettle();
+      await shot('21-numero-sans-compte$suffix');
+      await tester.tap(find.text('Envoyer quand même'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('invite-name')), 'Maman Chantal');
+      await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '25');
+      await tester.pump();
+      await shot('21b-envoi-sans-compte$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('waiting')));
+      await tester.pumpAndSettle();
+      await shot('21c-envois-en-attente$suffix');
+      await tester.tap(find.byTooltip('Retour'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Retour'));
       await tester.pumpAndSettle();
 

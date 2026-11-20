@@ -356,6 +356,41 @@ class ApiClient {
   Future<List<Recipient>> recentRecipients() async =>
       (await _get('/v1/transfers/recent') as List).map((j) => Recipient.fromJson(j)).toList();
 
+  /// Envoi à un numéro sans compte : l'argent attend que le proche ouvre son compte.
+  Future<PendingTransfer> sendPendingTransfer({
+    required String toPhone,
+    required String recipientName,
+    required int amountMinor,
+    required String pin,
+    required String idempotencyKey,
+    String? note,
+  }) async => PendingTransfer.fromJson(
+    await _post('/v1/transfers/pending', {
+      'toPhone': toPhone,
+      'recipientName': recipientName,
+      'amountMinor': amountMinor,
+      'pin': pin,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<List<PendingTransfer>> pendingTransfers() async =>
+      (await _get('/v1/transfers/pending') as List).map((j) => PendingTransfer.fromJson(j)).toList();
+
+  /// Reprendre l'argent, frais compris, tant que le proche ne l'a pas reçu.
+  Future<PendingTransfer> cancelPendingTransfer(String id) async =>
+      PendingTransfer.fromJson(await _delete('/v1/transfers/pending/$id'));
+
+  /// Favoris : destinataires enregistrés avec un surnom, triés par surnom.
+  Future<List<Favorite>> favorites() async =>
+      (await _get('/v1/me/favorites') as List).map((j) => Favorite.fromJson(j)).toList();
+
+  /// Ajoute un favori, ou change le surnom s'il existe déjà.
+  Future<Favorite> saveFavorite(String phone, String nickname) async =>
+      Favorite.fromJson(await _post('/v1/me/favorites', {'phone': phone, 'nickname': nickname}));
+
+  Future<void> deleteFavorite(String id) => _delete('/v1/me/favorites/$id');
+
   Future<FeeQuote> transferFee(int amountMinor) async =>
       FeeQuote.fromJson(await _get('/v1/transfers/fee', {'amountMinor': '$amountMinor'}));
 

@@ -7,6 +7,7 @@ import cd.capitalinvest.platform.customers.CustomerRepository
 import cd.capitalinvest.platform.history.HistoryItem
 import cd.capitalinvest.platform.history.HistoryKind
 import cd.capitalinvest.platform.history.HistoryService
+import cd.capitalinvest.platform.history.HistoryStatus
 import cd.capitalinvest.platform.ledger.LedgerRepository
 import cd.capitalinvest.platform.payments.Operator
 import org.slf4j.LoggerFactory
@@ -60,7 +61,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED
 }
 
 data class NotificationView(
@@ -252,6 +253,29 @@ class NotificationService(
         null,
     )
 
+    /** Au proche qui n'a pas de compte : seul un SMS peut l'atteindre. */
+    fun transferInvite(pendingId: UUID, phone: String, senderName: String, amountMinor: Long, expiresAt: OffsetDateTime) = insert(
+        null, null, phone, "invite:$pendingId",
+        Draft(
+            NotificationKind.TRANSFER_INVITE, "Argent en attente",
+            "",
+            "Capital Invest: ${short(senderName)} vous a envoye ${money(amountMinor)}. Ouvrez un compte avec ce numero avant le " +
+                "${expiresAt.atZoneSameInstant(java.time.ZoneId.of("Africa/Lubumbashi")).toLocalDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"))} pour les recevoir.",
+        ),
+        null,
+    )
+
+    /** À l'expéditeur, quand le proche a ouvert son compte et reçu l'argent. */
+    fun transferClaimed(senderId: UUID, pendingId: UUID, recipientName: String, amountMinor: Long, transactionId: UUID) = queue(
+        senderId, "invite-claimed:$pendingId",
+        Draft(
+            NotificationKind.TRANSFER_CLAIMED, "Envoi reçu",
+            "$recipientName a ouvert son compte Capital Invest et a reçu vos ${money(amountMinor)}.",
+            "Capital Invest: ${short(recipientName)} a ouvert son compte et a recu vos ${money(amountMinor)}.",
+        ),
+        transactionId,
+    )
+
     /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
     fun accountClosed(customerId: UUID, at: OffsetDateTime) = queue(
         customerId, "closed:$customerId",
@@ -391,6 +415,15 @@ class NotificationService(
         val solde = "Solde: ${money(balance)}"
         val ref = "Ref ${i.receiptNumber}"
         val operator = i.operator?.let(::operatorLabel)
+        // Envoi à un proche sans compte : l'argent attend qu'il ouvre son compte.
+        if (i.kind == HistoryKind.TRANSFER_SENT && i.status == HistoryStatus.PENDING) return Draft(
+            NotificationKind.TRANSFER_PENDING, "Envoi en attente",
+            "${money(i.amountMinor)} mis de côté pour ${i.counterpartyName ?: "votre proche"}, frais ${money(i.feeMinor)}. " +
+                "Il les reçoit en ouvrant son compte Capital Invest avec son numéro. Sinon, ils vous reviennent, frais compris. " +
+                "Nouveau solde : ${money(balance)}.",
+            "Capital Invest: ${money(i.amountMinor)} en attente pour ${short(i.counterpartyName)}, frais ${money(i.feeMinor)}. " +
+                "$solde. Pas vous? Appelez-nous.",
+        )
         return when (i.kind) {
             HistoryKind.TOPUP -> Draft(
                 NotificationKind.TOPUP, "Recharge reçue",
@@ -402,6 +435,11 @@ class NotificationService(
                 "${i.counterpartyName ?: "Un client"} vous a envoyé ${money(i.amountMinor)}" +
                     (i.note?.let { " : « $it »" } ?: ".") + " Nouveau solde : ${money(balance)}.",
                 "Capital Invest: vous avez recu ${money(i.amountMinor)} de ${short(i.counterpartyName)}. $solde. $ref",
+            )
+            HistoryKind.TRANSFER_REFUND -> Draft(
+                NotificationKind.TRANSFER_REFUNDED, "Envoi remboursé",
+                "${i.counterpartyName ?: "Votre proche"} n'a pas reçu votre envoi : ${money(i.netMinor)} sont revenus sur votre compte, frais compris.",
+                "Capital Invest: envoi a ${short(i.counterpartyName)} non reclame. ${money(i.netMinor)} rendus, frais compris. $solde. $ref",
             )
             HistoryKind.TRANSFER_SENT -> Draft(
                 NotificationKind.TRANSFER_SENT, "Envoi effectué",
@@ -450,19 +488,19 @@ class NotificationService(
     }
 
     private fun queue(customerId: UUID, dedupeKey: String, d: Draft, transactionId: UUID?) =
-        insert(customerId, null, dedupeKey, d, transactionId)
+        insert(customerId, null, null, dedupeKey, d, transactionId)
 
     /** Le marchand n'a pas d'app : seul le SMS compte, la ligne sert de file d'envoi et de trace. */
     private fun queueForMerchant(merchantId: UUID, dedupeKey: String, d: Draft, transactionId: UUID?) =
-        insert(null, merchantId, dedupeKey, d, transactionId)
+        insert(null, merchantId, null, dedupeKey, d, transactionId)
 
-    private fun insert(customerId: UUID?, merchantId: UUID?, dedupeKey: String, d: Draft, transactionId: UUID?) {
+    private fun insert(customerId: UUID?, merchantId: UUID?, phone: String?, dedupeKey: String, d: Draft, transactionId: UUID?) {
         val sms = d.sms?.let { ascii(it).take(160) }
         val inserted = jdbc.sql(
-            """INSERT INTO notification (id, customer_id, merchant_id, dedupe_key, kind, title, body, transaction_id, sms_text, sms_status, next_attempt_at, created_at)
-               VALUES (:id, :customer, :merchant, :key, :kind, :title, :body, :tx, :sms, :status, :next, :now)
+            """INSERT INTO notification (id, customer_id, merchant_id, phone, dedupe_key, kind, title, body, transaction_id, sms_text, sms_status, next_attempt_at, created_at)
+               VALUES (:id, :customer, :merchant, :phone, :key, :kind, :title, :body, :tx, :sms, :status, :next, :now)
                ON CONFLICT (dedupe_key) DO NOTHING""",
-        ).param("id", UUID.randomUUID()).param("customer", customerId).param("merchant", merchantId).param("key", dedupeKey).param("kind", d.kind.name)
+        ).param("id", UUID.randomUUID()).param("customer", customerId).param("merchant", merchantId).param("phone", phone).param("key", dedupeKey).param("kind", d.kind.name)
             .param("title", d.title).param("body", d.body).param("tx", transactionId).param("sms", sms)
             .param("status", if (sms == null) "NONE" else "PENDING").param("next", if (sms == null) null else now())
             .param("now", now()).update()
@@ -565,7 +603,7 @@ class NotificationDispatcher(
     private fun sendOne(): Boolean? {
         val now = now()
         val row = jdbc.sql(
-            """SELECT n.id, n.sms_text, n.sms_attempts, COALESCE(c.phone, m.phone) AS phone FROM notification n
+            """SELECT n.id, n.sms_text, n.sms_attempts, COALESCE(c.phone, m.phone, n.phone) AS phone FROM notification n
                LEFT JOIN customer c ON c.id = n.customer_id LEFT JOIN merchant m ON m.id = n.merchant_id
                WHERE n.sms_status = 'PENDING' AND n.next_attempt_at <= :now
                ORDER BY n.next_attempt_at LIMIT 1 FOR UPDATE OF n SKIP LOCKED""",

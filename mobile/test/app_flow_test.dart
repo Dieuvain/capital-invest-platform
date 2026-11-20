@@ -282,11 +282,13 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('amount')), '12,50');
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
-    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsOneWidget);
+    // Numéro sans compte : arrêté avant les frais, avec la proposition d'envoyer quand même.
+    expect(find.byKey(const ValueKey('no-account')), findsOneWidget);
     expect(server.requests.where((r) => r.url.path == '/v1/transfers/fee'), isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('recent-+243970000002')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('no-account')), findsNothing);
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
 
@@ -301,6 +303,113 @@ void main() {
     expect(find.text('12,50 \$ envoyés'), findsOneWidget);
     expect(server.balance, 5000 - 1263);
     expect(server.requests.last.headers['Idempotency-Key'], isNotNull);
+  });
+
+  testWidgets('favoris : ajouté après un envoi, proposé en tête, retiré dans « Gérer »', (tester) async {
+    server.recentRecipients = [
+      {'phone': '+243970000402', 'displayName': 'Béni M.'},
+      {'phone': '+243970000002', 'displayName': 'Josué K.'},
+    ];
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Envoyer');
+    expect(find.text('Favoris'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('recent-+243970000402')));
+    await tester.enterText(find.byKey(const ValueKey('amount')), '5');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 5,00 \$'));
+    await tester.pumpAndSettle();
+
+    // Surnom vide : refusé sans appel au serveur.
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajouter aux favoris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Donnez un surnom de 1 à 30 caractères.'), findsOneWidget);
+    expect(server.requests.where((r) => r.method == 'POST' && r.url.path == '/v1/me/favorites'), isEmpty);
+
+    await tester.enterText(find.byKey(const ValueKey('favorite-nickname')), 'Maman');
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajouter aux favoris'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dans vos favoris : Maman'), findsOneWidget);
+    expect(server.favorites.single['phone'], '+243970000402');
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
+    // Le favori est en tête et ne se répète pas dans les récents.
+    expect(find.byKey(const ValueKey('favorite-+243970000402')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recent-+243970000402')), findsNothing);
+    expect(find.byKey(const ValueKey('recent-+243970000002')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('favorite-+243970000402')));
+    await tester.pumpAndSettle();
+    expect(find.text('970000402'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('manage-favorites')));
+    await tester.pumpAndSettle();
+    expect(find.text('Mes favoris'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('remove-favorite-+243970000402')));
+    await tester.pumpAndSettle();
+    expect(find.text('Aucun favori pour le moment.'), findsOneWidget);
+    expect(server.favorites, isEmpty);
+    Navigator.of(tester.element(find.text('Mes favoris'))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Favoris'), findsNothing);
+    expect(find.byKey(const ValueKey('recent-+243970000402')), findsOneWidget);
+  });
+
+  testWidgets('numéro sans compte : envoi en attente avec nom et PIN, puis annulé', (tester) async {
+    await start(tester);
+    await login(tester);
+    await pay(tester, 'Envoyer');
+    expect(find.byKey(const ValueKey('waiting')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
+    await tester.enterText(find.byKey(const ValueKey('amount')), '20');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    // Pas d'erreur sèche : on propose d'envoyer quand même.
+    expect(find.text('Aucun client Capital Invest avec ce numéro.'), findsNothing);
+    expect(find.byKey(const ValueKey('no-account')), findsOneWidget);
+
+    // Un autre numéro : la proposition disparaît.
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000998');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('no-account')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('phone-Numéro du destinataire')), '970000999');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Envoyer quand même'));
+    await tester.pumpAndSettle();
+    expect(find.text('Envoyer sans compte'), findsOneWidget);
+    expect(find.text('20,20\u00a0\$'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 20,00\u00a0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('Donnez le nom de votre proche : il vous aide à suivre l\'envoi.'), findsOneWidget);
+    expect(server.pendingTransfers, isEmpty);
+
+    await tester.enterText(find.byKey(const ValueKey('invite-name')), 'Maman Chantal');
+    await tester.enterText(find.byKey(const ValueKey('pin-PIN pour confirmer')), '2580');
+    await tester.tap(find.text('Envoyer 20,00\u00a0\$'));
+    await tester.pumpAndSettle();
+    expect(find.text('20,00\u00a0\$ en attente'), findsOneWidget);
+    expect(server.pendingTransfers.single['phone'], '+243970000999');
+    expect(server.pendingTransfers.single['recipientName'], 'Maman Chantal');
+    expect(server.balance, 5000 - 2020);
+
+    await tester.tap(find.text('Terminé'));
+    await tester.pumpAndSettle();
+    await pay(tester, 'Envoyer');
+    await tester.tap(find.byKey(const ValueKey('waiting')));
+    await tester.pumpAndSettle();
+    expect(find.text('Envois en attente'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cancel-pending-pt-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Annuler l\'envoi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Annulé, remboursé'), findsOneWidget);
+    expect(server.balance, 5000);
   });
 
   testWidgets('demande reçue : bandeau sur l\'accueil, frais montrés, avertissement, PIN, puis payée', (tester) async {

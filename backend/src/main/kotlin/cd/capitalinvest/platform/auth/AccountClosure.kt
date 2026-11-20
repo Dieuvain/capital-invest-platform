@@ -75,6 +75,9 @@ class AccountClosureService(
                 customerId,
             )
             if (pending > 0) add(ClosureBlocker("OPERATION_PENDING", "Une opération est encore en cours. Attendez sa confirmation."))
+            if (count("SELECT count(*) FROM pending_transfer WHERE sender_id = :c AND status = 'PENDING'", customerId) > 0) {
+                add(ClosureBlocker("PENDING_TRANSFER_OPEN", "Un envoi à un proche sans compte attend encore. Annulez-le pour reprendre l'argent."))
+            }
         }
         return ClosureCheck(blockers.isEmpty(), balance, savings, blockers)
     }
