@@ -535,7 +535,12 @@ class FakeServer {
           'SAVINGS' => ['SAVINGS_DEPOSIT', 'SAVINGS_WITHDRAWAL'],
           _ => null,
         };
-        final all = history.where((h) => kinds == null || kinds.contains(h['kind'])).toList();
+        // Recherche simplifiée : nom, numéro ou motif contenant le texte.
+        final q = req.url.queryParameters['q']?.toLowerCase();
+        bool matches(Map<String, dynamic> h) =>
+            q == null || [h['counterpartyName'], h['counterpartyPhone'], h['note'], h['receiptNumber']]
+                .any((v) => v is String && v.toLowerCase().contains(q));
+        final all = history.where((h) => (kinds == null || kinds.contains(h['kind'])) && matches(h)).toList();
         final limit = int.parse(req.url.queryParameters['limit'] ?? '30');
         final start = int.parse(req.url.queryParameters['cursor'] ?? '0');
         final end = (start + limit).clamp(0, all.length);

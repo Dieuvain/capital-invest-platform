@@ -35,6 +35,7 @@ String messageFor(Object error) {
     'LIMIT_DAILY_PERSONAL' => 'Plafond par jour que vous avez choisi atteint. Vous pouvez le changer dans Sécurité.',
     'INVALID_DAILY_LIMIT' => error.detail,
     'INVALID_THRESHOLD' => 'Choisissez un seuil entre 1 \$ et 1 000 \$.',
+    'INVALID_SEARCH' => 'Recherche trop longue : 60 caractères au plus.',
     'LIMIT_DAILY' => 'Plafond journalier d\'envoi atteint.',
     'LIMIT_MAX_BALANCE' => 'Cette recharge dépasserait votre solde maximal.',
     'RECIPIENT_LIMIT_REACHED' => 'Le destinataire ne peut pas recevoir ce montant.',

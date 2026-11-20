@@ -103,6 +103,8 @@ data class HistoryQuery(
     val to: LocalDate? = null,
     val cursor: String? = null,
     val limit: Int = 30,
+    /** Texte cherché : nom ou numéro de l'autre client, commerce, facturier, motif, n° de reçu. */
+    val search: String? = null,
 )
 
 @Service
@@ -129,11 +131,13 @@ class HistoryService(
         }
         val limit = q.limit.coerceIn(1, 100)
         val cursor = q.cursor?.let(::decodeCursor)
+        val search = q.search?.let(::searchPattern)
         val where = buildList {
             if (q.category != null) add("t.type IN (:types)")
             if (q.from != null) add("t.created_at >= :from")
             if (q.to != null) add("t.created_at < :to")
             if (cursor != null) add("(t.created_at, t.id) < (:cursorAt, :cursorId)")
+            if (search != null) add(SEARCH)
         }
         val having = when (q.direction) {
             HistoryDirection.IN -> "HAVING SUM(CASE WHEN e.direction = 'CREDIT' THEN e.amount_minor ELSE -e.amount_minor END) > 0"
@@ -147,6 +151,8 @@ class HistoryService(
         if (q.from != null) spec = spec.param("from", q.from.atStartOfDay(zone).toOffsetDateTime())
         if (q.to != null) spec = spec.param("to", q.to.plusDays(1).atStartOfDay(zone).toOffsetDateTime())
         if (cursor != null) spec = spec.param("cursorAt", cursor.first).param("cursorId", cursor.second)
+        if (search != null) spec = spec.param("search", search.like).param("searchDigits", search.digits).param("receipt", search.receipt)
+            .param("searchAmount", search.amountMinor)
         val rows = spec.query { rs, _ -> toItem(rs, maskPhones) }.list()
         val items = rows.take(limit)
         val next = if (rows.size > limit) items.last().let { encodeCursor(it.createdAt, it.id) } else null
@@ -287,6 +293,25 @@ class HistoryService(
         )
     }
 
+    /** Ce que le client a tapé, préparé pour chaque façon de retrouver une opération. */
+    private class Search(val like: String, val digits: String?, val receipt: String?, val amountMinor: Long?)
+
+    private fun searchPattern(raw: String): Search? {
+        val text = raw.trim().replace(Regex("\\s+"), " ")
+        if (text.isEmpty()) return null
+        if (text.length > 60) throw BusinessException("INVALID_SEARCH", "Recherche trop longue (60 caractères au plus)")
+        val escaped = plain(text).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        // Un numéro tapé « 0970 000 402 » ou « 970000402 » : on compare les 9 derniers chiffres.
+        val digits = text.filter { it.isDigit() }.takeIf { it.length >= 6 }?.let { if (it.length > 9) it.takeLast(9) else it }
+        // N° de reçu CI-20261118-3F9A2C : les 6 caractères de fin sont le début de l'identifiant.
+        val receipt = Regex("(?i)^CI-?(\\d{8})-?([0-9A-F]{6})$").find(text.replace(" ", ""))?.let { it.groupValues[2].lowercase() }
+        // Un montant « 25 » ou « 12,50 » : les opérations de ce montant exact.
+        val amount = Regex("^(\\d{1,7})(?:[.,](\\d{1,2}))?\\s*\\$?$").find(text)?.let {
+            it.groupValues[1].toLong() * 100 + it.groupValues[2].padEnd(2, '0').ifEmpty { "0" }.toLong()
+        }
+        return Search("%$escaped%", digits, receipt, amount)
+    }
+
     fun receiptNumber(id: UUID, at: OffsetDateTime): String =
         "CI-" + at.atZoneSameInstant(zone).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE) + "-" +
             id.toString().replace("-", "").take(6).uppercase()
@@ -302,6 +327,48 @@ class HistoryService(
     }
 
     companion object {
+        /**
+         * Filtre de la recherche, dans la sélection des opérations (avant la pagination) :
+         * motif, nom ou numéro de l'autre client, commerce, facturier ou référence, n° de reçu.
+         */
+        private const val ACCENTS = "àâäáãéèêëíìîïóòôöõúùûüçñ"
+        private const val PLAIN = "aaaaaeeeeiiiiooooouuuucn"
+
+        /** Minuscules sans accents, côté base : « Grâce » se trouve en tapant « grace ». */
+        private fun norm(column: String) = "translate(lower($column), '$ACCENTS', '$PLAIN')"
+
+        /** Même transformation pour le texte tapé. */
+        fun plain(text: String) = text.lowercase().map { c -> ACCENTS.indexOf(c).let { if (it < 0) c else PLAIN[it] } }.joinToString("")
+
+        private val SEARCH = """(
+            ${norm("t.description")} LIKE :search
+            OR (CAST(:searchAmount AS bigint) IS NOT NULL AND EXISTS (
+                SELECT 1 FROM ledger_entry ae WHERE ae.transaction_id = t.id AND ae.account_id = :wallet AND ae.amount_minor = :searchAmount
+            ))
+            OR (CAST(:receipt AS text) IS NOT NULL AND replace(CAST(t.id AS text), '-', '') LIKE :receipt || '%')
+            OR EXISTS (
+                SELECT 1 FROM ledger_entry se
+                  JOIN ledger_account sa ON sa.id = se.account_id
+                  JOIN customer sc ON sc.id = sa.customer_id
+                 WHERE se.transaction_id = t.id AND sa.type = 'CUSTOMER_WALLET' AND sa.id <> :wallet
+                   AND (${norm("sc.full_name")} LIKE :search OR (CAST(:searchDigits AS text) IS NOT NULL AND sc.phone LIKE '%' || :searchDigits || '%'))
+            )
+            OR EXISTS (
+                SELECT 1 FROM ledger_entry me JOIN merchant m ON m.wallet_account_id = me.account_id
+                 WHERE me.transaction_id = t.id AND (${norm("m.name")} LIKE :search OR ${norm("m.code")} LIKE :search)
+            )
+            OR EXISTS (
+                SELECT 1 FROM bill_payment bp
+                 WHERE (bp.hold_transaction_id = t.id OR t.idempotency_key = 'bill-refund:' || bp.id)
+                   AND (${norm("bp.reference")} LIKE :search OR ${norm("bp.biller")} LIKE :search)
+            )
+            OR EXISTS (
+                SELECT 1 FROM airtime_purchase ap
+                 WHERE (ap.hold_transaction_id = t.id OR t.idempotency_key = 'airtime-refund:' || ap.id)
+                   AND CAST(:searchDigits AS text) IS NOT NULL AND ap.msisdn LIKE '%' || :searchDigits || '%'
+            )
+        )"""
+
         /** +243970000402 devient +243 97• ••• 402 : assez pour reconnaître un proche, pas pour recopier le numéro. */
         fun maskPhone(phone: String): String =
             if (phone.length < 8) phone else "${phone.take(4)} ${phone.substring(4, 6)}• ••• ${phone.takeLast(3)}"
@@ -320,7 +387,8 @@ class HistoryController(private val history: HistoryService) {
         @RequestParam(required = false) to: LocalDate?,
         @RequestParam(required = false) cursor: String?,
         @RequestParam(defaultValue = "30") limit: Int,
-    ): HistoryPage = history.page(customerId, HistoryQuery(category, direction, from, to, cursor, limit), maskPhones = true)
+        @RequestParam(required = false) q: String?,
+    ): HistoryPage = history.page(customerId, HistoryQuery(category, direction, from, to, cursor, limit, q), maskPhones = true)
 
     @GetMapping("/{id}")
     fun receipt(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @PathVariable id: UUID): Receipt =
