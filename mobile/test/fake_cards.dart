@@ -17,6 +17,7 @@ class FakeCards {
   static const pan = '4000001234567899';
   static const activationCode = '482913';
   int replacementFeeMinor = 500;
+  int physicalCardFeeMinor = 100;
 
   final cards = <Map<String, dynamic>>[];
   final payments = <String, List<Map<String, dynamic>>>{};
@@ -47,8 +48,8 @@ class FakeCards {
     'eligible': kycLevel() >= 2,
     'kycLevel': kycLevel(),
     'cards': cards.where((c) => c['status'] != 'DELETED' && c['_replaced'] != true).map(_public).toList(),
-    'branches': [branch],
-    'physicalCardFeeMinor': 0,
+    'branches': [branch, 'Lubumbashi', 'Kalemie', 'Kinshasa'],
+    'physicalCardFeeMinor': physicalCardFeeMinor,
     'replacementFeeMinor': replacementFeeMinor,
     'maxDailyLimitMinor': 1000000,
   };
@@ -78,6 +79,7 @@ class FakeCards {
       if (_orders[key] != null) return _json(_orders[key]!, 201);
       if (badPin()) return _error(401, 'INVALID_CREDENTIALS', 'PIN incorrect');
       if (_hasLive('PHYSICAL')) return _error(409, 'CARD_ALREADY_EXISTS', 'Vous avez déjà une carte physique');
+      onFee(physicalCardFeeMinor);
       final c = card('p-${++_next}', 'PHYSICAL', 'ORDERED', last4: '55${_next.toString().padLeft(2, '0')}');
       cards.add(c);
       return _json(_orders[key] = c, 201);

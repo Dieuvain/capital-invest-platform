@@ -35,9 +35,9 @@ data class CardsProperties(
     /** Processeur des nouvelles cartes : `simulator` tant qu'aucun partenaire n'est choisi. */
     val processor: String = SimulatedCardProcessor.NAME,
     /** Agences où retirer une carte physique. */
-    val branches: List<String> = listOf("Kolwezi - Agence principale"),
-    /** Prix de la première carte physique. PROVISOIRE : à fixer par la direction générale. */
-    val physicalCardFeeMinor: Long = 0,
+    val branches: List<String> = listOf("Kolwezi - Agence principale", "Lubumbashi", "Kalemie", "Kinshasa"),
+    /** Prix de la première carte physique : 1 $ pour l'instant (décision du 21/11/2026). */
+    val physicalCardFeeMinor: Long = 100,
     /** Remplacement d'une carte physique bloquée ou expirée (5 $, dossier d'analyse). */
     val replacementFeeMinor: Long = 500,
     /** Plafond journalier d'une nouvelle carte ; le client peut le changer jusqu'au plafond journalier de son niveau. */

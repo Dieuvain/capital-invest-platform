@@ -183,9 +183,11 @@ class CardsApiTest : ApiTest() {
         topupConfirmed(s, 10_000, "top-1")
         val o = overview(s)
         assertEquals("Kolwezi - Agence principale", o["branches"][0].asText())
+        assertEquals(listOf("Kolwezi - Agence principale", "Lubumbashi", "Kalemie", "Kinshasa"), o["branches"].map { it.asText() })
+        assertEquals(100, o["physicalCardFeeMinor"].asLong())
         assertEquals(500, o["replacementFeeMinor"].asLong())
 
-        orderPhysical(s, "cmd-1", branch = "Lubumbashi").andExpect { status { isUnprocessableEntity() }; jsonPath("$.code") { value("INVALID_BRANCH") } }
+        orderPhysical(s, "cmd-1", branch = "Goma").andExpect { status { isUnprocessableEntity() }; jsonPath("$.code") { value("INVALID_BRANCH") } }
         orderPhysical(s, "cmd-1", pin = "0000").andExpect { status { isUnauthorized() } }
         val card = orderPhysical(s, "cmd-1", branch = "kolwezi - agence principale").andExpect { status { isCreated() } }.body()
         val id = card["id"].asText()
@@ -193,9 +195,12 @@ class CardsApiTest : ApiTest() {
         assertEquals("ORDERED", card["status"].asText())
         assertEquals("Kolwezi - Agence principale", card["pickupBranch"].asText())
         assertFalse(card["onlinePayments"].asBoolean())
-        // Commande renvoyée après une coupure : la même carte.
+        // 1 $ pris à la commande.
+        assertEquals(9_900, balance(s))
+        // Commande renvoyée après une coupure : la même carte, sans seconds frais.
         assertEquals(id, orderPhysical(s, "cmd-1").andExpect { status { isCreated() } }.body()["id"].asText())
         orderPhysical(s, "cmd-2").andExpect { status { isConflict() }; jsonPath("$.code") { value("CARD_ALREADY_EXISTS") } }
+        assertEquals(9_900, balance(s))
 
         // Pas encore là : ni activation ni paiement.
         action(s, id, "activate", mapOf("activationCode" to "000000", "cardPin" to "4826"))
@@ -218,7 +223,7 @@ class CardsApiTest : ApiTest() {
         // Paiements en ligne coupés par défaut sur la carte physique.
         assertEquals("ONLINE_PAYMENTS_DISABLED", pay(id, 1_000, online = true)["declineCode"].asText())
         assertEquals("APPROVED", pay(id, 1_000, merchant = "Pharmacie du Centre")["status"].asText())
-        assertEquals(9_000, balance(s))
+        assertEquals(8_900, balance(s))
     }
 
     @Test
@@ -246,11 +251,11 @@ class CardsApiTest : ApiTest() {
         val next = action(s, id, "replace", mapOf("pin" to "2580"), key = "rep-1").andExpect { status { isCreated() } }.body()
         assertEquals("ORDERED", next["status"].asText())
         assertEquals("Kolwezi - Agence principale", next["pickupBranch"].asText())
-        assertEquals(9_500, balance(s))
+        assertEquals(9_400, balance(s))
         // Remplacement renvoyé : pas de seconde carte ni de seconds frais.
         assertEquals(next["id"].asText(), action(s, id, "replace", mapOf("pin" to "2580"), key = "rep-1").andExpect { status { isCreated() } }.body()["id"].asText())
         action(s, id, "replace", mapOf("pin" to "2580"), key = "rep-2").andExpect { status { isConflict() } }
-        assertEquals(9_500, balance(s))
+        assertEquals(9_400, balance(s))
         val fee = history(s)[0]
         assertEquals("CARD_FEE", fee["kind"].asText())
         assertEquals(500, fee["amountMinor"].asLong())
@@ -271,7 +276,7 @@ class CardsApiTest : ApiTest() {
         action(s, id, "block", mapOf("reason" to "LOST", "pin" to "2580")).andExpect { status { isOk() } }
         action(s, id, "replace", mapOf("pin" to "2580"), key = "rep-1")
             .andExpect { status { isUnprocessableEntity() }; jsonPath("$.code") { value("INSUFFICIENT_FUNDS") } }
-        assertEquals(300, balance(s))
+        assertEquals(200, balance(s))
         assertEquals(1, jdbc.sql("SELECT count(*) FROM card").query(Int::class.java).single())
     }
 

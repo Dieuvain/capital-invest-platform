@@ -122,7 +122,18 @@ void main() {
     await openCards(tester);
     await tester.tap(find.byKey(const ValueKey('card-order-physical')));
     await tester.pumpAndSettle();
-    expect(find.text('La carte est offerte.'), findsOneWidget);
+    expect(find.text('Prix de la carte : ${formatUsd(100)}, pris sur votre solde à la commande.'), findsOneWidget);
+    // Plusieurs agences : le client choisit la sienne.
+    await tester.tap(find.byKey(const ValueKey('card-order')));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisissez l\'agence où retirer votre carte.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('card-branch')));
+    await tester.pumpAndSettle();
+    for (final city in ['Lubumbashi', 'Kalemie', 'Kinshasa']) {
+      expect(find.text(city), findsWidgets);
+    }
+    await tester.tap(find.text(FakeCards.branch).last);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('card-order')));
     await tester.pumpAndSettle();
     expect(find.text('Entrez votre PIN pour confirmer.'), findsOneWidget);
@@ -132,6 +143,7 @@ void main() {
     final order = server.requests.lastWhere((r) => r.url.path == '/v1/me/cards/physical');
     expect(order.body, contains(FakeCards.branch));
     expect(order.headers['Idempotency-Key'], isNotEmpty);
+    expect(server.balance, 4900);
     expect(find.textContaining('En fabrication. Nous vous prévenons par SMS'), findsOneWidget);
     // Déjà commandée : plus de bouton de commande.
     expect(find.byKey(const ValueKey('card-order-physical')), findsNothing);
@@ -217,7 +229,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('${formatUsd(500)} sont pris sur votre solde'), findsOneWidget);
     await confirmPin(tester);
-    expect(server.balance, 4500);
+    expect(server.balance, 4500); // carte déjà là : seuls les 5 $ du remplacement
     // Retour à la liste : la nouvelle carte, commandée ; plus l'ancienne.
     expect(find.text('Cartes'), findsOneWidget);
     expect(find.byKey(const ValueKey('card-p-9')), findsNothing);

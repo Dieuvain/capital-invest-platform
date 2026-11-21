@@ -589,7 +589,7 @@ Tout est recalculé à partir du grand livre, par jour à l'heure de Lubumbashi,
 Carte prépayée Visa qui dépense le solde du compte (portefeuille USD), en magasin, en ligne et au distributeur. Il faut le **KYC de niveau 2**. L'écran **Cartes** s'ouvre depuis Plus, le Profil ou la carte ocre derrière le solde, sur l'accueil.
 
 - **Carte virtuelle** : créée en une touche, active tout de suite, paiements en ligne permis. Une seule à la fois ; on peut la supprimer (PIN) et en créer une nouvelle, avec un autre numéro.
-- **Carte physique** : commandée avec le PIN et le choix de l'agence de retrait, puis « en fabrication », puis « prête à l'agence » (SMS au client). Le client la retire avec sa pièce d'identité et l'active dans l'app avec le code à 6 chiffres du pli et un PIN de carte qu'il choisit. Paiements en ligne coupés par défaut.
+- **Carte physique** : commandée avec le PIN et le choix de l'agence de retrait (Kolwezi, Lubumbashi, Kalemie ou Kinshasa), au prix de 1 $, puis « en fabrication », puis « prête à l'agence » (SMS au client). Le client la retire avec sa pièce d'identité et l'active dans l'app avec le code à 6 chiffres du pli et un PIN de carte qu'il choisit. Paiements en ligne coupés par défaut.
 - **Geler** (sans PIN, pour réagir vite) et **dégeler** (PIN) : réversible. **Bloquer** pour perte, vol ou fraude (PIN) : définitif, SMS au client. Une carte bloquée ou expirée se **remplace** : nouvelle carte, nouveau numéro ; la physique repart de « commandée » et coûte 5 $ (débités au remplacement).
 - **Plafond par jour** propre à chaque carte (500 $ par défaut), réglable jusqu'au plafond journalier du niveau. Les plafonds du niveau et la suspension de 24 h après un PIN oublié s'appliquent aussi.
 - **Numéro complet** : affiché avec le PIN, recaché au bout d'une minute, jamais mis en cache (`Cache-Control: no-store`), sans bouton « copier ». Capital Invest ne stocke que le jeton du processeur et les 4 derniers chiffres.
@@ -604,7 +604,7 @@ Carte prépayée Visa qui dépense le solde du compte (portefeuille USD), en mag
 
 - API : `GET /v1/me/cards`, `POST /v1/me/cards/virtual`, `POST /v1/me/cards/physical` (`pickupBranch`, `pin`, en-tête `Idempotency-Key`), `GET /v1/me/cards/{id}`, `POST …/{id}/freeze`, `…/unfreeze` (`pin`), `…/block` (`reason` : `LOST`, `STOLEN`, `FRAUD` ; `pin`), `…/delete` (`pin`, virtuelle), `…/replace` (`pin`, `Idempotency-Key`), `…/activate` (`activationCode`, `cardPin`), `PUT …/{id}/controls` (`dailyLimitMinor`, `onlinePayments`), `POST …/{id}/details` (`pin`), `GET …/{id}/authorizations`.
 - Simulateur : `POST /v1/simulators/cards/{id}/production` (étape suivante de la fabrication), `GET /v1/simulators/cards/{id}/activation-code`, `POST /v1/simulators/cards/{id}/authorizations` (`amountMinor`, `merchantName`, `online`, `reference`), `POST /v1/simulators/cards/authorizations/{id}/reversal`.
-- Réglages (`capital-invest.cards`) : `branches` (agences de retrait), `physical-card-fee-minor` (0, PROVISOIRE), `replacement-fee-minor` (500), `default-daily-limit-minor` (50000).
+- Réglages (`capital-invest.cards`) : `branches` (agences de retrait), `physical-card-fee-minor` (100, soit 1 $ pour l'instant), `replacement-fee-minor` (500), `default-daily-limit-minor` (50000).
 
 ## Règles du grand livre
 
