@@ -332,6 +332,18 @@ class ApiClient {
 
   Future<Savings> clearSavingsGoal() async => Savings.fromJson(await _delete('/v1/me/savings/goal'));
 
+  /// Les deux comptes du client, USD puis CDF.
+  Future<List<AccountBalance>> accounts() async => AccountBalance.listFromJson((await _get('/v1/me/accounts'))['accounts']);
+
+  /// Taux du jour et frais de change.
+  Future<ExchangeRate> exchangeRate() async => ExchangeRate.fromJson(await _get('/v1/me/exchange'));
+
+  /// Change [amountMinor] de [from] (USD ou CDF) vers l'autre devise. [rate] : le taux affiché ;
+  /// s'il a changé, le serveur refuse (RATE_CHANGED) plutôt que de créditer un autre montant.
+  Future<ExchangeResult> exchange(String from, int amountMinor, num rate, String idempotencyKey) async => ExchangeResult.fromJson(
+    await _post('/v1/me/exchange', {'from': from, 'amountMinor': amountMinor, 'rate': rate}, idempotencyKey: idempotencyKey),
+  );
+
   Future<Customer> me() async => Customer.fromJson((await _get('/v1/me'))['customer']);
 
   Future<int> balance() async => (await _get('/v1/me/balance'))['balanceMinor'] as int;
@@ -347,11 +359,21 @@ class ApiClient {
 
   /// Historique des opérations. [category] : TOPUP, TRANSFER ou WITHDRAWAL ; [cursor] : page suivante.
   /// [search] : nom, numéro, motif, montant ou n° de reçu.
-  Future<HistoryPage> history({String? category, String? cursor, int limit = 30, String? search}) async => HistoryPage.fromJson(
-    await _get('/v1/me/history', {'category': ?category, 'cursor': ?cursor, 'limit': '$limit', 'q': ?search}),
-  );
+  /// [currency] : CDF pour l'historique du compte en francs.
+  Future<HistoryPage> history({String? category, String? cursor, int limit = 30, String? search, String? currency}) async =>
+      HistoryPage.fromJson(
+        await _get('/v1/me/history', {
+          'category': ?category,
+          'cursor': ?cursor,
+          'limit': '$limit',
+          'q': ?search,
+          'currency': ?currency,
+        }),
+      );
 
-  Future<Receipt> receipt(String id) async => Receipt.fromJson(await _get('/v1/me/history/$id'));
+  /// [currency] : CDF pour le reçu vu depuis le compte en francs.
+  Future<Receipt> receipt(String id, {String? currency}) async =>
+      Receipt.fromJson(await _get('/v1/me/history/$id', currency == null || currency == 'USD' ? null : {'currency': currency}));
 
   Future<NotificationInbox> notifications() async => NotificationInbox.fromJson(await _get('/v1/me/notifications'));
 

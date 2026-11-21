@@ -494,6 +494,8 @@ class NotificationService(
             HistoryKind.WITHDRAWAL -> null
             // Le client vient de le faire lui-même dans l'app, et l'argent ne quitte pas son compte.
             HistoryKind.SAVINGS_DEPOSIT, HistoryKind.SAVINGS_WITHDRAWAL -> null
+            // Change entre ses deux comptes : fait dans l'app, l'argent reste chez Capital Invest.
+            HistoryKind.EXCHANGE -> null
             // Le client voit le résultat de l'achat dans l'app ; seul un remboursement arrive après coup.
             HistoryKind.AIRTIME -> null
             // Le paiement est notifié quand le facturier confirme (billPaid), avec le code du compteur.

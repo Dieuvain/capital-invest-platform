@@ -15,6 +15,7 @@ import '../ui/widgets.dart';
 import 'airtime_screen.dart';
 import 'bill_screens.dart';
 import 'complaint_screens.dart';
+import 'exchange_screen.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
@@ -54,6 +55,9 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   int unread = 0;
   List<MoneyRequest> toPay = const [];
   Savings? savings;
+
+  /// Solde du compte en francs congolais ; null tant qu'il n'est pas chargé.
+  int? francs;
   int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
@@ -93,6 +97,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       // Pas de carte Épargne.
     }
     try {
+      final a = await api.accounts();
+      if (mounted) setState(() => francs = a.where((x) => x.currency == 'CDF').firstOrNull?.balanceMinor);
+    } on ApiException {
+      // Pas de carte Francs.
+    }
+    try {
       final p = await api.promotions();
       if (mounted) setState(() => promos = p);
     } on ApiException {
@@ -119,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _airtime() => _open(AirtimeScreen(app: widget.app, limits: limits));
   void _savings() => _open(SavingsScreen(app: widget.app));
   void _pots() => _open(PotsScreen(app: widget.app));
+  void _exchange() => _open(ExchangeScreen(app: widget.app, from: (francs ?? 0) > 0 && (balance ?? 0) == 0 ? 'CDF' : 'USD'));
   void _complaints() => _open(ComplaintsScreen(app: widget.app));
   void _scheduled() => _open(ScheduledTransfersScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
@@ -157,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 _SheetRow(Icons.qr_code_2_rounded, 'Mon QR pour recevoir', () => go(_receive)),
                 _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
                 _SheetRow(Icons.event_repeat_rounded, 'Envois programmés', () => go(_scheduled)),
+                _SheetRow(Icons.currency_exchange_rounded, 'Dollars et francs', () => go(_exchange)),
                 _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
                 _SheetRow(Icons.volunteer_activism_outlined, 'Cagnottes', () => go(_pots)),
                 _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
@@ -302,6 +314,11 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   onTap: _promoAction,
                   loadImage: widget.app.api.promotionImage,
                 ),
+              ],
+              // Compte en francs : sous les promotions, pour ne pas les repousser hors de l'écran.
+              if (francs != null) ...[
+                const SizedBox(height: 16),
+                _FrancsCard(francs: francs!, onTap: _exchange, hidden: widget.app.hideBalance),
               ],
               const SizedBox(height: 16),
               _MovementsCard(
@@ -453,6 +470,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ),
                   _SheetRow(Icons.lock_outline_rounded, 'Sécurité et PIN', _security),
                   _SheetRow(Icons.credit_card_outlined, 'Carte prépayée Visa · bientôt', null),
+                  _SheetRow(Icons.currency_exchange_rounded, 'Compte en francs (CDF)', _exchange),
                   _SheetRow(Icons.savings_outlined, 'Épargne', _savings),
                 ],
               ),
@@ -952,4 +970,43 @@ class _SavingsCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compte en francs congolais, sous le solde en dollars : ouvre le change.
+class _FrancsCard extends StatelessWidget {
+  const _FrancsCard({required this.francs, required this.onTap, this.hidden = false});
+
+  final int francs;
+  final VoidCallback onTap;
+
+  /// Solde masqué : les francs aussi.
+  final bool hidden;
+
+  @override
+  Widget build(BuildContext context) => SoftCard(
+    key: const ValueKey('home-francs'),
+    onTap: onTap,
+    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+    child: Row(
+      children: [
+        const IconTile(Icons.currency_exchange_rounded, size: 42, accent: true),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Compte en francs', style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                francs == 0 ? 'Changez des dollars en francs congolais' : 'Changez à tout moment',
+                style: TextStyle(color: context.pal.muted, fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        Text(hidden ? '•••••' : formatCdf(francs), style: const TextStyle(fontWeight: FontWeight.w700)),
+        const Icon(Icons.chevron_right_rounded),
+      ],
+    ),
+  );
 }

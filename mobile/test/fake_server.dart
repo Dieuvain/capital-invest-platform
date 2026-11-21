@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'fake_exchange.dart';
+
 /// Faux serveur Capital Invest pour les tests : répond comme l'API réelle, sans réseau.
 class FakeServer {
   final requests = <http.Request>[];
@@ -306,6 +308,9 @@ class FakeServer {
   static const smsCode = '123456';
   String fullName = 'Amani Kabeya';
 
+  /// Compte en francs et change (routes /v1/me/accounts et /v1/me/exchange).
+  late final exchange = FakeExchange(usd: () => balance, onUsd: (d) => balance += d, addHistory: (h) => history.insert(0, h));
+
   Map<String, dynamic> get _customer => {
     'id': 'c-1',
     'phone': '+243970000001',
@@ -330,6 +335,8 @@ class FakeServer {
         path.startsWith('/v1/money-requests')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
+    final fx = exchange.handle(req);
+    if (fx != null) return fx;
     final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);
     if (image != null) {
       final bytes = images[image.group(1)];

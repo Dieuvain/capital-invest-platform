@@ -301,6 +301,7 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
             HistoryKind.POT_CONTRIBUTION -> "Participation à la cagnotte « ${i.counterpartyName ?: ""} »"
             HistoryKind.POT_PAYOUT -> "Cagnotte « ${i.counterpartyName ?: ""} » versée"
+            HistoryKind.EXCHANGE -> i.exchange?.let { "Change ${it.from} vers ${it.to}" } ?: "Change"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }
