@@ -21,6 +21,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
   late final phone = TextEditingController(text: widget.app.lastPhone?.substring(4) ?? '');
   final pin = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    // Ouverture de l'app ou verrouillage : le lecteur d'empreinte s'ouvre tout seul. Le client peut l'annuler
+    // et entrer son PIN.
+    if (widget.app.biometricPhone != null && widget.app.offerBiometric) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !busy) _biometricLogin();
+      });
+    }
+  }
+
+  Future<void> _biometricLogin() async {
+    final tokens = await run(widget.app, widget.app.biometricLogin);
+    if (tokens != null) widget.app.signedInAs(tokens);
+  }
+
   Future<void> _login() async {
     final p = normalizePhone(phone.text);
     if (p == null) return setState(() => error = 'Numéro congolais attendu (9 chiffres après +243).');
@@ -68,6 +85,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> with ApiAction {
                   const SizedBox(height: 14),
                 ],
                 ErrorBanner(error),
+                if (widget.app.biometricPhone != null) ...[
+                  FilledButton.icon(
+                    key: const ValueKey('biometric-login'),
+                    onPressed: busy ? null : _biometricLogin,
+                    icon: const Icon(Icons.fingerprint_rounded, size: 26),
+                    label: const Text('Se connecter avec l\'empreinte'),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Compte ${widget.app.biometricPhone}. Ou entrez votre PIN :',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: context.pal.muted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 PhoneField(controller: phone),
                 const SizedBox(height: 12),
                 PinField(controller: pin, onSubmitted: (_) => _login()),
@@ -263,6 +295,9 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> with ApiAction {
       ),
     );
     if (tokens != null && mounted) {
+      // Le serveur a retiré l'empreinte de tous les téléphones : à réactiver avec le nouveau PIN.
+      if (sentTo == widget.app.biometricPhone) await widget.app.forgetBiometric();
+      if (!mounted) return;
       widget.app.signedInAs(tokens);
       Navigator.of(context).popUntil((r) => r.isFirst);
     }

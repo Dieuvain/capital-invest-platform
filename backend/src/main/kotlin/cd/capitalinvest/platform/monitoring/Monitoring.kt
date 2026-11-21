@@ -341,6 +341,9 @@ class MonitoringService(
             if (status == "SUSPENDED") {
                 jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
                     .param("now", now()).param("id", customerId).update()
+                // À la réactivation, le client repassera par son PIN : l'empreinte est retirée de ses téléphones.
+                jdbc.sql("UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
+                    .param("now", now()).param("id", customerId).update()
             }
             // Débloqué en agence après un blocage par le client : on efface la marque et on le prévient.
             if (status == "ACTIVE" && c.blockedByCustomerAt != null) {

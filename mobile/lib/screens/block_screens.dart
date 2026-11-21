@@ -42,7 +42,8 @@ class _BlockAccountScreenState extends State<BlockAccountScreen> with ApiAction 
     final app = widget.app;
     // Le Future de pushReplacement ne se termine qu'à la fermeture de l'écran : on ne l'attend pas.
     unawaited(Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountBlockedScreen())));
-    // Toutes les sessions sont fermées côté serveur, celle-ci aussi.
+    // Toutes les sessions sont fermées côté serveur, celle-ci aussi, et l'empreinte retirée partout.
+    if ((widget.signedIn ? app.customer?.phone : p) == app.biometricPhone) await app.forgetBiometric();
     if (widget.signedIn) await app.signOut(callServer: false);
   }
 

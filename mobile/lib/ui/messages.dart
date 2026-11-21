@@ -6,6 +6,8 @@ String messageFor(Object error) {
   return switch (error.code) {
     'NETWORK' => error.detail,
     'INVALID_CREDENTIALS' => 'Numéro ou PIN incorrect.',
+    'BIOMETRIC_INVALID' =>
+      'L\'empreinte a été désactivée sur ce téléphone (PIN changé ou compte bloqué). Entrez votre PIN, puis réactivez-la dans Sécurité.',
     'PIN_LOCKED' => 'PIN bloqué après 5 erreurs. Réessayez dans 15 minutes ou changez votre PIN.',
     'SESSION_EXPIRED' || 'SESSION_INVALID' || 'AUTH_REQUIRED' => 'Session expirée. Entrez votre PIN.',
     'CUSTOMER_BLOCKED' => 'Compte bloqué à votre demande. Pour le débloquer, présentez-vous en agence avec votre pièce d\'identité.',

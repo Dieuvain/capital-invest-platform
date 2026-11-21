@@ -103,6 +103,7 @@ class AccountClosureService(
         jdbc.sql("UPDATE scheduled_transfer SET status = 'CANCELLED' WHERE customer_id = :c AND status <> 'CANCELLED'").param("c", customerId).update()
         jdbc.sql("UPDATE money_request SET status = 'CANCELLED' WHERE requester_id = :c AND status = 'PENDING'").param("c", customerId).update()
         jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :c AND revoked_at IS NULL").param("now", now).param("c", customerId).update()
+        jdbc.sql("UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :c AND revoked_at IS NULL").param("now", now).param("c", customerId).update()
         audit.record(ActorType.CUSTOMER, customerId, "CUSTOMER_CLOSED", "CUSTOMER", customerId, text)
         notifications.accountClosed(customerId, now)
     }

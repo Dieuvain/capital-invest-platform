@@ -40,6 +40,14 @@ data class LoginRequest(
     @field:Size(max = 80) val deviceName: String? = null,
 )
 
+data class BiometricLoginRequest(
+    @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
+    @field:NotBlank @field:Size(max = 100) val deviceId: String,
+    /** Clé reçue à l'activation de l'empreinte, que le téléphone ne libère qu'après le doigt du client. */
+    @field:NotBlank @field:Size(max = 100) val key: String,
+    @field:Size(max = 80) val deviceName: String? = null,
+)
+
 data class BlockRequest(
     @field:Pattern(regexp = RDC_PHONE, message = RDC_PHONE_MESSAGE) val phone: String,
     val pin: String,
@@ -69,6 +77,11 @@ class AuthController(private val otp: OtpService, private val auth: AuthService)
 
     @PostMapping("/login")
     fun login(@Valid @RequestBody b: LoginRequest): SessionTokens = auth.login(b.phone, b.pin, b.deviceId, b.deviceName)
+
+    /** Connexion par empreinte, sur un téléphone où le client l'a activée. Le PIN reste toujours possible. */
+    @PostMapping("/biometric")
+    fun biometricLogin(@Valid @RequestBody b: BiometricLoginRequest): SessionTokens =
+        auth.biometricLogin(b.phone, b.deviceId, b.key, b.deviceName)
 
     @PostMapping("/pin-reset/otp")
     @ResponseStatus(HttpStatus.ACCEPTED)

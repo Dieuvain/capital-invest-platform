@@ -37,6 +37,9 @@ data class SessionView(
 
 data class SessionTokens(val accessToken: String, val expiresInSeconds: Long, val customer: CustomerView)
 
+/** Clé de connexion par empreinte, remise une seule fois au téléphone qui la garde derrière sa biométrie. */
+data class BiometricKey(val key: String)
+
 class UnauthorizedException(code: String, message: String) : BusinessException(code, message, HttpStatus.UNAUTHORIZED)
 
 @Service
@@ -101,6 +104,8 @@ class AuthService(
         jdbc.sql("UPDATE customer SET pin_reset_at = :now WHERE id = :id").param("now", now).param("id", customer.id).update()
         jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
             .param("now", now).param("id", customer.id).update()
+        // Vol de SIM possible : l'empreinte d'aucun téléphone ne doit suffire, il faudra le nouveau PIN partout.
+        revokeBiometricKeys(customer.id, now)
         notifications.pinChanged(customer.id, now)
         return openSession(customerService.get(customer.id), deviceId, deviceName)
     }
@@ -133,6 +138,7 @@ class AuthService(
             .param("now", now).param("id", customer.id).update()
         jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :id AND revoked_at IS NULL")
             .param("now", now).param("id", customer.id).update()
+        revokeBiometricKeys(customer.id, now)
         audit.record(ActorType.CUSTOMER, customer.id, "CUSTOMER_SELF_BLOCKED", "CUSTOMER", customer.id)
         notifications.accountBlocked(customer.id, now)
     }
@@ -226,9 +232,71 @@ class AuthService(
     @Transactional
     fun signOutOthers(customerId: UUID, token: String): Int = revokeOthers(customerId, token, now())
 
-    private fun revokeOthers(customerId: UUID, token: String, now: OffsetDateTime): Int =
-        jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :c AND token_hash <> :h AND revoked_at IS NULL")
+    /** Ferme les autres sessions, et retire l'empreinte des autres téléphones : ils devront repasser par le PIN. */
+    private fun revokeOthers(customerId: UUID, token: String, now: OffsetDateTime): Int {
+        jdbc.sql(
+            """UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :c AND revoked_at IS NULL
+               AND device_id <> (SELECT device_id FROM session WHERE token_hash = :h)""",
+        ).param("now", now).param("c", customerId).param("h", sha256(token)).update()
+        return jdbc.sql("UPDATE session SET revoked_at = :now WHERE customer_id = :c AND token_hash <> :h AND revoked_at IS NULL")
             .param("now", now).param("c", customerId).param("h", sha256(token)).update()
+    }
+
+    // ---- Connexion par empreinte -----------------------------------------------------------------
+
+    /**
+     * Active l'empreinte sur le téléphone de cette session. Le PIN est redemandé : un téléphone laissé ouvert ne
+     * suffit pas à l'activer. Une clé déjà active sur ce téléphone est remplacée.
+     */
+    @Transactional(noRollbackFor = [BusinessException::class])
+    fun enableBiometric(customerId: UUID, token: String, pin: String): BiometricKey {
+        checkPin(customerId, pin)
+        val deviceId = sessionDevice(token)
+        val now = now()
+        jdbc.sql("UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :c AND device_id = :d AND revoked_at IS NULL")
+            .param("now", now).param("c", customerId).param("d", deviceId).update()
+        val key = randomSecret()
+        jdbc.sql(
+            """INSERT INTO biometric_key (id, customer_id, device_id, key_hash, created_at)
+               VALUES (:id, :c, :d, :h, :now)""",
+        ).param("id", UUID.randomUUID()).param("c", customerId).param("d", deviceId).param("h", sha256(key)).param("now", now).update()
+        audit.record(ActorType.CUSTOMER, customerId, "BIOMETRIC_ENABLED", "CUSTOMER", customerId)
+        return BiometricKey(key)
+    }
+
+    /** Retire l'empreinte du téléphone de cette session. Sans clé active : ne change rien. */
+    @Transactional
+    fun disableBiometric(customerId: UUID, token: String) {
+        jdbc.sql("UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :c AND device_id = :d AND revoked_at IS NULL")
+            .param("now", now()).param("c", customerId).param("d", sessionDevice(token)).update()
+    }
+
+    /**
+     * Connexion par empreinte : le téléphone a vérifié le doigt du client, puis présente la clé reçue à l'activation.
+     * La clé ne vaut que pour ce numéro et ce téléphone. Clé inconnue ou retirée : BIOMETRIC_INVALID, l'app oublie
+     * sa clé et demande le PIN.
+     */
+    @Transactional(noRollbackFor = [BusinessException::class])
+    fun biometricLogin(phone: String, deviceId: String, key: String, deviceName: String? = null): SessionTokens {
+        val invalid = UnauthorizedException("BIOMETRIC_INVALID", "Empreinte désactivée sur ce téléphone, entrez votre PIN")
+        val customer = customers.findByPhone(phone) ?: throw invalid
+        val id = jdbc.sql(
+            """SELECT id FROM biometric_key WHERE customer_id = :c AND device_id = :d AND key_hash = :h AND revoked_at IS NULL""",
+        ).param("c", customer.id).param("d", deviceId.take(100)).param("h", sha256(key)).query(UUID::class.java).optional().orElse(null)
+            ?: throw invalid
+        requireActive(customer)
+        jdbc.sql("UPDATE biometric_key SET last_used_at = :now WHERE id = :id").param("now", now()).param("id", id).update()
+        return openSession(customerService.get(customer.id), deviceId, deviceName)
+    }
+
+    private fun revokeBiometricKeys(customerId: UUID, now: OffsetDateTime) {
+        jdbc.sql("UPDATE biometric_key SET revoked_at = :now WHERE customer_id = :c AND revoked_at IS NULL")
+            .param("now", now).param("c", customerId).update()
+    }
+
+    private fun sessionDevice(token: String): String =
+        jdbc.sql("SELECT device_id FROM session WHERE token_hash = :h").param("h", sha256(token)).query(String::class.java).optional()
+            .orElseThrow { UnauthorizedException("SESSION_INVALID", "Session invalide") }
 
     @Transactional
     fun logout(token: String) {
@@ -254,9 +322,11 @@ class AuthService(
         if (state.failedAttempts > 0 || state.lockedUntil != null) customers.updatePinFailures(customerId, 0, null)
     }
 
+    private fun randomSecret(): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
+
     private fun openSession(view: CustomerView, deviceId: String, deviceName: String?): SessionTokens {
-        val bytes = ByteArray(32).also(random::nextBytes)
-        val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        val token = randomSecret()
         val now = now()
         jdbc.sql(
             """INSERT INTO session (token_hash, customer_id, device_id, device_name, created_at, last_seen_at, expires_at)

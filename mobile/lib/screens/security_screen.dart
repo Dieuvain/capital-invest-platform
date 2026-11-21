@@ -24,6 +24,10 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
   List<DeviceSession>? sessions;
   String? done;
 
+  /// Résultat de l'activation ou de la désactivation de l'empreinte, montré sous l'interrupteur.
+  String? biometricNote;
+  bool biometricNoteIsError = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +46,32 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
       setState(() => done = 'PIN changé. Vos autres téléphones ont été déconnectés.');
       await _load();
     }
+  }
+
+  /// Activer : PIN demandé dans une fenêtre, puis doigt posé. Désactiver : tout de suite.
+  Future<void> _toggleBiometric(bool on) async {
+    final app = widget.app;
+    String? pin;
+    if (on) {
+      pin = await showDialog<String>(context: context, builder: (_) => const _PinDialog());
+      if (pin == null || !mounted) return;
+    }
+    final result = await run(app, () async {
+      if (!on) {
+        await app.disableBiometric();
+        return 'Empreinte désactivée. Le PIN sera demandé à chaque connexion.';
+      }
+      return await app.enableBiometric(pin!)
+          ? 'Empreinte activée. Votre PIN reste demandé pour chaque envoi d\'argent.'
+          : 'Empreinte non reconnue : rien n\'a changé. Réessayez.';
+    });
+    if (!mounted) return;
+    // Le message reste sous l'interrupteur, là où le client regarde, et pas en haut de la page.
+    setState(() {
+      biometricNoteIsError = result == null;
+      biometricNote = result ?? error;
+      error = null;
+    });
   }
 
   Future<void> _signOutOthers() async {
@@ -130,6 +160,48 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
           ),
         ),
         const SizedBox(height: 24),
+        const Text('Connexion par empreinte', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(
+          widget.app.biometricsAvailable
+              ? 'Ouvrez l\'app avec votre doigt au lieu du PIN. Le PIN reste demandé pour envoyer de l\'argent, '
+                    'et marche toujours si le lecteur refuse.'
+              : 'Aucune empreinte n\'est enregistrée sur ce téléphone. Ajoutez-en une dans ses réglages, '
+                    'puis revenez ici.',
+          style: TextStyle(color: context.pal.muted, fontSize: 13),
+        ),
+        if (widget.app.biometricsAvailable) ...[
+          const SizedBox(height: 10),
+          ListenableBuilder(
+            listenable: widget.app,
+            builder: (context, _) => SoftCard(
+              padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+              child: SwitchListTile(
+                key: const ValueKey('biometric-switch'),
+                contentPadding: EdgeInsets.zero,
+                secondary: const IconTile(Icons.fingerprint_rounded, size: 42),
+                title: const Text('Se connecter avec l\'empreinte', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(widget.app.biometricEnabled ? 'Activée sur ce téléphone' : 'Désactivée'),
+                value: widget.app.biometricEnabled,
+                onChanged: busy ? null : _toggleBiometric,
+              ),
+            ),
+          ),
+          if (biometricNote != null)
+            Padding(
+              key: const ValueKey('biometric-note'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                biometricNote!,
+                style: TextStyle(
+                  color: biometricNoteIsError ? Brand.danger : context.pal.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: 24),
         const Text('Verrouillage automatique', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(
@@ -199,6 +271,43 @@ class _SecurityScreenState extends State<SecurityScreen> with ApiAction {
       ],
     );
   }
+}
+
+/// PIN redemandé pour activer l'empreinte : un téléphone laissé ouvert ne suffit pas.
+class _PinDialog extends StatefulWidget {
+  const _PinDialog();
+
+  @override
+  State<_PinDialog> createState() => _PinDialogState();
+}
+
+class _PinDialogState extends State<_PinDialog> {
+  final pin = TextEditingController();
+  String? error;
+
+  void _submit() {
+    if (pin.text.length != 4) return setState(() => error = 'Entrez vos 4 chiffres de PIN.');
+    Navigator.of(context).pop(pin.text);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Activer l\'empreinte'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Entrez votre PIN, puis posez votre doigt sur le lecteur.'),
+        const SizedBox(height: 12),
+        ErrorBanner(error),
+        PinField(controller: pin, autofocus: true, onSubmitted: (_) => _submit()),
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annuler')),
+      FilledButton(onPressed: _submit, child: const Text('Continuer')),
+    ],
+  );
 }
 
 class _SessionTile extends StatelessWidget {
