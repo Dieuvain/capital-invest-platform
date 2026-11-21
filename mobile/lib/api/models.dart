@@ -408,7 +408,8 @@ class HistoryItem {
   final String receiptNumber;
 
   /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
-  /// AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, ADJUSTMENT.
+  /// AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL,
+  /// CARD_PAYMENT, CARD_REFUND, CARD_FEE, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -1150,4 +1151,191 @@ String? potCodeFrom(String raw) {
       : t.replaceAll(RegExp(r'[\s-]'), '');
   final c = candidate.toUpperCase();
   return RegExp(r'^[A-HJ-NP-Z2-9]{6}$').hasMatch(c) ? c : null;
+}
+
+/// Carte prépayée Visa, virtuelle ou physique. Elle dépense le solde du compte.
+class PaymentCard {
+  PaymentCard({
+    required this.id,
+    required this.kind,
+    required this.status,
+    required this.network,
+    required this.last4,
+    required this.expiryMonth,
+    required this.expiryYear,
+    required this.embossedName,
+    required this.dailyLimitMinor,
+    required this.spentTodayMinor,
+    required this.onlinePayments,
+    this.pickupBranch,
+    this.blockReason,
+    required this.replaceable,
+    required this.createdAt,
+  });
+
+  final String id;
+
+  /// VIRTUAL ou PHYSICAL.
+  final String kind;
+
+  /// ORDERED, IN_PRODUCTION, READY_FOR_PICKUP, ACTIVE, FROZEN, BLOCKED, EXPIRED.
+  final String status;
+  final String network;
+  final String last4;
+  final int expiryMonth;
+  final int expiryYear;
+  final String embossedName;
+  final int dailyLimitMinor;
+  final int spentTodayMinor;
+  final bool onlinePayments;
+  final String? pickupBranch;
+
+  /// LOST, STOLEN ou FRAUD.
+  final String? blockReason;
+  final bool replaceable;
+  final DateTime createdAt;
+
+  bool get isVirtual => kind == 'VIRTUAL';
+  bool get isActive => status == 'ACTIVE';
+  bool get isFrozen => status == 'FROZEN';
+
+  /// Active ou gelée : la carte existe et le client la règle lui-même.
+  bool get inService => isActive || isFrozen;
+
+  /// Commandée, en fabrication ou prête à l'agence.
+  bool get inProduction => const {'ORDERED', 'IN_PRODUCTION', 'READY_FOR_PICKUP'}.contains(status);
+  bool get isDead => const {'BLOCKED', 'EXPIRED'}.contains(status);
+
+  String get expiry => '${expiryMonth.toString().padLeft(2, '0')}/${expiryYear % 100}';
+
+  String get label => isVirtual ? 'Carte virtuelle' : 'Carte physique';
+
+  String get statusLabel => switch (status) {
+    'ORDERED' => 'Commandée',
+    'IN_PRODUCTION' => 'En fabrication',
+    'READY_FOR_PICKUP' => 'Prête à l\'agence',
+    'ACTIVE' => 'Active',
+    'FROZEN' => 'Gelée',
+    'BLOCKED' => 'Bloquée',
+    'EXPIRED' => 'Expirée',
+    _ => status,
+  };
+
+  factory PaymentCard.fromJson(Map<String, dynamic> j) => PaymentCard(
+    id: j['id'],
+    kind: j['kind'],
+    status: j['status'],
+    network: j['network'] ?? 'VISA',
+    last4: j['last4'],
+    expiryMonth: j['expiryMonth'],
+    expiryYear: j['expiryYear'],
+    embossedName: j['embossedName'] ?? '',
+    dailyLimitMinor: j['dailyLimitMinor'],
+    spentTodayMinor: j['spentTodayMinor'] ?? 0,
+    onlinePayments: j['onlinePayments'] ?? false,
+    pickupBranch: j['pickupBranch'],
+    blockReason: j['blockReason'],
+    replaceable: j['replaceable'] ?? false,
+    createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+/// Écran Cartes : les cartes du client et ce qu'il peut commander.
+class CardsOverview {
+  CardsOverview({
+    required this.eligible,
+    required this.kycLevel,
+    required this.cards,
+    required this.branches,
+    required this.physicalCardFeeMinor,
+    required this.replacementFeeMinor,
+    required this.maxDailyLimitMinor,
+  });
+
+  /// Niveau 2 validé et compte actif.
+  final bool eligible;
+  final int kycLevel;
+  final List<PaymentCard> cards;
+  final List<String> branches;
+  final int physicalCardFeeMinor;
+  final int replacementFeeMinor;
+  final int maxDailyLimitMinor;
+
+  PaymentCard? get virtual => cards.where((c) => c.isVirtual && !c.isDead).firstOrNull;
+  PaymentCard? get physical => cards.where((c) => !c.isVirtual && !c.isDead).firstOrNull;
+
+  factory CardsOverview.fromJson(Map<String, dynamic> j) => CardsOverview(
+    eligible: j['eligible'] ?? false,
+    kycLevel: j['kycLevel'] ?? 1,
+    cards: [for (final c in (j['cards'] as List? ?? const [])) PaymentCard.fromJson(c)],
+    branches: [for (final b in (j['branches'] as List? ?? const [])) b as String],
+    physicalCardFeeMinor: j['physicalCardFeeMinor'] ?? 0,
+    replacementFeeMinor: j['replacementFeeMinor'] ?? 0,
+    maxDailyLimitMinor: j['maxDailyLimitMinor'] ?? 0,
+  );
+}
+
+/// Numéro complet de la carte, demandé avec le PIN et jamais gardé sur le téléphone.
+class CardDetails {
+  CardDetails({required this.pan, required this.cvv, required this.expiryMonth, required this.expiryYear, required this.embossedName});
+
+  final String pan;
+  final String cvv;
+  final int expiryMonth;
+  final int expiryYear;
+  final String embossedName;
+
+  /// « 4000 0012 3456 7899 ».
+  String get groupedPan => [for (var i = 0; i < pan.length; i += 4) pan.substring(i, i + 4 > pan.length ? pan.length : i + 4)].join(' ');
+
+  String get expiry => '${expiryMonth.toString().padLeft(2, '0')}/${expiryYear % 100}';
+
+  factory CardDetails.fromJson(Map<String, dynamic> j) => CardDetails(
+    pan: j['pan'],
+    cvv: j['cvv'],
+    expiryMonth: j['expiryMonth'],
+    expiryYear: j['expiryYear'],
+    embossedName: j['embossedName'] ?? '',
+  );
+}
+
+/// Paiement par carte demandé par un commerçant : accepté, refusé (avec la raison) ou annulé.
+class CardPayment {
+  CardPayment({
+    required this.id,
+    required this.amountMinor,
+    required this.merchantName,
+    this.merchantCity,
+    required this.online,
+    required this.status,
+    this.declineMessage,
+    this.transactionId,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int amountMinor;
+  final String merchantName;
+  final String? merchantCity;
+  final bool online;
+
+  /// APPROVED, DECLINED ou REVERSED.
+  final String status;
+  final String? declineMessage;
+  final String? transactionId;
+  final DateTime createdAt;
+
+  bool get declined => status == 'DECLINED';
+
+  factory CardPayment.fromJson(Map<String, dynamic> j) => CardPayment(
+    id: j['id'],
+    amountMinor: j['amountMinor'],
+    merchantName: j['merchantName'],
+    merchantCity: j['merchantCity'],
+    online: j['online'] ?? false,
+    status: j['status'],
+    declineMessage: j['declineMessage'],
+    transactionId: j['transactionId'],
+    createdAt: DateTime.parse(j['createdAt']),
+  );
 }

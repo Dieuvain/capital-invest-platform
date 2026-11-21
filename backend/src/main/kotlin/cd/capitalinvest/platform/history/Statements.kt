@@ -301,6 +301,9 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.SAVINGS_WITHDRAWAL -> "Repris de l'épargne"
             HistoryKind.POT_CONTRIBUTION -> "Participation à la cagnotte « ${i.counterpartyName ?: ""} »"
             HistoryKind.POT_PAYOUT -> "Cagnotte « ${i.counterpartyName ?: ""} » versée"
+            HistoryKind.CARD_PAYMENT -> "Carte : ${i.counterpartyName ?: "commerçant"}"
+            HistoryKind.CARD_REFUND -> "Carte : paiement annulé par ${i.counterpartyName ?: "le commerçant"}"
+            HistoryKind.CARD_FEE -> "Frais de carte"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }

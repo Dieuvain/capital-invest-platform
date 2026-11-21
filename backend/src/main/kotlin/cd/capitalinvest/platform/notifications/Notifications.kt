@@ -61,7 +61,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED, POT_CONTRIBUTION_SENT, POT_CONTRIBUTION_RECEIVED, POT_PAID_OUT
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED, POT_CONTRIBUTION_SENT, POT_CONTRIBUTION_RECEIVED, POT_PAID_OUT, CARD_PAYMENT, CARD_REFUND, CARD_READY, CARD_BLOCKED
 }
 
 data class NotificationView(
@@ -292,6 +292,29 @@ class NotificationService(
     )
 
     /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
+    /** Carte physique livrée à l'agence : le client vient la chercher avec sa pièce d'identité. */
+    fun cardReady(customerId: UUID, cardId: UUID, branch: String, last4: String) = queue(
+        customerId, "card-ready:$cardId",
+        Draft(
+            NotificationKind.CARD_READY, "Votre carte est arrivée",
+            "Votre carte •••• $last4 vous attend à l'agence $branch. Venez avec votre pièce d'identité, puis activez-la dans l'app avec le code remis avec la carte.",
+            "Capital Invest: votre carte *$last4 vous attend a l'agence ${ascii(branch)}. Venez avec votre piece d'identite.",
+        ),
+        null,
+    )
+
+    /** Carte bloquée : le SMS prévient le vrai titulaire si quelqu'un d'autre l'a fait. */
+    fun cardBlocked(customerId: UUID, cardId: UUID, virtual: Boolean, last4: String) = queue(
+        customerId, "card-blocked:$cardId",
+        Draft(
+            NotificationKind.CARD_BLOCKED, "Carte bloquée",
+            "Votre carte ${if (virtual) "virtuelle" else "physique"} •••• $last4 est bloquée définitivement : plus aucun paiement ne passera. " +
+                "Vous pouvez la remplacer depuis l'écran Cartes. Si ce n'est pas vous, appelez le service client.",
+            "Capital Invest: votre carte *$last4 est bloquee. Si ce n'est pas vous, appelez vite le service client.",
+        ),
+        null,
+    )
+
     fun accountClosed(customerId: UUID, at: OffsetDateTime) = queue(
         customerId, "closed:$customerId",
         Draft(
@@ -485,6 +508,19 @@ class NotificationService(
                 "La cagnotte « ${i.counterpartyName ?: ""} » est clôturée : ${money(i.amountMinor)} sont sur votre compte. Nouveau solde : ${money(balance)}.",
                 "Capital Invest: cagnotte ${short(i.counterpartyName)} cloturee, ${money(i.amountMinor)} sur votre compte. $solde. $ref",
             )
+            HistoryKind.CARD_PAYMENT -> Draft(
+                NotificationKind.CARD_PAYMENT, "Paiement par carte",
+                "${money(i.amountMinor)} payés par carte à ${i.counterpartyName ?: "un commerçant"}. Nouveau solde : ${money(balance)}. " +
+                    "Si ce n'est pas vous, gelez la carte dans l'app et appelez le service client.",
+                "Capital Invest: carte, ${money(i.amountMinor)} a ${short(i.counterpartyName)}. $solde. $ref. Pas vous? Gelez la carte.",
+            )
+            HistoryKind.CARD_REFUND -> Draft(
+                NotificationKind.CARD_REFUND, "Paiement par carte annulé",
+                "${i.counterpartyName ?: "Le commerçant"} a annulé un paiement par carte : ${money(i.amountMinor)} sont revenus sur votre compte.",
+                "Capital Invest: paiement carte annule par ${short(i.counterpartyName)}, ${money(i.amountMinor)} rendus. $solde. $ref",
+            )
+            // Le client vient de commander ou remplacer sa carte dans l'app, avec le prix affiché.
+            HistoryKind.CARD_FEE -> null
             HistoryKind.ADJUSTMENT -> Draft(
                 NotificationKind.ADJUSTMENT, "Solde corrigé",
                 "Votre solde a été corrigé de ${money(i.netMinor)}. Nouveau solde : ${money(balance)}.",

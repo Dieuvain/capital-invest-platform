@@ -27,6 +27,9 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'SAVINGS_WITHDRAWAL' => 'Repris de l\'épargne',
   'POT_CONTRIBUTION' => 'Cagnotte « ${i.counterpartyName ?? ''} »',
   'POT_PAYOUT' => 'Cagnotte « ${i.counterpartyName ?? ''} » versée',
+  'CARD_PAYMENT' => 'Carte · ${i.counterpartyName ?? 'commerçant'}',
+  'CARD_REFUND' => 'Carte · paiement annulé par ${i.counterpartyName ?? 'le commerçant'}',
+  'CARD_FEE' => 'Frais de carte',
   _ => 'Correction de solde',
 };
 
@@ -51,6 +54,8 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'BILL_PAYMENT' => Icons.receipt_rounded,
   'SAVINGS_DEPOSIT' || 'SAVINGS_WITHDRAWAL' => Icons.savings_outlined,
   'POT_CONTRIBUTION' || 'POT_PAYOUT' => Icons.volunteer_activism_outlined,
+  'CARD_PAYMENT' || 'CARD_FEE' => Icons.credit_card_rounded,
+  'CARD_REFUND' => Icons.undo_rounded,
   _ => Icons.tune_rounded,
 };
 
@@ -340,7 +345,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
       if (i.counterpartyName != null)
         (switch (i.kind) {
           'TRANSFER_RECEIVED' => 'Expéditeur',
-          'MERCHANT_PAYMENT' => 'Marchand',
+          'MERCHANT_PAYMENT' || 'CARD_PAYMENT' || 'CARD_REFUND' => 'Marchand',
           'BILL_PAYMENT' || 'BILL_REFUND' => 'Facturier',
           _ => 'Destinataire',
         }, i.counterpartyName!),

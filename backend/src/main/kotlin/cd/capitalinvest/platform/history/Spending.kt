@@ -77,7 +77,8 @@ class SpendingService(private val statements: StatementService, private val limi
     companion object {
         private fun categoryOf(kind: HistoryKind): SpendingCategory? = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.TRANSFER_REFUND, HistoryKind.POT_CONTRIBUTION -> SpendingCategory.TRANSFERS
-            HistoryKind.MERCHANT_PAYMENT -> SpendingCategory.MERCHANTS
+            HistoryKind.MERCHANT_PAYMENT, HistoryKind.CARD_PAYMENT, HistoryKind.CARD_REFUND -> SpendingCategory.MERCHANTS
+            HistoryKind.CARD_FEE -> SpendingCategory.FEES
             HistoryKind.BILL_PAYMENT, HistoryKind.BILL_REFUND -> SpendingCategory.BILLS
             HistoryKind.AIRTIME, HistoryKind.AIRTIME_REFUND -> SpendingCategory.AIRTIME
             HistoryKind.WITHDRAWAL, HistoryKind.WITHDRAWAL_REFUND -> SpendingCategory.WITHDRAWALS
