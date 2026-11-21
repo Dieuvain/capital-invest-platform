@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'fake_cards.dart';
 import 'fake_exchange.dart';
 
 /// Faux serveur Capital Invest pour les tests : répond comme l'API réelle, sans réseau.
@@ -308,6 +309,8 @@ class FakeServer {
   static const smsCode = '123456';
   String fullName = 'Amani Kabeya';
 
+  /// Cartes virtuelle et physique (routes /v1/me/cards).
+  late final cards = FakeCards(kycLevel: () => kycLevel, pin: () => pin, onFee: (minor) => balance -= minor);
   /// Compte en francs et change (routes /v1/me/accounts et /v1/me/exchange).
   late final exchange = FakeExchange(usd: () => balance, onUsd: (d) => balance += d, addHistory: (h) => history.insert(0, h));
 
@@ -335,6 +338,8 @@ class FakeServer {
         path.startsWith('/v1/money-requests')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
+    final card = cards.handle(req);
+    if (card != null) return card;
     final fx = exchange.handle(req);
     if (fx != null) return fx;
     final image = RegExp(r'^/v1/promotions/([^/]+)/image$').firstMatch(path);

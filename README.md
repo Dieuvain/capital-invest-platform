@@ -601,6 +601,28 @@ Tout est recalculé à partir du grand livre, par jour à l'heure de Lubumbashi,
 - API : `GET /v1/backoffice/activity?days=30` (de 1 à 90 jours, sinon `INVALID_PERIOD`), rôles `COMPLIANCE`, `ADMIN` et `MARKETING`.
 - Captures : [sombre](docs/captures-backoffice/15-activite-sombre.png), [téléphone](docs/captures-backoffice/15b-activite-mobile.png).
 
+## Cartes virtuelle et physique
+
+Carte prépayée Visa qui dépense le solde du compte (portefeuille USD), en magasin, en ligne et au distributeur. Il faut le **KYC de niveau 2**. L'écran **Cartes** s'ouvre depuis Plus, le Profil ou la carte ocre derrière le solde, sur l'accueil.
+
+- **Carte virtuelle** : créée en une touche, active tout de suite, paiements en ligne permis. Une seule à la fois ; on peut la supprimer (PIN) et en créer une nouvelle, avec un autre numéro.
+- **Carte physique** : commandée avec le PIN et le choix de l'agence de retrait (Kolwezi, Lubumbashi, Kalemie ou Kinshasa), au prix de 1 $, puis « en fabrication », puis « prête à l'agence » (SMS au client). Le client la retire avec sa pièce d'identité et l'active dans l'app avec le code à 6 chiffres du pli et un PIN de carte qu'il choisit. Paiements en ligne coupés par défaut.
+- **Geler** (sans PIN, pour réagir vite) et **dégeler** (PIN) : réversible. **Bloquer** pour perte, vol ou fraude (PIN) : définitif, SMS au client. Une carte bloquée ou expirée se **remplace** : nouvelle carte, nouveau numéro ; la physique repart de « commandée » et coûte 5 $ (débités au remplacement).
+- **Plafond par jour** propre à chaque carte (500 $ par défaut), réglable jusqu'au plafond journalier du niveau. Les plafonds du niveau et la suspension de 24 h après un PIN oublié s'appliquent aussi.
+- **Numéro complet** : affiché avec le PIN, recaché au bout d'une minute, jamais mis en cache (`Cache-Control: no-store`), sans bouton « copier ». Capital Invest ne stocke que le jeton du processeur et les 4 derniers chiffres.
+
+| Mes cartes | Carte virtuelle | Carte à l'agence | Activation |
+|---|---|---|---|
+| ![](docs/captures-app/26-cartes.png) | ![](docs/captures-app/26b-carte-virtuelle.png) | ![](docs/captures-app/26c-carte-a-l-agence.png) | ![](docs/captures-app/26d-activer-carte.png) |
+
+**Processeur de cartes.** Aucun partenaire n'est encore choisi. Le serveur parle à l'interface `CardProcessor` (émission, gel, résiliation, plafonds, activation, affichage du numéro) ; `SimulatedCardProcessor` la remplit en développement et dans les tests (numéros de test Visa valides au contrôle de Luhn, rien gardé en mémoire). Le vrai processeur sera une autre implémentation, choisie par `capital-invest.cards.processor`. Le simulateur est refusé au démarrage quand `SIMULATORS_ENABLED=false`.
+
+**Paiements par carte.** Le processeur demande une autorisation en temps réel ; le serveur vérifie carte, compte, plafonds et solde, puis débite le portefeuille au profit du compte `CARD_SETTLEMENT_USD`. La même référence renvoyée ne débite pas deux fois. Une annulation du commerçant recrédite le client, une seule fois. Les refus sont gardés avec leur motif, que l'app montre (« Carte gelée : dégelez-la dans l'app pour payer »). Paiements, annulations et frais de carte apparaissent dans l'historique, le relevé, Mes dépenses (catégorie marchands) et les SMS.
+
+- API : `GET /v1/me/cards`, `POST /v1/me/cards/virtual`, `POST /v1/me/cards/physical` (`pickupBranch`, `pin`, en-tête `Idempotency-Key`), `GET /v1/me/cards/{id}`, `POST …/{id}/freeze`, `…/unfreeze` (`pin`), `…/block` (`reason` : `LOST`, `STOLEN`, `FRAUD` ; `pin`), `…/delete` (`pin`, virtuelle), `…/replace` (`pin`, `Idempotency-Key`), `…/activate` (`activationCode`, `cardPin`), `PUT …/{id}/controls` (`dailyLimitMinor`, `onlinePayments`), `POST …/{id}/details` (`pin`), `GET …/{id}/authorizations`.
+- Simulateur : `POST /v1/simulators/cards/{id}/production` (étape suivante de la fabrication), `GET /v1/simulators/cards/{id}/activation-code`, `POST /v1/simulators/cards/{id}/authorizations` (`amountMinor`, `merchantName`, `online`, `reference`), `POST /v1/simulators/cards/authorizations/{id}/reversal`.
+- Réglages (`capital-invest.cards`) : `branches` (agences de retrait), `physical-card-fee-minor` (100, soit 1 $ pour l'instant), `replacement-fee-minor` (500), `default-daily-limit-minor` (50000).
+
 ## Règles du grand livre
 
 - Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits, tous les comptes dans la même devise. Seul un change touche deux devises, et il doit être équilibré dans chacune.

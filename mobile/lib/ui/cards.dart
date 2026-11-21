@@ -21,7 +21,11 @@ class StackedCards extends StatelessWidget {
     this.onPill,
     this.onToggleHidden,
     this.hidden = false,
+    this.onBack,
   });
+
+  /// Toucher le bandeau de la carte de derrière : ouvrir l'écran Cartes.
+  final VoidCallback? onBack;
 
   /// Œil à côté du libellé : masquer ou montrer le montant.
   final VoidCallback? onToggleHidden;
@@ -57,7 +61,11 @@ class StackedCards extends StatelessWidget {
             right: 0,
             top: 0,
             height: _backHeight + 40,
-            child: Container(
+            child: GestureDetector(
+              key: const ValueKey('back-card'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onBack,
+              child: Container(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               decoration: BoxDecoration(color: p.backCard, borderRadius: BorderRadius.circular(26)),
               alignment: Alignment.topCenter,
@@ -73,6 +81,7 @@ class StackedCards extends StatelessWidget {
                   Text(backNumber, style: const TextStyle(color: Brand.ink, fontSize: 15, letterSpacing: 1)),
                 ],
               ),
+            ),
             ),
           ),
           // Carte de devant, avec l'encoche du bouton.

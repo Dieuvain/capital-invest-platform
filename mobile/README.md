@@ -51,4 +51,4 @@ flutter test integration_check/exchange_screenshots_test.dart --update-goldens  
 
 - Traductions kiswahili et lingala (l'app est en français pour l'instant).
 - Libellés précis dans l'historique (recharge, envoi, frais) : le serveur doit d'abord exposer le type d'opération.
-- Carte virtuelle, notifications, mode hors ligne.
+- Mode hors ligne.

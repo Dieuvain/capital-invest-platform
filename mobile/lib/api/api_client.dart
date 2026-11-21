@@ -450,6 +450,48 @@ class ApiClient {
     }, idempotencyKey: idempotencyKey),
   );
 
+  // Cartes : virtuelle (émise tout de suite) et physique (commandée, retirée en agence, activée).
+  Future<CardsOverview> cards() async => CardsOverview.fromJson(await _get('/v1/me/cards'));
+
+  Future<PaymentCard> createVirtualCard() async => PaymentCard.fromJson(await _post('/v1/me/cards/virtual', null));
+
+  Future<PaymentCard> orderPhysicalCard({required String pickupBranch, required String pin, required String idempotencyKey}) async =>
+      PaymentCard.fromJson(
+        await _post('/v1/me/cards/physical', {'pickupBranch': pickupBranch, 'pin': pin}, idempotencyKey: idempotencyKey),
+      );
+
+  Future<PaymentCard> card(String id) async => PaymentCard.fromJson(await _get('/v1/me/cards/$id'));
+
+  Future<PaymentCard> freezeCard(String id) async => PaymentCard.fromJson(await _post('/v1/me/cards/$id/freeze', null));
+
+  Future<PaymentCard> unfreezeCard(String id, String pin) async =>
+      PaymentCard.fromJson(await _post('/v1/me/cards/$id/unfreeze', {'pin': pin}));
+
+  /// [reason] : LOST, STOLEN ou FRAUD. Définitif.
+  Future<PaymentCard> blockCard(String id, String reason, String pin) async =>
+      PaymentCard.fromJson(await _post('/v1/me/cards/$id/block', {'reason': reason, 'pin': pin}));
+
+  Future<void> deleteCard(String id, String pin) => _post('/v1/me/cards/$id/delete', {'pin': pin});
+
+  Future<PaymentCard> replaceCard(String id, {String? pickupBranch, required String pin, required String idempotencyKey}) async =>
+      PaymentCard.fromJson(
+        await _post('/v1/me/cards/$id/replace', {'pickupBranch': pickupBranch, 'pin': pin}, idempotencyKey: idempotencyKey),
+      );
+
+  Future<PaymentCard> activateCard(String id, String activationCode, String cardPin) async =>
+      PaymentCard.fromJson(await _post('/v1/me/cards/$id/activate', {'activationCode': activationCode, 'cardPin': cardPin}));
+
+  Future<PaymentCard> setCardControls(String id, {required int dailyLimitMinor, required bool onlinePayments}) async =>
+      PaymentCard.fromJson(
+        await _put('/v1/me/cards/$id/controls', {'dailyLimitMinor': dailyLimitMinor, 'onlinePayments': onlinePayments}),
+      );
+
+  Future<CardDetails> cardDetails(String id, String pin) async =>
+      CardDetails.fromJson(await _post('/v1/me/cards/$id/details', {'pin': pin}));
+
+  Future<List<CardPayment>> cardPayments(String id) async =>
+      (await _get('/v1/me/cards/$id/authorizations') as List).map((j) => CardPayment.fromJson(j)).toList();
+
   /// Favoris : destinataires enregistrés avec un surnom, triés par surnom.
   Future<List<Favorite>> favorites() async =>
       (await _get('/v1/me/favorites') as List).map((j) => Favorite.fromJson(j)).toList();
