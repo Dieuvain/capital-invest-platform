@@ -2,6 +2,7 @@ package cd.capitalinvest.platform.limits
 
 import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.customers.Customer
+import cd.capitalinvest.platform.exchange.ExchangeRates
 import cd.capitalinvest.platform.ledger.LedgerRepository
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.http.HttpStatus
@@ -74,6 +75,7 @@ class LimitsService(
     private val jdbc: JdbcClient,
     private val ledger: LedgerRepository,
     private val clock: Clock,
+    private val rates: ExchangeRates,
 ) {
     private val zone = ZoneId.of(props.timezone)
 
@@ -230,7 +232,12 @@ class LimitsService(
             """SELECT COALESCE(SUM(CASE WHEN e.direction = 'CREDIT' THEN e.amount_minor ELSE -e.amount_minor END), 0)
                FROM ledger_account a JOIN ledger_entry e ON e.account_id = a.id
                WHERE a.customer_id = :c AND a.type = 'CUSTOMER_SAVINGS'""",
-        ).param("c", customerId).query(Long::class.java).single()
+        ).param("c", customerId).query(Long::class.java).single() + cdfHoldings(customerId)
+
+    /** Le compte CDF compte dans le solde maximal, à sa valeur en dollars au taux du jour. */
+    private fun cdfHoldings(customerId: UUID): Long =
+        ledger.findCustomerWallet(customerId, cd.capitalinvest.platform.common.Currency.CDF)
+            ?.let { rates.cdfToUsdMinor(ledger.balance(it.id)) } ?: 0
 
     private fun pendingTopups(customerId: UUID): Long =
         jdbc.sql("SELECT COALESCE(SUM(amount_minor), 0) FROM topup WHERE customer_id = :c AND status = 'PENDING'")

@@ -402,6 +402,8 @@ class HistoryItem {
     this.token,
     this.note,
     this.failureMessage,
+    this.currency = 'USD',
+    this.exchange,
   });
 
   final String id;
@@ -409,7 +411,7 @@ class HistoryItem {
 
   /// TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT,
   /// AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL,
-  /// CARD_PAYMENT, CARD_REFUND, CARD_FEE, ADJUSTMENT.
+  /// CARD_PAYMENT, CARD_REFUND, CARD_FEE, EXCHANGE, ADJUSTMENT.
   final String kind;
 
   /// COMPLETED, PENDING, REVIEW ou FAILED.
@@ -437,6 +439,12 @@ class HistoryItem {
   final String? note;
   final String? failureMessage;
 
+  /// Devise du compte : USD (centimes) ou CDF (francs entiers).
+  final String currency;
+
+  /// Change entre les comptes USD et CDF : les deux côtés et le taux.
+  final ExchangeDetails? exchange;
+
   bool get isIn => netMinor > 0;
 
   /// Nom lisible de l'opérateur (M-Pesa…), si l'opération passe par le mobile money.
@@ -461,6 +469,8 @@ class HistoryItem {
     token: j['token'],
     note: j['note'],
     failureMessage: j['failureMessage'],
+    currency: j['currency'] ?? 'USD',
+    exchange: j['exchange'] == null ? null : ExchangeDetails.fromJson(j['exchange']),
   );
 }
 
@@ -1337,5 +1347,130 @@ class CardPayment {
     declineMessage: j['declineMessage'],
     transactionId: j['transactionId'],
     createdAt: DateTime.parse(j['createdAt']),
+  );
+}
+
+/// Un compte du client : USD (centimes) ou CDF (francs entiers).
+class AccountBalance {
+  AccountBalance(this.accountId, this.currency, this.balanceMinor);
+
+  final String accountId;
+  final String currency;
+  final int balanceMinor;
+
+  factory AccountBalance.fromJson(Map<String, dynamic> j) =>
+      AccountBalance(j['accountId'], j['currency'], j['balanceMinor']);
+
+  static List<AccountBalance> listFromJson(List<dynamic> j) => j.map((a) => AccountBalance.fromJson(a)).toList();
+}
+
+/// Taux du jour et frais de change.
+class ExchangeRate {
+  ExchangeRate({required this.cdfPerUsd, required this.feeBps, required this.minUsdMinor, required this.minCdfMinor});
+
+  /// Francs congolais pour un dollar.
+  final num cdfPerUsd;
+
+  /// Frais en points de base (100 = 1 %), pris dans la devise de départ.
+  final int feeBps;
+  final int minUsdMinor;
+  final int minCdfMinor;
+
+  factory ExchangeRate.fromJson(Map<String, dynamic> j) => ExchangeRate(
+    cdfPerUsd: j['cdfPerUsd'],
+    feeBps: j['feeBps'],
+    minUsdMinor: j['minUsdMinor'],
+    minCdfMinor: j['minCdfMinor'],
+  );
+
+  /// Même calcul que le serveur : frais arrondis au plus proche, montant reçu arrondi vers le bas.
+  ExchangeQuote quote(String from, int amountMinor) {
+    final fee = (amountMinor * feeBps + 5000) ~/ 10000;
+    final net = amountMinor - fee;
+    final received = from == 'USD' ? (net * cdfPerUsd / 100).floor() : (net * 100 / cdfPerUsd).floor();
+    return ExchangeQuote(
+      from: from,
+      to: from == 'USD' ? 'CDF' : 'USD',
+      amountMinor: amountMinor,
+      feeMinor: fee,
+      receivedMinor: received,
+      rate: cdfPerUsd,
+    );
+  }
+
+  int minFor(String currency) => currency == 'USD' ? minUsdMinor : minCdfMinor;
+}
+
+class ExchangeQuote {
+  ExchangeQuote({
+    required this.from,
+    required this.to,
+    required this.amountMinor,
+    required this.feeMinor,
+    required this.receivedMinor,
+    required this.rate,
+  });
+
+  final String from;
+  final String to;
+
+  /// Débité du compte de départ, frais compris.
+  final int amountMinor;
+  final int feeMinor;
+
+  /// Crédité sur le compte d'arrivée.
+  final int receivedMinor;
+  final num rate;
+
+  factory ExchangeQuote.fromJson(Map<String, dynamic> j) => ExchangeQuote(
+    from: j['from'],
+    to: j['to'],
+    amountMinor: j['amountMinor'],
+    feeMinor: j['feeMinor'],
+    receivedMinor: j['receivedMinor'],
+    rate: j['rate'],
+  );
+}
+
+/// Change effectué : le reçu est dans l'historique sous [transactionId].
+class ExchangeResult {
+  ExchangeResult(this.transactionId, this.quote, this.accounts);
+
+  final String transactionId;
+  final ExchangeQuote quote;
+  final List<AccountBalance> accounts;
+
+  factory ExchangeResult.fromJson(Map<String, dynamic> j) => ExchangeResult(
+    j['transactionId'],
+    ExchangeQuote.fromJson(j['quote']),
+    AccountBalance.listFromJson(j['accounts']),
+  );
+}
+
+/// Détail d'un change dans l'historique.
+class ExchangeDetails {
+  ExchangeDetails({
+    required this.from,
+    required this.to,
+    required this.fromMinor,
+    required this.feeMinor,
+    required this.toMinor,
+    required this.rate,
+  });
+
+  final String from;
+  final String to;
+  final int fromMinor;
+  final int feeMinor;
+  final int toMinor;
+  final num rate;
+
+  factory ExchangeDetails.fromJson(Map<String, dynamic> j) => ExchangeDetails(
+    from: j['from'],
+    to: j['to'],
+    fromMinor: j['fromMinor'],
+    feeMinor: j['feeMinor'],
+    toMinor: j['toMinor'],
+    rate: j['rate'],
   );
 }

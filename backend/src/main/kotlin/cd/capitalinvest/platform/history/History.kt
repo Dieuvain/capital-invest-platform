@@ -36,7 +36,7 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, POT_CONTRIBUTION, POT_PAYOUT, CARD_PAYMENT, CARD_REFUND, CARD_FEE, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, POT_CONTRIBUTION, POT_PAYOUT, CARD_PAYMENT, CARD_REFUND, CARD_FEE, EXCHANGE, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
@@ -84,6 +84,21 @@ data class HistoryItem(
     /** Message joint à un envoi ou à un paiement. */
     val note: String?,
     val failureMessage: String?,
+    /** Change entre les comptes USD et CDF du client : les deux côtés et le taux. */
+    val exchange: ExchangeDetails? = null,
+)
+
+/** Montants en centimes de dollar ou en francs entiers selon la devise. */
+data class ExchangeDetails(
+    val from: Currency,
+    val to: Currency,
+    /** Débité, frais compris. */
+    val fromMinor: Long,
+    /** Frais, dans la devise de départ. */
+    val feeMinor: Long,
+    val toMinor: Long,
+    /** Francs pour un dollar. */
+    val rate: java.math.BigDecimal,
 )
 
 data class HistoryPage(val items: List<HistoryItem>, val nextCursor: String?)
@@ -105,6 +120,8 @@ data class HistoryQuery(
     val limit: Int = 30,
     /** Texte cherché : nom ou numéro de l'autre client, commerce, facturier, motif, n° de reçu. */
     val search: String? = null,
+    /** Compte affiché : USD (par défaut) ou CDF. */
+    val currency: Currency = Currency.USD,
 )
 
 @Service
@@ -117,8 +134,8 @@ class HistoryService(
 ) {
     private val zone get() = ZoneId.of(limits.timezone)
 
-    private fun wallet(customerId: UUID): UUID =
-        ledger.findCustomerWallet(customerId, Currency.USD)?.id
+    private fun wallet(customerId: UUID, currency: Currency = Currency.USD): UUID =
+        ledger.findCustomerWallet(customerId, currency)?.id
             ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Client introuvable")
 
     /**
@@ -145,7 +162,7 @@ class HistoryService(
             null -> ""
         }
         var spec = jdbc.sql(select(where.joinToString(" AND ").ifEmpty { "TRUE" }, having))
-            .param("wallet", wallet(customerId))
+            .param("wallet", wallet(customerId, q.currency))
             .param("limit", limit + 1)
         if (q.category != null) spec = spec.param("types", q.category.ledgerTypes)
         if (q.from != null) spec = spec.param("from", q.from.atStartOfDay(zone).toOffsetDateTime())
@@ -160,10 +177,10 @@ class HistoryService(
     }
 
     /** Reçu d'une opération du client. Une opération qui ne touche pas son portefeuille n'existe pas pour lui. */
-    fun receipt(customerId: UUID, transactionId: UUID, maskPhones: Boolean): Receipt {
+    fun receipt(customerId: UUID, transactionId: UUID, maskPhones: Boolean, currency: Currency = Currency.USD): Receipt {
         val customer = customers.findById(customerId) ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Client introuvable")
         val item = jdbc.sql(select("t.id = :tx", ""))
-            .param("wallet", wallet(customerId)).param("limit", 1).param("tx", transactionId)
+            .param("wallet", wallet(customerId, currency)).param("limit", 1).param("tx", transactionId)
             .query { rs, _ -> toItem(rs, maskPhones) }.list().firstOrNull()
             ?: throw NotFoundException("OPERATION_NOT_FOUND", "Opération introuvable")
         return Receipt(item, customer.fullName, customer.phone, OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))
@@ -185,7 +202,7 @@ class HistoryService(
         SELECT tx.*,
                (SELECT COALESCE(SUM(CASE WHEN fe.direction = 'CREDIT' THEN fe.amount_minor ELSE -fe.amount_minor END), 0)
                   FROM ledger_entry fe JOIN ledger_account fa ON fa.id = fe.account_id
-                 WHERE fe.transaction_id = tx.id AND fa.type = 'FEES_REVENUE') AS fee,
+                 WHERE fe.transaction_id = tx.id AND fa.type = 'FEES_REVENUE' AND fe.currency = tx.currency) AS fee,
                other.full_name AS other_name, other.phone AS other_phone,
                shop.name AS merchant_name, shop.code AS merchant_code,
                tp.operator AS topup_operator,
@@ -196,7 +213,9 @@ class HistoryService(
                ap.msisdn AS airtime_msisdn, ap.network AS airtime_network, ap.status AS airtime_status,
                pt.status AS invite_status, pt.recipient_name AS invite_name, pt.phone AS invite_phone,
                ps.full_name AS invite_sender_name, ps.phone AS invite_sender_phone,
-               pot.title AS pot_title
+               pot.title AS pot_title,
+               fx.from_currency AS fx_from, fx.to_currency AS fx_to, fx.from_minor AS fx_from_minor,
+               fx.fee_minor AS fx_fee, fx.to_minor AS fx_to_minor, fx.rate AS fx_rate
         FROM tx
         LEFT JOIN LATERAL (
             SELECT c.full_name, c.phone
@@ -204,6 +223,7 @@ class HistoryService(
               JOIN ledger_account oa ON oa.id = oe.account_id
               JOIN customer c ON c.id = oa.customer_id
              WHERE oe.transaction_id = tx.id AND oa.type = 'CUSTOMER_WALLET' AND oa.id <> :wallet
+               AND oa.customer_id <> (SELECT customer_id FROM ledger_account WHERE id = :wallet)
              LIMIT 1
         ) other ON TRUE
         LEFT JOIN LATERAL (
@@ -227,6 +247,8 @@ class HistoryService(
             SELECT p.title FROM ledger_entry pe JOIN pot p ON p.account_id = pe.account_id
              WHERE pe.transaction_id = tx.id LIMIT 1
         ) pot ON TRUE
+        -- Change entre les deux comptes du client : la clé porte l'identifiant du change.
+        LEFT JOIN currency_exchange fx ON tx.type = 'EXCHANGE' AND tx.idempotency_key = 'exchange:' || fx.id
         ORDER BY tx.created_at DESC, tx.id DESC
     """
 
@@ -257,17 +279,20 @@ class HistoryService(
             "CARD_PAYMENT" -> HistoryKind.CARD_PAYMENT
             "CARD_REFUND" -> HistoryKind.CARD_REFUND
             "CARD_FEE" -> HistoryKind.CARD_FEE
+            "EXCHANGE" -> HistoryKind.EXCHANGE
             else -> HistoryKind.ADJUSTMENT
         }
         // Les frais d'un envoi sont ceux de l'expéditeur : le destinataire ne les voit pas.
         // Un paiement marchand n'a pas de frais pour le client : la commission est payée par le marchand.
         val shownFee = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.WITHDRAWAL -> fee
+            HistoryKind.EXCHANGE -> fee // pris dans la devise de départ : 0 sur le compte d'arrivée
             HistoryKind.WITHDRAWAL_REFUND, HistoryKind.TRANSFER_REFUND -> -fee // frais rendus
             else -> 0
         }
         val amount = when (kind) {
             HistoryKind.TRANSFER_SENT, HistoryKind.WITHDRAWAL -> -net - shownFee
+            HistoryKind.EXCHANGE -> kotlin.math.abs(net) - shownFee
             HistoryKind.WITHDRAWAL_REFUND, HistoryKind.TRANSFER_REFUND -> net - shownFee
             else -> kotlin.math.abs(net)
         }
@@ -316,6 +341,12 @@ class HistoryService(
             token = rs.getString("bill_token")?.let { BillService.formatToken(it) },
             merchantCode = rs.getString("merchant_code"),
             note = if (type == "TRANSFER" || type == "TRANSFER_INVITE" || type == "TRANSFER_INVITE_CLAIM" || type == "MERCHANT_PAYMENT" || type == "POT_CONTRIBUTION") rs.getString("description") else null,
+            exchange = rs.getString("fx_from")?.let {
+                ExchangeDetails(
+                    Currency.valueOf(it), Currency.valueOf(rs.getString("fx_to")), rs.getLong("fx_from_minor"),
+                    rs.getLong("fx_fee"), rs.getLong("fx_to_minor"), rs.getBigDecimal("fx_rate").stripTrailingZeros(),
+                )
+            },
             failureMessage = if (status == HistoryStatus.FAILED || kind == HistoryKind.AIRTIME_REFUND || kind == HistoryKind.BILL_REFUND) rs.getString("failure_message") else null,
         )
     }
@@ -377,7 +408,7 @@ class HistoryService(
                 SELECT 1 FROM ledger_entry se
                   JOIN ledger_account sa ON sa.id = se.account_id
                   JOIN customer sc ON sc.id = sa.customer_id
-                 WHERE se.transaction_id = t.id AND sa.type = 'CUSTOMER_WALLET' AND sa.id <> :wallet
+                 WHERE se.transaction_id = t.id AND sa.type = 'CUSTOMER_WALLET' AND sa.id <> :wallet AND sa.customer_id <> (SELECT customer_id FROM ledger_account WHERE id = :wallet)
                    AND (${norm("sc.full_name")} LIKE :search OR (CAST(:searchDigits AS text) IS NOT NULL AND sc.phone LIKE '%' || :searchDigits || '%'))
             )
             OR EXISTS (
@@ -415,11 +446,15 @@ class HistoryController(private val history: HistoryService) {
         @RequestParam(required = false) cursor: String?,
         @RequestParam(defaultValue = "30") limit: Int,
         @RequestParam(required = false) q: String?,
-    ): HistoryPage = history.page(customerId, HistoryQuery(category, direction, from, to, cursor, limit, q), maskPhones = true)
+        @RequestParam(defaultValue = "USD") currency: Currency,
+    ): HistoryPage = history.page(customerId, HistoryQuery(category, direction, from, to, cursor, limit, q, currency), maskPhones = true)
 
     @GetMapping("/{id}")
-    fun receipt(@RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID, @PathVariable id: UUID): Receipt =
-        history.receipt(customerId, id, maskPhones = true)
+    fun receipt(
+        @RequestAttribute(CUSTOMER_ID_ATTRIBUTE) customerId: UUID,
+        @PathVariable id: UUID,
+        @RequestParam(defaultValue = "USD") currency: Currency,
+    ): Receipt = history.receipt(customerId, id, maskPhones = true, currency = currency)
 }
 
 /** Fiche client du back-office, pour répondre à une réclamation. */
@@ -441,6 +476,8 @@ data class CustomerSummary(
     /** Compte fermé par le client : date et motif. */
     val closedAt: java.time.OffsetDateTime? = null,
     val closureReason: String? = null,
+    /** Solde du compte en francs congolais (francs entiers). */
+    val cdfBalanceMinor: Long = 0,
 )
 
 @RestController
@@ -505,6 +542,7 @@ class BackofficeCustomerController(
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", c.id).query(UUID::class.java).list().sumOf { ledger.balance(it) }
         return CustomerSummary(c.id, c.phone, c.fullName, c.kycLevel, c.status, wallet?.let { ledger.balance(it.id) } ?: 0, savings, c.blockedByCustomerAt,
-            personal.dailyOutMinor, personal.pending, c.closedAt, c.closureReason)
+            personal.dailyOutMinor, personal.pending, c.closedAt, c.closureReason,
+            ledger.findCustomerWallet(c.id, Currency.CDF)?.let { ledger.balance(it.id) } ?: 0)
     }
 }
