@@ -116,7 +116,7 @@ mixin ApiAction<T extends StatefulWidget> on State<T> {
       return await call();
     } on ApiException catch (e) {
       if (e.needsLogin && app.signedIn) {
-        await app.signOut(callServer: false);
+        await app.signOut(callServer: false, offerBiometric: true);
         if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
         return null;
       }

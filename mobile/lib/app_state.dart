@@ -7,12 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/api_client.dart';
 import 'api/models.dart';
+import 'biometrics.dart';
 import 'device.dart';
 
 /// État de l'app : client connecté et identifiant de l'appareil. Le jeton reste en mémoire seulement :
 /// à chaque ouverture, le client entre son PIN.
 class AppState extends ChangeNotifier {
-  AppState(this.api, {String? deviceId, this.deviceName}) : deviceId = deviceId ?? randomDeviceId();
+  AppState(this.api, {String? deviceId, this.deviceName, this.biometrics = const NoBiometrics()})
+    : deviceId = deviceId ?? randomDeviceId();
 
   final ApiClient api;
   final String deviceId;
@@ -50,6 +52,76 @@ class AppState extends ChangeNotifier {
 
   DateTime? _backgroundSince;
   int _lockPaused = 0;
+
+  // ---- Connexion par empreinte --------------------------------------------------------------
+
+  /// Lecteur d'empreinte du téléphone et coffre de la clé.
+  final Biometrics biometrics;
+
+  /// Le téléphone a un lecteur avec au moins une empreinte enregistrée.
+  bool biometricsAvailable = false;
+
+  /// Numéro dont la clé d'empreinte est gardée sur ce téléphone, ou null.
+  String? biometricPhone;
+
+  /// À l'écran de connexion, proposer l'empreinte tout de suite (ouverture de l'app, verrouillage, session
+  /// expirée), mais pas après « Se déconnecter » : le client vient de choisir de sortir.
+  bool offerBiometric = true;
+
+  /// L'empreinte ouvre le compte connecté sur ce téléphone.
+  bool get biometricEnabled => biometricPhone != null && biometricPhone == customer?.phone;
+
+  Future<void> loadBiometrics() async {
+    biometricsAvailable = await biometrics.available();
+    biometricPhone = biometricsAvailable ? (await biometrics.read())?.phone : null;
+    if (biometricPhone != null) lastPhone ??= biometricPhone;
+    notifyListeners();
+  }
+
+  /// Active l'empreinte : PIN vérifié par le serveur, puis doigt posé, puis clé rangée dans le coffre.
+  /// Faux si le client n'a pas posé son doigt (rien n'est activé).
+  Future<bool> enableBiometric(String pin) async {
+    final phone = customer!.phone;
+    if (!await biometrics.confirm('Posez votre doigt pour activer la connexion par empreinte')) return false;
+    final key = await api.enableBiometric(pin);
+    await biometrics.save(BiometricKey(phone, key));
+    biometricPhone = phone;
+    notifyListeners();
+    return true;
+  }
+
+  /// Retire l'empreinte de ce téléphone, au serveur puis dans le coffre.
+  Future<void> disableBiometric() async {
+    await api.disableBiometric();
+    await forgetBiometric();
+  }
+
+  /// Oublie la clé gardée sur le téléphone, sans appeler le serveur (qui l'a déjà retirée).
+  Future<void> forgetBiometric() async {
+    if (biometricPhone == null) return;
+    biometricPhone = null;
+    await biometrics.clear();
+    notifyListeners();
+  }
+
+  /// Connexion par empreinte. Null si le client n'a pas posé son doigt : il entre alors son PIN.
+  /// Clé retirée par le serveur (PIN changé ailleurs, oublié, compte bloqué) : la clé est oubliée et
+  /// l'erreur remonte, pour que l'écran explique pourquoi le PIN est demandé.
+  Future<SessionTokens?> biometricLogin() async {
+    offerBiometric = false;
+    final stored = await biometrics.read();
+    if (stored == null) {
+      await forgetBiometric();
+      return null;
+    }
+    if (!await biometrics.confirm('Posez votre doigt pour ouvrir Capital Invest')) return null;
+    try {
+      return await api.biometricLogin(phone: stored.phone, key: stored.key, deviceId: deviceId, deviceName: deviceName);
+    } on ApiException catch (e) {
+      if (e.code == 'BIOMETRIC_INVALID') await forgetBiometric();
+      rethrow;
+    }
+  }
 
   /// Relit les réglages gardés sur le téléphone, au démarrage.
   Future<void> loadPreferences() async {
@@ -89,8 +161,10 @@ class AppState extends ChangeNotifier {
 
   /// Ferme la session et revient à l'écran PIN, avec un mot d'explication.
   Future<void> lock() async {
-    lockNotice = 'Par sécurité, l\'app s\'est verrouillée. Entrez votre PIN pour continuer.';
-    await signOut();
+    lockNotice = biometricPhone != null
+        ? 'Par sécurité, l\'app s\'est verrouillée. Posez votre doigt ou entrez votre PIN pour continuer.'
+        : 'Par sécurité, l\'app s\'est verrouillée. Entrez votre PIN pour continuer.';
+    await signOut(offerBiometric: true);
   }
 
   /// Pendant l'appareil photo ou le partage, quitter l'app un moment ne la verrouille pas.
@@ -129,8 +203,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fin de session (déconnexion ou expiration) : retour à l'écran PIN.
-  Future<void> signOut({bool callServer = true}) async {
+  /// Fin de session (déconnexion ou expiration) : retour à l'écran PIN. [offerBiometric] : l'empreinte est
+  /// proposée d'emblée à l'écran de connexion (verrouillage, expiration), pas après « Se déconnecter ».
+  Future<void> signOut({bool callServer = true, bool offerBiometric = false}) async {
+    this.offerBiometric = offerBiometric;
     if (callServer) {
       try {
         await api.logout();

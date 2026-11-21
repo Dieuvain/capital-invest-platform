@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Ouvrir Capital Invest avec votre visage au lieu du PIN.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scanner le QR d'un marchand pour payer, photographier votre pièce d'identité et prendre un selfie pour le niveau 2.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

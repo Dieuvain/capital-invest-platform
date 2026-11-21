@@ -47,6 +47,10 @@ class FakeServer {
   /// PIN du client, changé par /v1/me/security/pin.
   String pin = '2580';
 
+  /// Clés d'empreinte actives, remises par POST /v1/me/security/biometric.
+  final biometricKeys = <String>{};
+  int _biometricSeq = 0;
+
   /// « Mes dépenses » servies par /v1/me/spending, par mois (« current » sans paramètre).
   Map<String, Map<String, dynamic>> spending = {
     'current': {
@@ -598,6 +602,29 @@ class FakeServer {
       return found == null ? _error(422, 'STATEMENT_UNAVAILABLE', 'Pas de relevé') : _json(found);
     }
     if (path == '/v1/me/security/sessions') return _json(deviceSessions);
+    if (path == '/v1/me/security/biometric') {
+      if (req.method == 'DELETE') {
+        biometricKeys.clear();
+        return http.Response('', 204);
+      }
+      if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
+      biometricKeys.clear();
+      final key = 'cle-${++_biometricSeq}';
+      biometricKeys.add(key);
+      return _json({'key': key}, 201);
+    }
+    if (path == '/v1/auth/biometric') {
+      final b = body();
+      if (b['phone'] != _customer['phone'] || !biometricKeys.contains(b['key'])) {
+        return _error(401, 'BIOMETRIC_INVALID', 'Empreinte désactivée sur ce téléphone, entrez votre PIN');
+      }
+      if (blocked) return _error(403, 'CUSTOMER_BLOCKED', 'Compte bloqué à votre demande');
+      return _json({
+        'accessToken': token,
+        'expiresInSeconds': 900,
+        'customer': {'customer': _customer, 'walletAccountId': 'w-1'},
+      });
+    }
     if (path == '/v1/me/closure') {
       if (req.method == 'GET') return _json(closure);
       final b = body();
@@ -608,6 +635,7 @@ class FakeServer {
     if (path == '/v1/me/security/block' || path == '/v1/auth/block') {
       if (body()['pin'] != pin) return _error(401, 'INVALID_CREDENTIALS', 'Numéro ou PIN incorrect');
       blocked = true;
+      biometricKeys.clear();
       return http.Response('', 204);
     }
     if (path == '/v1/me/security/sessions/sign-out-others') return _json({'closed': _signOutOthers()});
@@ -636,6 +664,7 @@ class FakeServer {
         if (b['code'] != smsCode) return _error(401, 'OTP_INVALID', 'Code invalide ou expiré');
         if (b['fullName'] != null) fullName = b['fullName'];
         pin = b['pin'] ?? b['newPin'];
+        biometricKeys.clear();
         return _json({
           'accessToken': token,
           'expiresInSeconds': 900,

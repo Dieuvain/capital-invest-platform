@@ -1,5 +1,6 @@
 package cd.capitalinvest.capital_invest
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// FlutterFragmentActivity : le lecteur d'empreinte d'Android (BiometricPrompt) en a besoin.
+class MainActivity : FlutterFragmentActivity()

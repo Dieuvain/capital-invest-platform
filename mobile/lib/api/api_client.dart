@@ -115,6 +115,18 @@ class ApiClient {
     ),
   );
 
+  /// Connexion par empreinte, avec la clé reçue à l'activation sur ce téléphone.
+  Future<SessionTokens> biometricLogin({
+    required String phone,
+    required String key,
+    required String deviceId,
+    String? deviceName,
+  }) async => _keep(
+    SessionTokens.fromJson(
+      await _post('/v1/auth/biometric', {'phone': phone, 'key': key, 'deviceId': deviceId, 'deviceName': ?deviceName}),
+    ),
+  );
+
   Future<void> requestPinResetCode(String phone) => _post('/v1/auth/pin-reset/otp', {'phone': phone});
 
   Future<SessionTokens> resetPin({
@@ -174,6 +186,12 @@ class ApiClient {
   /// Change le PIN : les autres téléphones sont déconnectés, celui-ci reste connecté.
   Future<void> changePin(String currentPin, String newPin) =>
       _post('/v1/me/security/pin', {'currentPin': currentPin, 'newPin': newPin});
+
+  /// Active l'empreinte sur ce téléphone, PIN redemandé. Renvoie la clé, à garder dans le coffre du téléphone.
+  Future<String> enableBiometric(String pin) async =>
+      (await _post('/v1/me/security/biometric', {'pin': pin}))['key'] as String;
+
+  Future<void> disableBiometric() => _delete('/v1/me/security/biometric');
 
   Future<List<DeviceSession>> deviceSessions() async =>
       (await _get('/v1/me/security/sessions') as List).map((j) => DeviceSession.fromJson(j)).toList();

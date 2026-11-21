@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'api/api_client.dart';
 import 'app_state.dart';
+import 'biometrics.dart';
 import 'device.dart';
 import 'screens/auth_screens.dart';
 import 'screens/home_screen.dart';
@@ -17,8 +18,14 @@ const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final device = await DeviceIdentity.load();
-  final app = AppState(ApiClient(baseUrl: apiUrl), deviceId: device.id, deviceName: device.name);
+  final app = AppState(
+    ApiClient(baseUrl: apiUrl),
+    deviceId: device.id,
+    deviceName: device.name,
+    biometrics: DeviceBiometrics(),
+  );
   await app.loadPreferences();
+  await app.loadBiometrics();
   runApp(CapitalInvestApp(app: app));
 }
 

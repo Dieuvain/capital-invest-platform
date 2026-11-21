@@ -55,6 +55,7 @@ class _CloseAccountScreenState extends State<CloseAccountScreen> with ApiAction 
     if (ok != true || !mounted) return;
     final app = widget.app;
     unawaited(Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountClosedScreen())));
+    if (app.biometricEnabled) await app.forgetBiometric();
     await app.signOut(callServer: false);
   }
 
