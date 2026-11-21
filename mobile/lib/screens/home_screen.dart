@@ -14,6 +14,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'airtime_screen.dart';
 import 'bill_screens.dart';
+import 'card_screens.dart';
 import 'complaint_screens.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
@@ -54,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   int unread = 0;
   List<MoneyRequest> toPay = const [];
   Savings? savings;
+  CardsOverview? cards;
   int page = 0; // Accueil, Historique, Plafonds, Profil
 
   @override
@@ -93,6 +95,12 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
       // Pas de carte Épargne.
     }
     try {
+      final o = await api.cards();
+      if (mounted) setState(() => cards = o);
+    } on ApiException {
+      // La carte de derrière garde son libellé par défaut.
+    }
+    try {
       final p = await api.promotions();
       if (mounted) setState(() => promos = p);
     } on ApiException {
@@ -119,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _airtime() => _open(AirtimeScreen(app: widget.app, limits: limits));
   void _savings() => _open(SavingsScreen(app: widget.app));
   void _pots() => _open(PotsScreen(app: widget.app));
+  void _cards() => _open(CardsScreen(app: widget.app, onKyc: _kyc));
   void _complaints() => _open(ComplaintsScreen(app: widget.app));
   void _scheduled() => _open(ScheduledTransfersScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
@@ -157,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 _SheetRow(Icons.qr_code_2_rounded, 'Mon QR pour recevoir', () => go(_receive)),
                 _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
                 _SheetRow(Icons.event_repeat_rounded, 'Envois programmés', () => go(_scheduled)),
+                _SheetRow(Icons.credit_card_rounded, 'Mes cartes', () => go(_cards)),
                 _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
                 _SheetRow(Icons.volunteer_activism_outlined, 'Cagnottes', () => go(_pots)),
                 _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
@@ -254,6 +264,8 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   Widget _dashboard(Customer c) {
     final firstName = c.fullName.split(' ').first;
     final last4 = c.phone.substring(c.phone.length - 4);
+    // Carte de derrière : la physique active d'abord, sinon la virtuelle.
+    final shownCard = cards?.cards.where((k) => k.inService && !k.isVirtual).firstOrNull ?? cards?.virtual;
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
@@ -265,8 +277,9 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
             children: [
               ErrorBanner(error),
               StackedCards(
-                backLabel: 'Carte prépayée · bientôt',
-                backNumber: '•••• •••• •••• ••••',
+                backLabel: shownCard?.label ?? 'Carte prépayée Visa',
+                backNumber: shownCard == null ? 'Obtenir ma carte' : '•••• ${shownCard.last4}',
+                onBack: _cards,
                 label: 'Solde',
                 amount: widget.app.hideBalance ? '•••••' : (balance == null ? '…' : formatUsd(balance!)),
                 hidden: widget.app.hideBalance,
@@ -452,7 +465,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                     _kyc,
                   ),
                   _SheetRow(Icons.lock_outline_rounded, 'Sécurité et PIN', _security),
-                  _SheetRow(Icons.credit_card_outlined, 'Carte prépayée Visa · bientôt', null),
+                  _SheetRow(Icons.credit_card_outlined, 'Mes cartes Visa', _cards),
                   _SheetRow(Icons.savings_outlined, 'Épargne', _savings),
                 ],
               ),

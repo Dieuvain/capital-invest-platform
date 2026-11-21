@@ -36,14 +36,14 @@ import java.util.Base64
 import java.util.UUID
 
 /** Ce que le client voit d'une opération : une ligne par opération, pas par écriture du grand livre. */
-enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, POT_CONTRIBUTION, POT_PAYOUT, ADJUSTMENT }
+enum class HistoryKind { TOPUP, TRANSFER_SENT, TRANSFER_RECEIVED, WITHDRAWAL, WITHDRAWAL_REFUND, MERCHANT_PAYMENT, AIRTIME, AIRTIME_REFUND, BILL_PAYMENT, BILL_REFUND, SAVINGS_DEPOSIT, SAVINGS_WITHDRAWAL, TRANSFER_REFUND, POT_CONTRIBUTION, POT_PAYOUT, CARD_PAYMENT, CARD_REFUND, CARD_FEE, ADJUSTMENT }
 
 /** Filtre « type d'opération » de l'écran Historique. */
 enum class HistoryCategory(val ledgerTypes: List<String>) {
     TOPUP(listOf("TOPUP")),
     TRANSFER(listOf("TRANSFER", "TRANSFER_INVITE", "TRANSFER_INVITE_CLAIM", "TRANSFER_INVITE_REFUND", "POT_CONTRIBUTION", "POT_PAYOUT")),
     WITHDRAWAL(listOf("WITHDRAWAL", "WITHDRAWAL_SETTLED", "WITHDRAWAL_REFUND")),
-    PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND", "BILL_PAYMENT", "BILL_REFUND")),
+    PAYMENT(listOf("MERCHANT_PAYMENT", "AIRTIME", "AIRTIME_REFUND", "BILL_PAYMENT", "BILL_REFUND", "CARD_PAYMENT", "CARD_REFUND")),
     SAVINGS(listOf("SAVINGS_DEPOSIT", "SAVINGS_WITHDRAWAL")),
 }
 
@@ -254,6 +254,9 @@ class HistoryService(
             "SAVINGS_WITHDRAWAL" -> HistoryKind.SAVINGS_WITHDRAWAL
             "POT_CONTRIBUTION" -> HistoryKind.POT_CONTRIBUTION
             "POT_PAYOUT" -> HistoryKind.POT_PAYOUT
+            "CARD_PAYMENT" -> HistoryKind.CARD_PAYMENT
+            "CARD_REFUND" -> HistoryKind.CARD_REFUND
+            "CARD_FEE" -> HistoryKind.CARD_FEE
             else -> HistoryKind.ADJUSTMENT
         }
         // Les frais d'un envoi sont ceux de l'expéditeur : le destinataire ne les voit pas.
@@ -300,7 +303,9 @@ class HistoryService(
             netMinor = net,
             currency = Currency.valueOf(rs.getString("currency")),
             createdAt = createdAt,
-            counterpartyName = rs.getString("pot_title") ?: rs.getString("other_name") ?: rs.getString("merchant_name")
+            // Paiement par carte : le nom du commerçant envoyé par le processeur.
+            counterpartyName = (if (type == "CARD_PAYMENT" || type == "CARD_REFUND") rs.getString("description") else null)
+                ?: rs.getString("pot_title") ?: rs.getString("other_name") ?: rs.getString("merchant_name")
                 ?: (if (type == "TRANSFER_INVITE_CLAIM") rs.getString("invite_sender_name") else rs.getString("invite_name"))
                 ?: rs.getString("biller")?.let { Biller.valueOf(it).label },
             counterpartyPhone = otherPhone?.let { if (maskPhones) maskPhone(it) else it },
