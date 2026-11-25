@@ -304,6 +304,8 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.CARD_PAYMENT -> "Carte : ${i.counterpartyName ?: "commerçant"}"
             HistoryKind.CARD_REFUND -> "Carte : paiement annulé par ${i.counterpartyName ?: "le commerçant"}"
             HistoryKind.CARD_FEE -> "Frais de carte"
+            HistoryKind.CREDIT_DISBURSEMENT -> "Crédit express versé"
+            HistoryKind.CREDIT_REPAYMENT -> "Remboursement du crédit express"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }
