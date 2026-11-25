@@ -12,6 +12,37 @@ String formatUsd(int minor) {
   return '${negative ? '-' : ''}$grouped,$cents \$';
 }
 
+/// Groupe les milliers à la française : 28215 → « 28 215 ».
+String _grouped(String digits) {
+  final out = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
+    out.write(digits[i]);
+  }
+  return out.toString();
+}
+
+/// Francs congolais entiers vers « 28 215 FC ».
+String formatCdf(int francs) => '${francs < 0 ? '-' : ''}${_grouped(francs.abs().toString())} FC';
+
+/// Montant dans la devise du compte : centimes de dollar (USD) ou francs entiers (CDF).
+String formatMoney(int minor, String currency) => currency == 'CDF' ? formatCdf(minor) : formatUsd(minor);
+
+/// Taux en francs pour un dollar : 2850 → « 2 850 », 2850.5 → « 2 850,5 ».
+String formatRate(num rate) {
+  final parts = rate.toString().split('.');
+  final decimals = parts.length > 1 && int.parse(parts[1]) != 0 ? ',${parts[1].replaceAll(RegExp(r'0+$'), '')}' : '';
+  return '${_grouped(parts[0])}$decimals';
+}
+
+/// Saisie « 25 000 » ou « 25000 » vers francs entiers ; null si invalide.
+int? parseCdf(String input) {
+  final s = input.trim().replaceAll(RegExp(r'[\s.\u00a0\u202f]'), '');
+  if (!RegExp(r'^\d{1,10}$').hasMatch(s)) return null;
+  final value = int.parse(s);
+  return value > 0 ? value : null;
+}
+
 /// Saisie « 12,5 » ou « 12.50 » vers centimes ; null si invalide.
 int? parseUsd(String input) {
   final s = input.trim().replaceAll(' ', '').replaceAll(' ', '').replaceAll(',', '.');

@@ -257,7 +257,7 @@ class CreditQuote {
 }
 
 /// 250 → « 2,5 % », 3449 → « 34,49 % ».
-String formatRate(int bp) {
+String formatPercentBp(int bp) {
   final whole = bp ~/ 100;
   final cents = bp % 100;
   if (cents == 0) return '$whole %';

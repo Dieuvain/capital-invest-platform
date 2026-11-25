@@ -53,6 +53,13 @@ capital-invest:
     transfer-bps: 100        # 1 % du montant
     transfer-min-minor: 10   # au moins 0,10 $
     transfer-max-minor: 500  # au plus 5 $
+  # Change entre le compte USD et le compte CDF. Valeurs PROVISOIRES, à fixer par la direction
+  # générale ; le taux est à mettre à jour selon le marché (variable d'environnement).
+  exchange:
+    cdf-per-usd: ${EXCHANGE_CDF_PER_USD:2850}  # 1 $ = 2 850 FC, dans les deux sens
+    fee-bps: 100            # 1 % du montant changé, pris dans la devise de départ
+    min-usd-minor: 100      # au moins 1,00 $
+    min-cdf-minor: 1000     # ou au moins 1 000 FC
   # Paiement chez un marchand par QR : le client ne paie rien, le marchand paie une commission.
   merchants:
     default-commission-bps: 100  # 1 %, PROVISOIRE : à fixer par la direction générale

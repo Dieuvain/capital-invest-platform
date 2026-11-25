@@ -258,7 +258,7 @@ class _CreditScreenState extends State<CreditScreen> with ApiAction {
         Amount(formatUsd(offer.ceilingMinor), key: const ValueKey('credit-ceiling')),
         const SizedBox(height: 4),
         Text(
-          'Sur ${offer.durationsMonths.join(', ')} mois · ${formatRate(offer.monthlyRateBp)} par mois (TEG ${formatRate(offer.aprBp)})',
+          'Sur ${offer.durationsMonths.join(', ')} mois · ${formatPercentBp(offer.monthlyRateBp)} par mois (TEG ${formatPercentBp(offer.aprBp)})',
           style: TextStyle(color: context.pal.muted, fontSize: 13),
         ),
         const SizedBox(height: 18),
@@ -338,7 +338,7 @@ class _CreditScreenState extends State<CreditScreen> with ApiAction {
               Amount(formatUsd(c.pendingReview ? c.principalMinor : c.outstandingPrincipalMinor)),
               const SizedBox(height: 4),
               Text(
-                '${formatUsd(c.principalMinor)} sur ${c.durationMonths} mois · ${formatRate(c.monthlyRateBp)} par mois (TEG ${formatRate(c.aprBp)})',
+                '${formatUsd(c.principalMinor)} sur ${c.durationMonths} mois · ${formatPercentBp(c.monthlyRateBp)} par mois (TEG ${formatPercentBp(c.aprBp)})',
                 style: TextStyle(color: context.pal.muted, fontSize: 13),
               ),
               if (c.pendingReview) ...[
@@ -574,8 +574,8 @@ class _CreditApplyScreenState extends State<CreditApplyScreen> with ApiAction {
                 _line(context, '${q.durationMonths} échéance${q.durationMonths > 1 ? 's' : ''} de', formatUsd(q.instalmentMinor)),
                 _line(context, 'Intérêts', formatUsd(q.totalInterestMinor)),
                 _line(context, 'Total à rembourser', formatUsd(q.totalDueMinor), bold: true),
-                _line(context, 'Taux', '${formatRate(q.monthlyRateBp)} par mois'),
-                _line(context, 'TEG', '${formatRate(q.aprBp)} par an'),
+                _line(context, 'Taux', '${formatPercentBp(q.monthlyRateBp)} par mois'),
+                _line(context, 'TEG', '${formatPercentBp(q.aprBp)} par an'),
                 const SizedBox(height: 10),
                 Text(
                   'Première échéance le ${formatDay(q.schedule.first.dueDate)}. Pas de frais de dossier. '

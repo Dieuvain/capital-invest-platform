@@ -50,10 +50,10 @@ void main() {
   }
 
   test('taux affichés à la française', () {
-    expect(formatRate(250), '2,5 %');
-    expect(formatRate(3449), '34,49 %');
-    expect(formatRate(300), '3 %');
-    expect(formatRate(305), '3,05 %');
+    expect(formatPercentBp(250), '2,5 %');
+    expect(formatPercentBp(3449), '34,49 %');
+    expect(formatPercentBp(300), '3 %');
+    expect(formatPercentBp(305), '3,05 %');
   });
 
   testWidgets('niveau 1 : pas de crédit, on explique pourquoi', (tester) async {

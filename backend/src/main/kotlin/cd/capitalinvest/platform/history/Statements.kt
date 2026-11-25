@@ -306,6 +306,7 @@ private class StatementPdf(private val s: Statement, private val zone: ZoneId) {
             HistoryKind.CARD_FEE -> "Frais de carte"
             HistoryKind.CREDIT_DISBURSEMENT -> "Crédit express versé"
             HistoryKind.CREDIT_REPAYMENT -> "Remboursement du crédit express"
+            HistoryKind.EXCHANGE -> i.exchange?.let { "Change ${it.from} vers ${it.to}" } ?: "Change"
             HistoryKind.ADJUSTMENT -> "Correction de solde"
         }
     }

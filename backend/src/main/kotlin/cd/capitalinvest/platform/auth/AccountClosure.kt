@@ -60,11 +60,15 @@ class AccountClosureService(
     fun check(customerId: UUID): ClosureCheck {
         val wallet = ledger.findCustomerWallet(customerId, Currency.USD) ?: throw NotFoundException("CUSTOMER_NOT_FOUND", "Client introuvable")
         val balance = ledger.balance(wallet.id)
+        val francs = ledger.findCustomerWallet(customerId, Currency.CDF)?.let { ledger.balance(it.id) } ?: 0
         val savings = jdbc.sql("SELECT id FROM ledger_account WHERE customer_id = :c AND type = 'CUSTOMER_SAVINGS'")
             .param("c", customerId).query(UUID::class.java).list().sumOf { ledger.balance(it) }
         val blockers = buildList {
             if (savings > 0) add(ClosureBlocker("SAVINGS_NOT_EMPTY", "Reprenez votre épargne (${money(savings)}) sur votre solde."))
             if (balance > 0) add(ClosureBlocker("BALANCE_NOT_EMPTY", "Retirez ou envoyez votre solde (${money(balance)}) : un compte fermé ne peut plus rien rendre."))
+            if (francs > 0) {
+                add(ClosureBlocker("CDF_BALANCE_NOT_EMPTY", "Changez vos ${cd.capitalinvest.platform.exchange.ExchangeRates.cdf(francs)} en dollars, puis retirez-les."))
+            }
             if (count("SELECT count(*) FROM topup WHERE customer_id = :c AND status = 'PENDING'", customerId) > 0) {
                 add(ClosureBlocker("TOPUP_PENDING", "Une recharge est encore en attente de l'opérateur."))
             }

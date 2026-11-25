@@ -32,6 +32,7 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'CARD_FEE' => 'Frais de carte',
   'CREDIT_DISBURSEMENT' => 'Crédit express versé',
   'CREDIT_REPAYMENT' => 'Remboursement du crédit',
+  'EXCHANGE' => (i.exchange?.to ?? (i.isIn ? i.currency : null)) == 'CDF' ? 'Change en francs' : 'Change en dollars',
   _ => 'Correction de solde',
 };
 
@@ -59,10 +60,19 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'CARD_PAYMENT' || 'CARD_FEE' => Icons.credit_card_rounded,
   'CARD_REFUND' => Icons.undo_rounded,
   'CREDIT_DISBURSEMENT' || 'CREDIT_REPAYMENT' => Icons.payments_outlined,
+  'EXCHANGE' => Icons.currency_exchange_rounded,
   _ => Icons.tune_rounded,
 };
 
-String _signed(int net) => '${net > 0 ? '+' : ''}${formatUsd(net)}';
+String _signed(HistoryItem i) => '${i.netMinor > 0 ? '+' : ''}${formatMoney(i.netMinor, i.currency)}';
+
+/// Lignes du reçu d'un change : ce qui est parti, les frais, ce qui est arrivé, le taux.
+List<(String, String)> exchangeRows(ExchangeDetails x) => [
+  ('Changé', formatMoney(x.fromMinor, x.from)),
+  if (x.feeMinor != 0) ('Frais', formatMoney(x.feeMinor, x.from)),
+  ('Reçu', formatMoney(x.toMinor, x.to)),
+  ('Taux', '1 \$ = ${formatRate(x.rate)} FC'),
+];
 
 /// Texte du reçu, envoyé tel quel par WhatsApp ou SMS : lisible sans l'app.
 String receiptText(Receipt r) {
@@ -79,9 +89,13 @@ String receiptText(Receipt r) {
     if (i.msisdn != null && i.kind == 'AIRTIME') 'Numéro rechargé : ${i.msisdn}',
     if (i.billReference != null) 'Compteur ou abonné : ${i.billReference}',
     if (i.token != null) 'Code du compteur : ${i.token}',
-    'Montant : ${formatUsd(i.amountMinor)}',
-    if (i.feeMinor != 0) '${i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais'} : ${formatUsd(i.feeMinor)}',
-    if (i.feeMinor != 0) '${i.isIn ? 'Total crédité' : 'Total débité'} : ${formatUsd(i.netMinor.abs())}',
+    if (i.exchange != null)
+      for (final (label, value) in exchangeRows(i.exchange!)) '$label : $value'
+    else ...[
+      'Montant : ${formatMoney(i.amountMinor, i.currency)}',
+      if (i.feeMinor != 0) '${i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais'} : ${formatMoney(i.feeMinor, i.currency)}',
+      if (i.feeMinor != 0) '${i.isIn ? 'Total crédité' : 'Total débité'} : ${formatMoney(i.netMinor.abs(), i.currency)}',
+    ],
     if (i.note != null) 'Message : ${i.note}',
     if (historyStatus(i) != null) 'État : ${historyStatus(i)}',
     '',
@@ -130,7 +144,7 @@ class HistoryTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              _signed(item.netMinor),
+              _signed(item),
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
@@ -305,10 +319,13 @@ class _HistoryViewState extends State<HistoryView> with ApiAction {
 
 /// Reçu d'une opération, avec le partage (WhatsApp, SMS…).
 class ReceiptScreen extends StatefulWidget {
-  const ReceiptScreen({super.key, required this.app, required this.id});
+  const ReceiptScreen({super.key, required this.app, required this.id, this.currency = 'USD'});
 
   final AppState app;
   final String id;
+
+  /// Compte depuis lequel le reçu est ouvert : USD ou CDF.
+  final String currency;
 
   @override
   State<ReceiptScreen> createState() => _ReceiptScreenState();
@@ -324,7 +341,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
   }
 
   Future<void> _load() async {
-    final r = await run(widget.app, () => widget.app.api.receipt(widget.id));
+    final r = await run(widget.app, () => widget.app.api.receipt(widget.id, currency: widget.currency));
     if (r != null && mounted) setState(() => receipt = r);
   }
 
@@ -359,9 +376,13 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
       if (i.msisdn != null && i.kind == 'AIRTIME') ('Numéro rechargé', i.msisdn!),
       if (i.billReference != null) ('Compteur ou abonné', i.billReference!),
       if (i.token != null) ('Code du compteur', i.token!),
-      ('Montant', formatUsd(i.amountMinor)),
-      if (i.feeMinor != 0) (i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais', formatUsd(i.feeMinor)),
-      if (i.feeMinor != 0) (i.isIn ? 'Total crédité' : 'Total débité', formatUsd(i.netMinor.abs())),
+      if (i.exchange != null)
+        ...exchangeRows(i.exchange!)
+      else ...[
+        ('Montant', formatMoney(i.amountMinor, i.currency)),
+        if (i.feeMinor != 0) (i.kind.endsWith('_REFUND') ? 'Frais rendus' : 'Frais', formatMoney(i.feeMinor, i.currency)),
+        if (i.feeMinor != 0) (i.isIn ? 'Total crédité' : 'Total débité', formatMoney(i.netMinor.abs(), i.currency)),
+      ],
       if (i.note != null) ('Message', i.note!),
       ?(status == null ? null : ('État', status)),
       if (i.failureMessage != null) ('Motif', i.failureMessage!),
@@ -382,7 +403,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> with ApiAction {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      _signed(i.netMinor),
+                      _signed(i),
                       key: const ValueKey('receipt-amount'),
                       style: TextStyle(
                         fontSize: 28,

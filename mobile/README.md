@@ -34,6 +34,7 @@ flutter analyze
 flutter test                                   # client API, formats, parcours d'écrans (faux serveur)
 flutter test integration_check/real_server_test.dart   # contre le vrai serveur sur localhost:8080
 flutter test integration_check/screenshots_test.dart --update-goldens   # régénère les captures
+flutter test integration_check/exchange_screenshots_test.dart --update-goldens   # captures du change USD / CDF
 ```
 
 ## Choix de sécurité
