@@ -92,7 +92,7 @@ data class CustomerView(val customer: Customer, val walletAccountId: UUID)
 @Service
 class CustomerService(private val customers: CustomerRepository, private val ledger: LedgerRepository) {
 
-    /** Ouvre un client au niveau KYC 1 avec un portefeuille USD. */
+    /** Ouvre un client au niveau KYC 1 avec un portefeuille USD et un portefeuille CDF. */
     @Transactional
     fun open(phone: String, fullName: String, language: Language): CustomerView {
         if (customers.findByPhone(phone) != null) {
@@ -111,6 +111,8 @@ class CustomerService(private val customers: CustomerRepository, private val led
             status = AccountStatus.ACTIVE,
         )
         ledger.createAccount(wallet)
+        // Compte en francs congolais : vide à l'ouverture, alimenté par un change depuis le compte USD.
+        ledger.createAccount(wallet.copy(id = UUID.randomUUID(), currency = Currency.CDF))
         return CustomerView(customer, wallet.id)
     }
 

@@ -6,7 +6,7 @@ import java.util.UUID
 
 enum class Direction { DEBIT, CREDIT }
 
-enum class AccountType { CUSTOMER_WALLET, OPERATOR_SETTLEMENT, FEES_REVENUE, PAYOUT_IN_TRANSIT, MERCHANT_WALLET, CUSTOMER_SAVINGS, PENDING_TRANSFERS, CUSTOMER_POT }
+enum class AccountType { CUSTOMER_WALLET, OPERATOR_SETTLEMENT, FEES_REVENUE, PAYOUT_IN_TRANSIT, MERCHANT_WALLET, CUSTOMER_SAVINGS, PENDING_TRANSFERS, CUSTOMER_POT, FX_POSITION }
 
 enum class AccountStatus { ACTIVE, FROZEN, CLOSED }
 
@@ -29,6 +29,11 @@ data class PostingRequest(
     val type: String,
     val description: String?,
     val lines: List<PostingLine>,
+    /**
+     * Change entre devises (USD et CDF) : les comptes peuvent être de devises différentes,
+     * et les débits doivent égaler les crédits dans chaque devise. Faux pour tout le reste.
+     */
+    val crossCurrency: Boolean = false,
 )
 
 data class LedgerEntry(

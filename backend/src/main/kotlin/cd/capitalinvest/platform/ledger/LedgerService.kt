@@ -2,7 +2,6 @@ package cd.capitalinvest.platform.ledger
 
 import cd.capitalinvest.platform.common.BusinessException
 import cd.capitalinvest.platform.common.ConflictException
-import cd.capitalinvest.platform.common.Currency
 import cd.capitalinvest.platform.common.NotFoundException
 import cd.capitalinvest.platform.notifications.MoneyMoved
 import org.springframework.context.ApplicationEventPublisher
@@ -18,7 +17,7 @@ data class PostingResult(val transaction: LedgerTransaction, val replayed: Boole
  *
  * Règles garanties :
  * - au moins deux lignes, montants strictement positifs, total des débits = total des crédits ;
- * - tous les comptes existent, sont actifs et dans la même devise ;
+ * - tous les comptes existent, sont actifs et dans la même devise (sauf un change, équilibré devise par devise) ;
  * - un compte qui n'autorise pas le négatif ne passe jamais sous zéro (vérifié sous verrou) ;
  * - une même clé d'idempotence rejouée renvoie la transaction d'origine, une clé réutilisée
  *   pour une autre demande est refusée.
@@ -53,10 +52,15 @@ class LedgerService(
         if (inactive != null) throw BusinessException("ACCOUNT_NOT_ACTIVE", "Le compte ${inactive.id} n'est pas actif")
 
         val currencies = accounts.values.map { it.currency }.toSet()
-        if (currencies.size != 1) throw BusinessException("CURRENCY_MISMATCH", "Tous les comptes doivent être dans la même devise")
-        val currency: Currency = currencies.single()
+        if (request.crossCurrency) {
+            if (currencies.size != 2) throw BusinessException("CURRENCY_MISMATCH", "Un change touche exactement deux devises")
+            currencies.forEach { cur -> checkBalanced(request.lines.filter { accounts.getValue(it.accountId).currency == cur }) }
+        } else if (currencies.size != 1) {
+            throw BusinessException("CURRENCY_MISMATCH", "Tous les comptes doivent être dans la même devise")
+        }
 
-        request.lines.forEach { repository.insertEntry(transactionId, it, currency) }
+        // Chaque écriture porte la devise de son compte.
+        request.lines.forEach { repository.insertEntry(transactionId, it, accounts.getValue(it.accountId).currency) }
 
         accounts.values.filter { !it.allowNegative }.forEach { account ->
             if (repository.balance(account.id) < 0) {
@@ -83,8 +87,13 @@ class LedgerService(
         if (request.lines.any { it.amountMinor <= 0 }) {
             throw BusinessException("INVALID_AMOUNT", "Chaque montant doit être strictement positif")
         }
-        val debits = request.lines.filter { it.direction == Direction.DEBIT }.fold(0L) { acc, l -> Math.addExact(acc, l.amountMinor) }
-        val credits = request.lines.filter { it.direction == Direction.CREDIT }.fold(0L) { acc, l -> Math.addExact(acc, l.amountMinor) }
+        // Un change n'est équilibré que devise par devise : contrôlé une fois les comptes connus.
+        if (!request.crossCurrency) checkBalanced(request.lines)
+    }
+
+    private fun checkBalanced(lines: List<PostingLine>) {
+        val debits = lines.filter { it.direction == Direction.DEBIT }.fold(0L) { acc, l -> Math.addExact(acc, l.amountMinor) }
+        val credits = lines.filter { it.direction == Direction.CREDIT }.fold(0L) { acc, l -> Math.addExact(acc, l.amountMinor) }
         if (debits != credits) {
             throw BusinessException("UNBALANCED", "Débits ($debits) et crédits ($credits) doivent être égaux")
         }

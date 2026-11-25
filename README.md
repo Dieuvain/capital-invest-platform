@@ -360,6 +360,23 @@ Le client met de l'argent de côté depuis l'accueil (carte **Épargne**) ou le 
 - Pas d'intérêts pour l'instant : en verser demande l'avis de la BCC et un placement de l'argent correspondant.
 - API : `GET /v1/me/savings`, `POST /v1/me/savings/deposits` et `/withdrawals` (`{"amountMinor"}`, en-tête `Idempotency-Key`), `PUT` et `DELETE /v1/me/savings/goal`.
 
+## Compte en francs congolais (CDF) et change
+
+Chaque client a deux comptes : dollars (USD) et francs congolais (CDF). Le compte en francs est ouvert à l'inscription (et créé par la migration pour les clients existants), vide au départ. Le client passe de l'un à l'autre depuis la carte **Compte en francs** de l'accueil ou le menu **Dollars et francs** : il voit le taux, les frais et le montant reçu avant de confirmer.
+
+| Change | Change fait | Reçu | Accueil |
+|---|---|---|---|
+| ![](docs/captures-app/27-dollars-et-francs.png) | ![](docs/captures-app/27b-change-fait-sombre.png) | ![](docs/captures-app/27c-recu-change.png) | ![](docs/captures-app/27d-accueil-francs.png) |
+
+- **Taux et frais PROVISOIRES**, à fixer par la direction générale : 1 $ = 2 850 FC dans les deux sens, 1 % de frais pris dans la devise de départ, au moins 1 $ ou 1 000 FC (`capital-invest.exchange`, taux surchargé par `EXCHANGE_CDF_PER_USD`). Le montant reçu est arrondi vers le bas.
+- Les francs sont stockés en francs entiers, les dollars en centimes.
+- L'app envoie le taux qu'elle a affiché : s'il a changé entre-temps, le serveur refuse (`RATE_CHANGED`) et l'app montre le nouvel aperçu. Le client ne reçoit jamais un autre montant que celui affiché.
+- Une seule opération du grand livre (`EXCHANGE`), équilibrée **dans chaque devise** : compte du client, position de change (`FX_POSITION_USD`, `FX_POSITION_CDF`) et frais (`FEES_REVENUE_USD`, `FEES_REVENUE_CDF`). La position de change dit ce que Capital Invest a acheté ou vendu dans chaque devise ; la trésorerie la couvre hors de l'app.
+- Comme l'épargne : pas de PIN, pas de plafond d'envoi, pas de notification (l'argent reste chez Capital Invest). Le **solde maximal** du niveau KYC compte aussi les francs, à leur valeur en dollars. Un compte fermé exige un compte en francs vide.
+- Le change apparaît dans l'historique de chaque compte (« Change en francs », « Change en dollars ») ; le reçu montre le montant changé, les frais, le montant reçu et le taux. Le back-office voit le solde en francs du client.
+- Pour l'instant, recharges, envois, retraits et paiements restent en dollars : les francs servent à changer et à garder de l'argent en francs.
+- API : `GET /v1/me/accounts`, `GET /v1/me/exchange` (taux et frais), `GET /v1/me/exchange/quote?from=USD&amountMinor=1000`, `POST /v1/me/exchange` (`{"from":"USD","amountMinor":1000,"rate":2850}`, en-tête `Idempotency-Key`), `GET /v1/me/history?currency=CDF`, `GET /v1/me/history/{id}?currency=CDF`.
+
 ## Notifications au client
 
 Tout ce qui touche l'argent ou le compte du client est notifié : recharge reçue, argent reçu, envoi effectué, retrait versé, retrait remboursé, correction de solde, décision sur le niveau 2, PIN changé. Un envoi que le client n'a pas fait est souvent le premier signe d'un vol de compte : chaque sortie d'argent est donc notifiée.
@@ -608,12 +625,12 @@ Carte prépayée Visa qui dépense le solde du compte (portefeuille USD), en mag
 
 ## Règles du grand livre
 
-- Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits.
+- Tout mouvement d'argent passe par `LedgerService.post` : au moins deux lignes, débits = crédits, tous les comptes dans la même devise. Seul un change touche deux devises, et il doit être équilibré dans chacune.
 - Le solde n'est jamais stocké : il est calculé à partir des écritures.
 - Les écritures sont en ajout seul (un déclencheur PostgreSQL interdit modification et suppression).
 - Chaque opération porte une clé d'idempotence : la rejouer ne débite jamais deux fois.
 - Un portefeuille client ne passe jamais sous zéro ; la vérification se fait sous verrou.
-- Montants en unités mineures (`Long`, centimes) : jamais de `Double` pour de l'argent.
+- Montants en unités mineures (`Long` : centimes de dollar, francs entiers) : jamais de `Double` pour de l'argent.
 
 ## Documentation
 
