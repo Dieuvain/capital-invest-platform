@@ -6,6 +6,7 @@
 |---|---|---|
 | Demandes KYC 2 | Agent KYC, Conformité, Administrateur | File d'attente, photos, contrôle sanctions, validation ou refus motivé |
 | Promotions | Marketing, Administrateur | Bandeau de l'accueil de l'app, avec aperçu, dates et public |
+| Crédits | Agent de crédit, Administrateur | Crédit express : demandes au-dessus du seuil de revue (score et raisons), crédits en retard ou en défaut, rééchelonnement ; passage en perte et réglages pour l'administrateur |
 | Agents | Administrateur | Création des comptes, désactivation (ferme aussitôt les sessions) |
 | Journal d'audit | Conformité, Administrateur | Qui a fait quoi, et quand |
 
