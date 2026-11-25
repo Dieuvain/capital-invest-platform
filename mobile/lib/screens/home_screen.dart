@@ -16,6 +16,7 @@ import 'airtime_screen.dart';
 import 'bill_screens.dart';
 import 'card_screens.dart';
 import 'complaint_screens.dart';
+import 'credit_screens.dart';
 import 'history_screens.dart';
 import 'kyc_screen.dart';
 import 'notifications_screen.dart';
@@ -128,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
   void _savings() => _open(SavingsScreen(app: widget.app));
   void _pots() => _open(PotsScreen(app: widget.app));
   void _cards() => _open(CardsScreen(app: widget.app, onKyc: _kyc));
+  void _credit() => _open(CreditScreen(app: widget.app, onKyc: _kyc));
   void _complaints() => _open(ComplaintsScreen(app: widget.app));
   void _scheduled() => _open(ScheduledTransfersScreen(app: widget.app));
   void _receipt(HistoryItem i) => _open(ReceiptScreen(app: widget.app, id: i.id));
@@ -167,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                 _SheetRow(Icons.call_received_rounded, 'Demander de l\'argent', () => go(_requests)),
                 _SheetRow(Icons.event_repeat_rounded, 'Envois programmés', () => go(_scheduled)),
                 _SheetRow(Icons.credit_card_rounded, 'Mes cartes', () => go(_cards)),
+                _SheetRow(Icons.payments_outlined, 'Crédit express', () => go(_credit)),
                 _SheetRow(Icons.savings_outlined, 'Épargne', () => go(_savings)),
                 _SheetRow(Icons.volunteer_activism_outlined, 'Cagnottes', () => go(_pots)),
                 _SheetRow(Icons.verified_user_outlined, 'Passer au niveau 2', () => go(_kyc)),
@@ -466,6 +469,7 @@ class _HomeScreenState extends State<HomeScreen> with ApiAction {
                   ),
                   _SheetRow(Icons.lock_outline_rounded, 'Sécurité et PIN', _security),
                   _SheetRow(Icons.credit_card_outlined, 'Mes cartes Visa', _cards),
+                  _SheetRow(Icons.payments_outlined, 'Crédit express', _credit),
                   _SheetRow(Icons.savings_outlined, 'Épargne', _savings),
                 ],
               ),
