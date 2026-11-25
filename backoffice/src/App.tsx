@@ -17,6 +17,7 @@ import { Monitoring } from './pages/Monitoring'
 import { SuspicionReportPage } from './pages/SuspicionReport'
 import { Dashboard } from './pages/Dashboard'
 import { ActivityPage } from './pages/Activity'
+import { Credits } from './pages/Credits'
 import { ago, buildNotices } from './notifications'
 import type { KycRequest, Promotion } from './api'
 
@@ -29,6 +30,7 @@ export const sections: { path: string; label: string; icon: string; roles: Role[
   { path: 'activite', label: 'Activité', icon: 'chart', roles: ['COMPLIANCE', 'ADMIN', 'MARKETING'] },
   { path: 'kyc', label: 'Demandes KYC 2', icon: 'id', roles: ['KYC_AGENT', 'COMPLIANCE', 'ADMIN'] },
   { path: 'promotions', label: 'Promotions', icon: 'promo', roles: ['MARKETING', 'ADMIN'] },
+  { path: 'credits', label: 'Crédits', icon: 'credit', roles: ['CREDIT_OFFICER', 'ADMIN'] },
   { path: 'reclamations', label: 'Réclamations', icon: 'chat', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'clients', label: 'Clients', icon: 'search', roles: ['COMPLIANCE', 'ADMIN'] },
   { path: 'marchands', label: 'Marchands', icon: 'shop', roles: ['COMPLIANCE', 'ADMIN'] },
@@ -142,6 +144,9 @@ export function App({ api }: { api: Api }) {
       ) : (
         <Promotions api={api} open={(pid) => go(`promotions/${pid}`)} />
       )
+      break
+    case 'credits':
+      page = <Credits api={api} me={agent} notify={notify} />
       break
     case 'reclamations':
       page = <Complaints api={api} notify={notify} openCustomer={(cid) => go(`clients/${cid}`)} />

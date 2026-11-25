@@ -40,12 +40,18 @@ abstract class DatabaseTest {
     }
 }
 
-/** Horloge que les tests peuvent avancer, pour vérifier les expirations. */
-class MutableClock : Clock() {
+/**
+ * Horloge que les tests peuvent avancer, pour vérifier les expirations.
+ * [withZone] garde le même décalage : le serveur compte les jours en heure de Lubumbashi
+ * (`clock.withZone(...)`), et une horloge qui resterait en UTC ferait échouer les tests entre 0 h et 2 h.
+ */
+class MutableClock private constructor(private val zone: ZoneId, private val root: MutableClock?) : Clock() {
+    constructor() : this(ZoneOffset.UTC, null)
+
     @Volatile private var offset: Duration = Duration.ZERO
-    fun advance(d: Duration) { offset = offset.plus(d) }
-    fun reset() { offset = Duration.ZERO }
-    override fun getZone(): ZoneId = ZoneOffset.UTC
-    override fun withZone(zone: ZoneId?): Clock = this
-    override fun instant(): Instant = Instant.now().plus(offset)
+    fun advance(d: Duration) { (root ?: this).offset = (root ?: this).offset.plus(d) }
+    fun reset() { (root ?: this).offset = Duration.ZERO }
+    override fun getZone(): ZoneId = zone
+    override fun withZone(zone: ZoneId?): Clock = MutableClock(zone ?: ZoneOffset.UTC, root ?: this)
+    override fun instant(): Instant = Instant.now().plus((root ?: this).offset)
 }

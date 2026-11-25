@@ -61,7 +61,7 @@ data class NotificationProperties(
 )
 
 enum class NotificationKind {
-    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED, POT_CONTRIBUTION_SENT, POT_CONTRIBUTION_RECEIVED, POT_PAID_OUT, CARD_PAYMENT, CARD_REFUND, CARD_READY, CARD_BLOCKED
+    TOPUP, TRANSFER_RECEIVED, TRANSFER_SENT, WITHDRAWAL_PAID, WITHDRAWAL_REFUNDED, MERCHANT_PAYMENT, MERCHANT_PAYMENT_RECEIVED, MERCHANT_PAYOUT_PAID, MERCHANT_PAYOUT_FAILED, MERCHANT_PAYOUT_ACCOUNT_CHANGED, MONEY_REQUEST, MONEY_REQUEST_DECLINED, ADJUSTMENT, KYC_APPROVED, KYC_REJECTED, PIN_CHANGED, NEW_DEVICE, AIRTIME_REFUNDED, BILL_PAID, BILL_REFUNDED, COMPLAINT_RECEIVED, COMPLAINT_ANSWERED, SCHEDULED_TRANSFER_FAILED, ACCOUNT_BLOCKED, ACCOUNT_UNBLOCKED, DAILY_LIMIT_RAISE_PENDING, ACCOUNT_CLOSED, LOW_BALANCE, TRANSFER_PENDING, TRANSFER_INVITE, TRANSFER_CLAIMED, TRANSFER_REFUNDED, POT_CONTRIBUTION_SENT, POT_CONTRIBUTION_RECEIVED, POT_PAID_OUT, CARD_PAYMENT, CARD_REFUND, CARD_READY, CARD_BLOCKED, CREDIT_DISBURSED, CREDIT_REPAYMENT, CREDIT_REJECTED, CREDIT_REMINDER, CREDIT_LATE, CREDIT_DEFAULTED, CREDIT_REPAID, CREDIT_RESCHEDULED
 }
 
 data class NotificationView(
@@ -292,6 +292,69 @@ class NotificationService(
     )
 
     /** Compte fermé : seul le SMS compte, le client ne peut plus ouvrir l'app. */
+    /** Demande de crédit refusée par un agent de crédit, avec son explication. */
+    fun creditRejected(customerId: UUID, creditId: UUID, amountMinor: Long, reason: String) = queue(
+        customerId, "credit-rejected:$creditId",
+        Draft(
+            NotificationKind.CREDIT_REJECTED, "Crédit non accordé",
+            "Votre demande de crédit de ${money(amountMinor)} n'est pas acceptée : $reason",
+            "Capital Invest: votre demande de credit de ${money(amountMinor)} n'est pas acceptee. Details dans l'app.",
+        ),
+        null,
+    )
+
+    /** Deux jours avant le prélèvement, pour que le client garde le montant sur son solde. */
+    fun creditReminder(customerId: UUID, creditId: UUID, dueDate: java.time.LocalDate, amountMinor: Long) = queue(
+        customerId, "credit-reminder:$creditId:$dueDate",
+        Draft(
+            NotificationKind.CREDIT_REMINDER, "Échéance bientôt",
+            "Votre échéance de ${money(amountMinor)} sera prélevée le ${day(dueDate)}. Gardez ce montant sur votre solde.",
+            "Capital Invest: echeance de credit de ${money(amountMinor)} prelevee le ${day(dueDate)}. Gardez ce montant sur votre solde.",
+        ),
+        null,
+    )
+
+    fun creditLate(customerId: UUID, creditId: UUID, number: Int, dueDate: java.time.LocalDate, remainingMinor: Long) = queue(
+        customerId, "credit-late:$creditId:$number",
+        Draft(
+            NotificationKind.CREDIT_LATE, "Échéance en retard",
+            "Votre échéance du ${day(dueDate)} n'est pas payée : il manque ${money(remainingMinor)}. " +
+                "Rechargez votre compte : le montant sera prélevé automatiquement, ou remboursez depuis Crédit express.",
+            "Capital Invest: echeance du ${day(dueDate)} impayee, il manque ${money(remainingMinor)}. Rechargez votre compte.",
+        ),
+        null,
+    )
+
+    fun creditDefaulted(customerId: UUID, creditId: UUID, overdueMinor: Long) = queue(
+        customerId, "credit-defaulted:$creditId",
+        Draft(
+            NotificationKind.CREDIT_DEFAULTED, "Crédit en défaut",
+            "Votre crédit a ${money(overdueMinor)} d'échéances impayées depuis trop longtemps. Passez à l'agence ou appelez-nous pour trouver une solution.",
+            "Capital Invest: credit en defaut, ${money(overdueMinor)} impayes. Passez a l'agence ou appelez-nous.",
+        ),
+        null,
+    )
+
+    fun creditRepaid(customerId: UUID, creditId: UUID, principalMinor: Long) = queue(
+        customerId, "credit-repaid:$creditId",
+        Draft(
+            NotificationKind.CREDIT_REPAID, "Crédit remboursé",
+            "Votre crédit de ${money(principalMinor)} est entièrement remboursé. Merci ! Votre prochain plafond en tient compte.",
+            "Capital Invest: votre credit de ${money(principalMinor)} est rembourse. Merci!",
+        ),
+        null,
+    )
+
+    fun creditRescheduled(customerId: UUID, creditId: UUID, months: Int, firstDue: java.time.LocalDate, firstAmountMinor: Long) = queue(
+        customerId, "credit-rescheduled:$creditId:$firstDue:$months",
+        Draft(
+            NotificationKind.CREDIT_RESCHEDULED, "Nouvel échéancier",
+            "Votre crédit est étalé sur $months mois. Première échéance : ${money(firstAmountMinor)} le ${day(firstDue)}.",
+            "Capital Invest: credit etale sur $months mois. 1re echeance ${money(firstAmountMinor)} le ${day(firstDue)}.",
+        ),
+        null,
+    )
+
     /** Carte physique livrée à l'agence : le client vient la chercher avec sa pièce d'identité. */
     fun cardReady(customerId: UUID, cardId: UUID, branch: String, last4: String) = queue(
         customerId, "card-ready:$cardId",
@@ -521,6 +584,17 @@ class NotificationService(
             )
             // Le client vient de commander ou remplacer sa carte dans l'app, avec le prix affiché.
             HistoryKind.CARD_FEE -> null
+            HistoryKind.CREDIT_DISBURSEMENT -> Draft(
+                NotificationKind.CREDIT_DISBURSED, "Crédit versé",
+                "Votre crédit express de ${money(i.amountMinor)} est sur votre compte et votre carte. Nouveau solde : ${money(balance)}. " +
+                    "Les échéances seront prélevées sur votre solde : retrouvez-les dans Crédit express.",
+                "Capital Invest: credit express de ${money(i.amountMinor)} verse. $solde. $ref",
+            )
+            HistoryKind.CREDIT_REPAYMENT -> Draft(
+                NotificationKind.CREDIT_REPAYMENT, "Remboursement reçu",
+                "${money(i.amountMinor)} remboursés sur votre crédit express. Nouveau solde : ${money(balance)}.",
+                "Capital Invest: ${money(i.amountMinor)} rembourses sur votre credit. $solde. $ref",
+            )
             HistoryKind.ADJUSTMENT -> Draft(
                 NotificationKind.ADJUSTMENT, "Solde corrigé",
                 "Votre solde a été corrigé de ${money(i.netMinor)}. Nouveau solde : ${money(balance)}.",
@@ -616,6 +690,8 @@ class NotificationService(
             "ORANGE" -> "Orange Money"
             else -> name
         }
+
+        private fun day(d: java.time.LocalDate): String = "%02d/%02d/%d".format(d.dayOfMonth, d.monthValue, d.year)
 
         private fun short(name: String?): String = name?.let { ascii(it).take(30) } ?: "un client"
     }

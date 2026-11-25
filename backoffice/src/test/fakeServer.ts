@@ -1,4 +1,4 @@
-import type { Agent, BackofficeComplaint, CustomerSummary, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
+import type { Agent, BackofficeComplaint, BackofficeCredit, CreditSettings, CustomerSummary, ScheduledTransfer, HistoryItem, AuditEntry, Merchant, MonitoringAlert, MerchantPayment, MerchantPayout, KycRequest, PendingPurchase, Promotion, ReconciliationItem, ReconciliationRun, ReviewTopup, Role, SuspicionReport } from '../api'
 
 /** Faux serveur back-office : mêmes routes, mêmes codes d'erreur que l'API réelle, sans réseau. */
 export class FakeServer {
@@ -8,7 +8,13 @@ export class FakeServer {
     { id: 'a-kyc', email: 'kyc@capitalinvest.cd', fullName: 'Patrick Ilunga', role: 'KYC_AGENT', active: true },
     { id: 'a-conf', email: 'conformite@capitalinvest.cd', fullName: 'Ruth Conformité', role: 'COMPLIANCE', active: true },
     { id: 'a-mkt', email: 'marketing@capitalinvest.cd', fullName: 'Joël Marketing', role: 'MARKETING', active: true },
+    { id: 'a-credit', email: 'credit@capitalinvest.cd', fullName: 'Esther Mujinga', role: 'CREDIT_OFFICER', active: true },
   ]
+  credits: BackofficeCredit[] = fakeCredits()
+  creditSettings: CreditSettings = {
+    minScore: 40, reviewThresholdMinor: 30000, minAmountMinor: 1000, maxAmountMinor: 100000, monthlyRateBp: 250,
+    durationsMonths: [1, 2, 3, 6], ceilingPercentOfInflow: 50, defaultAfterDays: 30, updatedAt: '2026-11-20T08:00:00Z',
+  }
   sessions = new Map<string, string>()
   kyc: KycRequest[] = [
     request('k-1', 'Amani Kabeya', '+243970000001', 'CLEAR', '2026-11-18T08:00:00Z'),
@@ -432,6 +438,27 @@ export class FakeServer {
         return json(i)
       }
     }
+    if (path.startsWith('/v1/backoffice/credit')) {
+      if (!role('CREDIT_OFFICER', 'ADMIN')) return problem(403, 'CREDIT_ONLY', 'Réservé aux agents de crédit et aux administrateurs')
+      if (path === '/v1/backoffice/credit-settings') {
+        if (method === 'GET') return json(this.creditSettings)
+        if (!role('ADMIN')) return problem(403, 'ADMIN_ONLY', 'Réservé aux administrateurs (comité de crédit)')
+        this.creditSettings = { ...body, updatedAt: '2026-11-25T10:00:00Z' }
+        return json(this.creditSettings)
+      }
+      if ((m = path.match(/^\/v1\/backoffice\/credits\/([^/]+)\/(approve|reject|reschedule|write-off)$/))) {
+        const c = this.credits.find((x) => x.credit.id === m![1])!
+        const note = body.note?.trim()
+        if (m[2] !== 'approve' && !note) return problem(422, 'NOTE_REQUIRED', 'Expliquez votre décision en quelques mots')
+        if (m[2] === 'write-off' && !role('ADMIN')) return problem(403, 'ADMIN_ONLY', 'Réservé aux administrateurs (comité de crédit)')
+        const status = { approve: 'ACTIVE', reject: 'REJECTED', reschedule: 'ACTIVE', 'write-off': 'WRITTEN_OFF' }[m[2]] as BackofficeCredit['credit']['status']
+        Object.assign(c.credit, { status, decisionNote: note || null, dueNowMinor: 0, daysLate: 0 })
+        if (m[2] === 'reschedule') c.credit.rescheduleCount++
+        Object.assign(c, { decidedBy: me.fullName, decidedAt: '2026-11-25T10:00:00Z' })
+        return json(c)
+      }
+      return json(this.credits.filter((c) => c.credit.status === u.searchParams.get('status')))
+    }
     if (path.startsWith('/v1/backoffice/complaints')) {
       if (!role('ADMIN', 'COMPLIANCE')) return problem(403, 'COMPLIANCE_ONLY', 'Réservé à la conformité et aux administrateurs')
       if ((m = path.match(/^\/v1\/backoffice\/complaints\/([^/]+)\/answer$/))) {
@@ -518,4 +545,41 @@ export function fakeActivity(days: number, to = '2026-11-20') {
     customerHoldingsMinor: 18_472_350,
     pendingInvites: { count: 27, amountMinor: 48_500 },
   }
+}
+
+/** Une demande au-dessus du seuil et un crédit en retard. */
+function fakeCredits(): BackofficeCredit[] {
+  const credit = (id: string, status: BackofficeCredit['credit']['status'], principal: number, extra: Partial<BackofficeCredit['credit']>) => ({
+    id, status, principalMinor: principal, durationMonths: 3, monthlyRateBp: 250, aprBp: 3449, totalInterestMinor: 1512,
+    totalPaidMinor: 0, outstandingPrincipalMinor: principal, dueNowMinor: 0, payoffMinor: principal, daysLate: 0, instalments: [],
+    score: 62, rescheduleCount: 0, createdAt: '2026-11-25T07:30:00Z', ...extra,
+  })
+  return [
+    {
+      credit: credit('cr-1', 'PENDING_REVIEW', 50_000, {}),
+      customerId: 'c-1', customerName: 'Amani Kabeya', customerPhone: '+243970000001', kycLevel: 2, walletBalanceMinor: 12_000,
+      ceilingMinor: 60_000,
+      factors: [
+        { label: 'Compte ouvert depuis 210 jours', positive: true },
+        { label: '1 200,00 $ reçus par mois en moyenne sur 3 mois', positive: true },
+        { label: 'De l\'argent reçu 3 mois sur 3', positive: true },
+      ],
+    },
+    {
+      credit: credit('cr-2', 'LATE', 15_000, {
+        score: 48, dueNowMinor: 5_252, daysLate: 6, outstandingPrincipalMinor: 15_000, createdAt: '2026-10-19T09:00:00Z',
+        instalments: [
+          { number: 1, dueDate: '2026-11-19', amountMinor: 5_252, principalMinor: 4_877, interestMinor: 375, paidMinor: 0, remainingMinor: 5_252, status: 'LATE' },
+          { number: 2, dueDate: '2026-12-19', amountMinor: 5_252, principalMinor: 4_999, interestMinor: 253, paidMinor: 0, remainingMinor: 5_252, status: 'UPCOMING' },
+          { number: 3, dueDate: '2027-01-19', amountMinor: 5_252, principalMinor: 5_124, interestMinor: 128, paidMinor: 0, remainingMinor: 5_252, status: 'UPCOMING' },
+        ],
+      }),
+      customerId: 'c-2', customerName: 'Joseph Mwamba', customerPhone: '+243970000002', kycLevel: 2, walletBalanceMinor: 0,
+      ceilingMinor: 20_000,
+      factors: [
+        { label: 'Compte ouvert depuis 95 jours', positive: true },
+        { label: 'De l\'argent reçu 2 mois sur 3', positive: true },
+      ],
+    },
+  ]
 }

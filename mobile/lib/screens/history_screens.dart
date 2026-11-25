@@ -30,6 +30,8 @@ String historyTitle(HistoryItem i) => switch (i.kind) {
   'CARD_PAYMENT' => 'Carte · ${i.counterpartyName ?? 'commerçant'}',
   'CARD_REFUND' => 'Carte · paiement annulé par ${i.counterpartyName ?? 'le commerçant'}',
   'CARD_FEE' => 'Frais de carte',
+  'CREDIT_DISBURSEMENT' => 'Crédit express versé',
+  'CREDIT_REPAYMENT' => 'Remboursement du crédit',
   'EXCHANGE' => (i.exchange?.to ?? (i.isIn ? i.currency : null)) == 'CDF' ? 'Change en francs' : 'Change en dollars',
   _ => 'Correction de solde',
 };
@@ -57,6 +59,7 @@ IconData historyIcon(HistoryItem i) => switch (i.kind) {
   'POT_CONTRIBUTION' || 'POT_PAYOUT' => Icons.volunteer_activism_outlined,
   'CARD_PAYMENT' || 'CARD_FEE' => Icons.credit_card_rounded,
   'CARD_REFUND' => Icons.undo_rounded,
+  'CREDIT_DISBURSEMENT' || 'CREDIT_REPAYMENT' => Icons.payments_outlined,
   'EXCHANGE' => Icons.currency_exchange_rounded,
   _ => Icons.tune_rounded,
 };
@@ -167,7 +170,7 @@ class HistoryView extends StatefulWidget {
 }
 
 class _HistoryViewState extends State<HistoryView> with ApiAction {
-  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits', 'PAYMENT': 'Paiements', 'SAVINGS': 'Épargne'};
+  static const filters = {null: 'Tout', 'TOPUP': 'Recharges', 'TRANSFER': 'Envois', 'WITHDRAWAL': 'Retraits', 'PAYMENT': 'Paiements', 'SAVINGS': 'Épargne', 'CREDIT': 'Crédit'};
 
   String? category;
   List<HistoryItem>? items;

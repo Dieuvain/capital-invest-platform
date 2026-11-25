@@ -5,6 +5,7 @@ export const roleLabel: Record<Role, string> = {
   COMPLIANCE: 'Conformité',
   ADMIN: 'Administrateur',
   MARKETING: 'Marketing',
+  CREDIT_OFFICER: 'Agent de crédit',
 }
 
 export const idTypeLabel: Record<KycRequest['idType'], string> = {
@@ -72,6 +73,18 @@ const auditLabels: Record<string, string> = {
   BILL_REVIEW_REFUND: 'Facture remboursée',
   COMPLAINT_ANSWERED_FOUNDED: 'Réclamation fondée, réponse envoyée',
   COMPLAINT_ANSWERED_UNFOUNDED: 'Réclamation non fondée, réponse envoyée',
+  CREDIT_REQUESTED: 'Crédit express demandé',
+  CREDIT_DISBURSED: 'Crédit express versé',
+  CREDIT_APPROVED: 'Crédit approuvé',
+  CREDIT_REJECTED: 'Crédit refusé',
+  CREDIT_CANCELLED: 'Demande de crédit retirée',
+  CREDIT_LATE: 'Crédit en retard',
+  CREDIT_DEFAULTED: 'Crédit en défaut',
+  CREDIT_ACTIVE: 'Crédit à jour',
+  CREDIT_RESCHEDULED: 'Crédit rééchelonné',
+  CREDIT_WRITTEN_OFF: 'Crédit passé en perte',
+  CREDIT_REPAID: 'Crédit remboursé',
+  CREDIT_SETTINGS_CHANGED: 'Réglages du crédit modifiés',
 }
 export const auditLabel = (e: AuditEntry) => auditLabels[e.action] ?? e.action
 

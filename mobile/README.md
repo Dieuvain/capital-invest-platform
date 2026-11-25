@@ -7,6 +7,7 @@ Parcours client branchés sur l'API `backend/` :
 - recharge M-Pesa, Airtel Money ou Orange Money, avec attente de la validation sur le téléphone ;
 - envoi à un autre client, avec les frais affichés avant la confirmation par PIN ;
 - passage au niveau 2 : type et numéro de pièce, date de naissance, photos recto, verso et selfie.
+- crédit express : offre avec le score et ses raisons, conditions et TEG avant d'accepter avec le PIN, échéancier, remboursement en avance ou en une fois.
 
 Charte : encre `#231F20`, ocre `#FBB03F`, police Hanken Grotesk (SIL OFL, dans `assets/fonts`).
 

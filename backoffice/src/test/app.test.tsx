@@ -44,7 +44,7 @@ describe('connexion', () => {
     ['kyc@capitalinvest.cd', ['Tableau de bord', 'Demandes KYC 2']],
     ['marketing@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Promotions']],
     ['conformite@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Demandes KYC 2', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', "Journal d'audit"]],
-    ['admin@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Demandes KYC 2', 'Promotions', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
+    ['admin@capitalinvest.cd', ['Tableau de bord', 'Activité', 'Demandes KYC 2', 'Promotions', 'Crédits', 'Réclamations', 'Clients', 'Marchands', 'Surveillance', 'Rapprochement', 'Agents', "Journal d'audit"]],
   ])('%s ne voit que les menus de son rôle', async (email, expected) => {
     await signIn(email)
     await waitFor(() => expect(menu().getAllByRole('link').map((l) => l.querySelector('.nav-label')?.textContent)).toEqual(expected))

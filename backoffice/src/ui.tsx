@@ -26,6 +26,7 @@ const paths: Record<string, string> = {
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
   chart: 'M4 20h16M7 16v-4M11 16V8M15 16v-6M19 16V5',
   chat: 'M4 5h16v11H9l-5 4zM8 9h8M8 12h5',
+  credit: 'M3 7h18v10H3zM3 11h18M7 15h3M12 3v2M12 19v2',
 }
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths | string; size?: number }) {

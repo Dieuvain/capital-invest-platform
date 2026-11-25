@@ -1,6 +1,6 @@
 // Client de l'API back-office. Le jeton agent est distinct des jetons clients.
 
-export type Role = 'KYC_AGENT' | 'COMPLIANCE' | 'ADMIN' | 'MARKETING'
+export type Role = 'KYC_AGENT' | 'COMPLIANCE' | 'ADMIN' | 'MARKETING' | 'CREDIT_OFFICER'
 
 export interface Agent {
   id: string
@@ -75,6 +75,74 @@ export interface AuditEntry {
 }
 
 export type Operator = 'MPESA' | 'AIRTEL' | 'ORANGE'
+
+// ---- Crédit express ----
+export type CreditStatus = 'PENDING_REVIEW' | 'REJECTED' | 'ACTIVE' | 'LATE' | 'DEFAULTED' | 'WRITTEN_OFF' | 'REPAID'
+
+export interface CreditInstalment {
+  number: number
+  dueDate: string
+  amountMinor: number
+  principalMinor: number
+  interestMinor: number
+  paidMinor: number
+  remainingMinor: number
+  status: 'UPCOMING' | 'LATE' | 'PAID' | 'CANCELLED'
+}
+
+export interface Credit {
+  id: string
+  status: CreditStatus
+  principalMinor: number
+  durationMonths: number
+  monthlyRateBp: number
+  aprBp: number
+  totalInterestMinor: number
+  totalPaidMinor: number
+  outstandingPrincipalMinor: number
+  dueNowMinor: number
+  payoffMinor: number
+  nextInstalment?: CreditInstalment | null
+  daysLate: number
+  instalments: CreditInstalment[]
+  score: number
+  decisionNote?: string | null
+  rescheduleCount: number
+  createdAt: string
+  disbursedAt?: string | null
+  closedAt?: string | null
+}
+
+export interface CreditFactor {
+  label: string
+  positive: boolean
+}
+
+export interface BackofficeCredit {
+  credit: Credit
+  customerId: string
+  customerName: string
+  customerPhone: string
+  kycLevel: number
+  walletBalanceMinor: number
+  ceilingMinor: number
+  factors: CreditFactor[]
+  decidedBy?: string | null
+  decidedAt?: string | null
+}
+
+/** Réglages du crédit : seuils de score et de revue, taux, durées (modifiables par un administrateur). */
+export interface CreditSettings {
+  minScore: number
+  reviewThresholdMinor: number
+  minAmountMinor: number
+  maxAmountMinor: number
+  monthlyRateBp: number
+  durationsMonths: number[]
+  ceilingPercentOfInflow: number
+  defaultAfterDays: number
+  updatedAt?: string | null
+}
 
 /** Fiche client, pour répondre à une réclamation. */
 /** Alerte de surveillance des opérations (lutte contre le blanchiment). */
@@ -613,6 +681,16 @@ export class Api {
     this.json<ReconciliationItem[]>('GET', `/v1/backoffice/reconciliation/items?open=${open}`)
   resolveItem = (id: string, action: ResolveAction, note: string) =>
     this.json<ReconciliationItem>('POST', `/v1/backoffice/reconciliation/items/${id}/resolve`, { action, note })
+
+  // ---- Crédit express ----
+  credits = (status: CreditStatus) => this.json<BackofficeCredit[]>('GET', `/v1/backoffice/credits?status=${status}`)
+  approveCredit = (id: string, note: string) => this.json<BackofficeCredit>('POST', `/v1/backoffice/credits/${id}/approve`, { note })
+  rejectCredit = (id: string, note: string) => this.json<BackofficeCredit>('POST', `/v1/backoffice/credits/${id}/reject`, { note })
+  rescheduleCredit = (id: string, durationMonths: number, note: string) =>
+    this.json<BackofficeCredit>('POST', `/v1/backoffice/credits/${id}/reschedule`, { durationMonths, note })
+  writeOffCredit = (id: string, note: string) => this.json<BackofficeCredit>('POST', `/v1/backoffice/credits/${id}/write-off`, { note })
+  creditSettings = () => this.json<CreditSettings>('GET', '/v1/backoffice/credit-settings')
+  saveCreditSettings = (s: CreditSettings) => this.json<CreditSettings>('PUT', '/v1/backoffice/credit-settings', s)
 
   audit = (limit = 200) => this.json<AuditEntry[]>('GET', `/v1/backoffice/audit?limit=${limit}`)
 }

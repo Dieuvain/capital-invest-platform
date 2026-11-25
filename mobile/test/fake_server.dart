@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'fake_cards.dart';
+import 'fake_credit.dart';
 import 'fake_exchange.dart';
 
 /// Faux serveur Capital Invest pour les tests : répond comme l'API réelle, sans réseau.
@@ -314,6 +315,14 @@ class FakeServer {
   /// Compte en francs et change (routes /v1/me/accounts et /v1/me/exchange).
   late final exchange = FakeExchange(usd: () => balance, onUsd: (d) => balance += d, addHistory: (h) => history.insert(0, h));
 
+  /// Crédit express (routes /v1/me/credit).
+  late final credit = FakeCredit(
+    kycLevel: () => kycLevel,
+    pin: () => pin,
+    balance: () => balance,
+    moveMoney: (minor) => balance += minor,
+  );
+
   Map<String, dynamic> get _customer => {
     'id': 'c-1',
     'phone': '+243970000001',
@@ -338,7 +347,7 @@ class FakeServer {
         path.startsWith('/v1/money-requests')) {
       if (!authed || sessionExpired) return _error(401, 'SESSION_EXPIRED', 'Session expirée');
     }
-    final card = cards.handle(req);
+    final card = cards.handle(req) ?? credit.handle(req);
     if (card != null) return card;
     final fx = exchange.handle(req);
     if (fx != null) return fx;

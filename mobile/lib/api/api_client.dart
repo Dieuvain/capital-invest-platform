@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import 'credit_models.dart';
 import 'models.dart';
 
 /// Erreur renvoyée par le serveur (RFC 7807), avec un code stable à traduire.
@@ -449,6 +450,35 @@ class ApiClient {
       'hideName': hideName,
     }, idempotencyKey: idempotencyKey),
   );
+
+  // Crédit express : offre et score, simulation, demande avec le PIN, remboursements.
+  Future<CreditOverview> creditOverview() async => CreditOverview.fromJson(await _get('/v1/me/credit'));
+
+  Future<CreditQuote> creditQuote(int amountMinor, int durationMonths) async =>
+      CreditQuote.fromJson(await _post('/v1/me/credit/quote', {'amountMinor': amountMinor, 'durationMonths': durationMonths}));
+
+  Future<Credit> applyForCredit({
+    required int amountMinor,
+    required int durationMonths,
+    required String pin,
+    required String idempotencyKey,
+  }) async => Credit.fromJson(
+    await _post('/v1/me/credit', {
+      'amountMinor': amountMinor,
+      'durationMonths': durationMonths,
+      'pin': pin,
+    }, idempotencyKey: idempotencyKey),
+  );
+
+  Future<Credit> credit(String id) async => Credit.fromJson(await _get('/v1/me/credit/$id'));
+
+  Future<Credit> cancelCredit(String id) async => Credit.fromJson(await _post('/v1/me/credit/$id/cancel', null));
+
+  /// [full] : tout rembourser maintenant ; sinon payer ce qui est dû (ou l'échéance suivante en avance).
+  Future<Credit> repayCredit(String id, {required bool full, required String pin, required String idempotencyKey}) async =>
+      Credit.fromJson(
+        await _post('/v1/me/credit/$id/repayments', {'mode': full ? 'FULL' : 'DUE', 'pin': pin}, idempotencyKey: idempotencyKey),
+      );
 
   // Cartes : virtuelle (émise tout de suite) et physique (commandée, retirée en agence, activée).
   Future<CardsOverview> cards() async => CardsOverview.fromJson(await _get('/v1/me/cards'));

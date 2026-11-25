@@ -32,3 +32,5 @@ capital-invest:
     poller-enabled: false
   pending-transfers:
     poller-enabled: false
+  credit:
+    poller-enabled: false

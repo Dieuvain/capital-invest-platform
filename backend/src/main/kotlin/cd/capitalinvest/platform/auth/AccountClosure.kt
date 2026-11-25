@@ -82,6 +82,9 @@ class AccountClosureService(
             if (count("SELECT count(*) FROM pending_transfer WHERE sender_id = :c AND status = 'PENDING'", customerId) > 0) {
                 add(ClosureBlocker("PENDING_TRANSFER_OPEN", "Un envoi à un proche sans compte attend encore. Annulez-le pour reprendre l'argent."))
             }
+            if (count("SELECT count(*) FROM credit WHERE customer_id = :c AND status IN ('PENDING_REVIEW', 'ACTIVE', 'LATE', 'DEFAULTED')", customerId) > 0) {
+                add(ClosureBlocker("CREDIT_OPEN", "Remboursez votre crédit express, ou retirez votre demande en examen."))
+            }
             jdbc.sql("SELECT title FROM pot WHERE owner_id = :c AND status = 'OPEN' ORDER BY created_at").param("c", customerId)
                 .query(String::class.java).list().firstOrNull()?.let {
                     add(ClosureBlocker("POT_OPEN", "Clôturez votre cagnotte « $it » : l'argent collecté passera sur votre solde."))
