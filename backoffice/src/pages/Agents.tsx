@@ -8,6 +8,7 @@ const roleHelp: Record<Role, string> = {
   COMPLIANCE: 'Comme un agent KYC, plus les alertes sanctions et le journal',
   MARKETING: 'Gère les promotions de l\'app',
   ADMIN: 'Tous les accès, dont la gestion des agents',
+  CREDIT_OFFICER: 'Examine les demandes de crédit, rééchelonne les crédits en retard',
 }
 
 export function Agents({ api, me, notify }: { api: Api; me: Agent; notify: (m: string) => void }) {
